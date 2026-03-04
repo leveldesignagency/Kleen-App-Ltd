@@ -1,0 +1,125 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  fullName  String?
+  phone     String?
+  address   String?
+  postcode  String?
+  avatarUrl String?
+  role      UserRole @default(CUSTOMER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  jobs     Job[]
+  disputes Dispute[]
+  reviews  Review[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  CUSTOMER
+  CLEANER
+  ADMIN
+}
+
+model Job {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id])
+  status         JobStatus @default(PENDING)
+  cleaningType   String
+  categoryId     String
+  serviceId      String
+  details        Json
+  address        String
+  postcode       String
+  preferredDate  DateTime
+  preferredTime  String
+  estimateMin    Float
+  estimateMax    Float
+  estimateDuration Int
+  operativesRequired Int    @default(1)
+  finalPrice     Float?
+  qrCode         String?   @unique
+  cleanerStarted DateTime?
+  cleanerFinished DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  disputes Dispute[]
+  reviews  Review[]
+
+  @@index([userId])
+  @@index([status])
+  @@map("jobs")
+}
+
+enum JobStatus {
+  PENDING
+  QUOTED
+  ACCEPTED
+  IN_PROGRESS
+  COMPLETED
+  DISPUTED
+  CANCELLED
+}
+
+model Dispute {
+  id         String        @id @default(cuid())
+  jobId      String
+  job        Job           @relation(fields: [jobId], references: [id])
+  userId     String
+  user       User          @relation(fields: [userId], references: [id])
+  reason     String
+  description String
+  status     DisputeStatus @default(OPEN)
+  resolution String?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@index([jobId])
+  @@index([userId])
+  @@map("disputes")
+}
+
+enum DisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  CLOSED
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  jobId     String   @unique
+  job       Job      @relation(fields: [jobId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("reviews")
+}
+
+model ServiceConfig {
+  id        String  @id @default(cuid())
+  serviceId String  @unique
+  enabled   Boolean @default(true)
+  priceMultiplier Float @default(1.0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("service_configs")
+}
