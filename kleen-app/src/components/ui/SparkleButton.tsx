@@ -135,10 +135,11 @@ export default function SparkleButton(props: SparkleButtonProps) {
     );
   }
 
-  const { href, className, children, ...buttonProps } =
+  const { href, className: _cls, children: _ch, ...buttonProps } =
     props as SparkleButtonAsButton;
   void href;
-  void children;
+  void _cls;
+  void _ch;
   const isDisabled = (props as SparkleButtonAsButton).disabled;
   return (
     <span className={`sparkle-button-wrap ${isDisabled ? "pointer-events-none opacity-80" : ""}`}>
