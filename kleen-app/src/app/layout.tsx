@@ -29,6 +29,9 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
     title: "KLEEN",
   },
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
 };
 
 export const viewport: Viewport = {

@@ -15,10 +15,10 @@ import {
   Loader2,
   Unlink,
 } from "lucide-react";
-import { PaymentMethod } from "@/types";
-import { useUserProfile } from "@/lib/user-profile";
 import { usePaymentMethodStore } from "@/lib/payment-methods";
+import { createClient } from "@/lib/supabase/client";
 import CardBrandLogo from "@/components/ui/CardBrandLogo";
+import AddCardFormStripe from "@/components/dashboard/AddCardFormStripe";
 
 interface ConnectedService {
   id: string;
@@ -49,59 +49,32 @@ const PROVIDER_META: Record<string, { icon?: React.ElementType; brand?: string; 
 };
 
 export default function PaymentMethodsPage() {
-  const { accountType } = useUserProfile();
+  const supabase = createClient();
   const pmStore = usePaymentMethodStore();
   const methods = pmStore.methods;
+  const [accountType, setAccountType] = useState<"personal" | "business">("personal");
   const [services, setServices] = useState<ConnectedService[]>(INITIAL_PERSONAL_SERVICES);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setServices(accountType === "business" ? INITIAL_BUSINESS_SERVICES : INITIAL_PERSONAL_SERVICES);
-  }, [accountType]);
+    const load = async () => {
+      await pmStore.syncFromSupabase(supabase);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase.from("profiles").select("account_type").eq("id", user.id).single();
+        const at = (profile?.account_type as "personal" | "business") ?? "personal";
+        setAccountType(at);
+        setServices(at === "business" ? INITIAL_BUSINESS_SERVICES : INITIAL_PERSONAL_SERVICES);
+      }
+      setLoading(false);
+    };
+    load();
+  }, []);
   const [adding, setAdding] = useState(false);
-  const [cardNumber, setCardNumber] = useState("");
-  const [cardExpiry, setCardExpiry] = useState("");
-  const [cardCvc, setCardCvc] = useState("");
-  const [cardName, setCardName] = useState("");
-  const [saving, setSaving] = useState(false);
   const [connectingId, setConnectingId] = useState<string | null>(null);
 
-  const formatCardNumber = (value: string) => {
-    const digits = value.replace(/\D/g, "").slice(0, 16);
-    return digits.replace(/(.{4})/g, "$1 ").trim();
-  };
-
-  const formatExpiry = (value: string) => {
-    const digits = value.replace(/\D/g, "").slice(0, 4);
-    if (digits.length >= 3) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-    return digits;
-  };
-
-  const handleAddCard = async () => {
-    if (!cardNumber || !cardExpiry || !cardCvc || !cardName) return;
-    setSaving(true);
-    await new Promise((r) => setTimeout(r, 600));
-    const last4 = cardNumber.replace(/\s/g, "").slice(-4);
-    const brand = cardNumber.startsWith("4") ? "visa" : cardNumber.startsWith("5") ? "mastercard" : "amex";
-    const BRAND_LABELS: Record<string, string> = { visa: "Visa", mastercard: "Mastercard", amex: "Amex" };
-    const newMethod: PaymentMethod = {
-      id: `pm_${Date.now()}`,
-      type: "card",
-      label: `${BRAND_LABELS[brand] || "Card"} ending in ${last4}`,
-      last4,
-      brand,
-      isDefault: methods.length === 0,
-    };
-    pmStore.add(newMethod);
-    setAdding(false);
-    setCardNumber("");
-    setCardExpiry("");
-    setCardCvc("");
-    setCardName("");
-    setSaving(false);
-  };
-
-  const remove = (id: string) => pmStore.remove(id);
-  const setDefault = (id: string) => pmStore.setDefault(id);
+  const remove = (id: string) => pmStore.remove(supabase, id);
+  const setDefault = (id: string) => pmStore.setDefault(supabase, id);
 
   const handleConnect = async (svcId: string) => {
     setConnectingId(svcId);
@@ -125,6 +98,12 @@ export default function PaymentMethodsPage() {
 
   return (
     <div>
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+        </div>
+      ) : (
+    <>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Payment Methods</h1>
@@ -138,41 +117,18 @@ export default function PaymentMethodsPage() {
         )}
       </div>
 
-      {/* Add card form */}
+      {/* Add card form — uses Stripe so the card is saved with stripe_payment_method_id and appears when paying for a quote */}
       {adding && (
         <div className="mt-6 rounded-2xl border border-brand-200 bg-white p-6">
           <h2 className="text-lg font-semibold text-slate-900">Add New Card</h2>
-          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-slate-700">Name on card</label>
-              <input type="text" value={cardName} onChange={(e) => setCardName(e.target.value)} className="input-field mt-1" placeholder="J. Smith" />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-slate-700">Card number</label>
-              <input type="text" value={cardNumber} onChange={(e) => setCardNumber(formatCardNumber(e.target.value))} className="input-field mt-1" placeholder="4242 4242 4242 4242" maxLength={19} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700">Expiry</label>
-              <input type="text" value={cardExpiry} onChange={(e) => setCardExpiry(formatExpiry(e.target.value))} className="input-field mt-1" placeholder="MM/YY" maxLength={5} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700">CVC</label>
-              <input type="text" value={cardCvc} onChange={(e) => setCardCvc(e.target.value.replace(/\D/g, "").slice(0, 4))} className="input-field mt-1" placeholder="123" maxLength={4} />
-            </div>
-          </div>
-          <div className="mt-5 flex gap-3">
-            <button
-              onClick={handleAddCard}
-              disabled={!cardNumber || !cardExpiry || !cardCvc || !cardName || saving}
-              className="btn-primary gap-2 px-6 disabled:opacity-50"
-            >
-              <Check className="h-4 w-4" />
-              {saving ? "Adding…" : "Add Card"}
-            </button>
-            <button onClick={() => setAdding(false)} className="btn-secondary gap-2 px-6">
-              <X className="h-4 w-4" />
-              Cancel
-            </button>
+          <p className="mt-1 text-sm text-slate-500">
+            Cards added here will appear when you pay for a quote and can be reused.
+          </p>
+          <div className="mt-4">
+            <AddCardFormStripe
+              onSaved={() => setAdding(false)}
+              onCancel={() => setAdding(false)}
+            />
           </div>
         </div>
       )}
@@ -318,6 +274,8 @@ export default function PaymentMethodsPage() {
             Invoice and Direct Debit options are subject to credit approval. BACS transfers may take 1-2 working days to clear.
           </p>
         </div>
+      )}
+    </>
       )}
     </div>
   );

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAdminStore, AdminJob } from "@/lib/admin-store";
 import {
+  AlertCircle,
   Briefcase,
   ClipboardList,
   Clock,
@@ -36,16 +37,24 @@ const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
 export default function AdminDashboardPage() {
   const { jobs, setJobs, contractors, setContractors } = useAdminStore();
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
+      setLoadError(null);
       const supabase = createClient();
 
       const [jobsRes, contractorsRes] = await Promise.all([
-        supabase.from("jobs").select("*, job_details(*), profiles(full_name, email, is_blocked), services(name), quotes(min_price_pence, max_price_pence, operatives_required)").order("created_at", { ascending: false }),
+        supabase.from("jobs").select("*, job_details(*), profiles!user_id(full_name, email, is_blocked), services(name), quotes(min_price_pence, max_price_pence, operatives_required)").order("created_at", { ascending: false }),
         supabase.from("operatives").select("*").order("created_at", { ascending: false }),
       ]);
 
+      const err = jobsRes.error?.message || contractorsRes.error?.message;
+      if (err) setLoadError(err);
+      if (jobsRes.error) {
+        setLoading(false);
+        return;
+      }
       if (jobsRes.data) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const mapped: AdminJob[] = jobsRes.data.map((j: any) => ({
@@ -135,6 +144,12 @@ export default function AdminDashboardPage() {
 
   return (
     <div>
+      {loadError && (
+        <div className="mb-4 flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          <AlertCircle className="h-5 w-5 shrink-0" />
+          <span>{loadError}</span>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Dashboard</h1>

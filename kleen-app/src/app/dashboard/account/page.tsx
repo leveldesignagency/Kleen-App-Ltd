@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { User, Building2, Check, Shield, Globe, Receipt, Users } from "lucide-react";
-import { useUserProfile } from "@/lib/user-profile";
+import { createClient } from "@/lib/supabase/client";
 import CustomDropdown from "@/components/ui/CustomDropdown";
 
 type AccountType = "personal" | "business";
@@ -23,24 +23,8 @@ interface BusinessProfile {
   website: string;
 }
 
-/* TODO: replace with Supabase query */
-const INITIAL_PERSONAL: PersonalProfile = {
-  fullName: "",
-  email: "",
-  phone: "",
-};
-
-const INITIAL_BUSINESS: BusinessProfile = {
-  companyName: "",
-  companyNumber: "",
-  vatNumber: "",
-  billingEmail: "",
-  industry: "",
-  employeeCount: "",
-  website: "",
-};
-
 const EMPLOYEE_OPTIONS = ["1-5", "6-20", "21-50", "51-200", "200+"];
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- used in dropdown options below
 const INDUSTRY_OPTIONS = [
   "Hospitality",
   "Retail",
@@ -53,27 +37,126 @@ const INDUSTRY_OPTIONS = [
 ];
 
 export default function AccountPage() {
-  const { accountType, setAccountType, fullName, email, phone, setProfile } = useUserProfile();
+  const [accountType, setAccountType] = useState<AccountType>("personal");
   const [personal, setPersonal] = useState<PersonalProfile>({
-    fullName: fullName || "",
-    email: email || "",
-    phone: phone || "",
+    fullName: "",
+    email: "",
+    phone: "",
   });
-  const [business, setBusiness] = useState(INITIAL_BUSINESS);
+  const [business, setBusiness] = useState<BusinessProfile>({
+    companyName: "",
+    companyNumber: "",
+    vatNumber: "",
+    billingEmail: "",
+    industry: "",
+    employeeCount: "",
+    website: "",
+  });
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const handleSave = () => {
-    setProfile({ fullName: personal.fullName, email: personal.email, phone: personal.phone });
+  const supabase = createClient();
+
+  useEffect(() => {
+    const load = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("full_name, email, phone, account_type")
+        .eq("id", user.id)
+        .single();
+      if (profile) {
+        setPersonal({
+          fullName: profile.full_name ?? "",
+          email: profile.email ?? user.email ?? "",
+          phone: profile.phone ?? "",
+        });
+        setAccountType((profile.account_type as AccountType) ?? "personal");
+      } else if (user.email) {
+        setPersonal((p) => ({ ...p, email: user.email ?? "" }));
+      }
+      const { data: biz } = await supabase
+        .from("business_profiles")
+        .select("company_name, company_number, vat_number, billing_email, industry, employee_count, website")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (biz) {
+        setBusiness({
+          companyName: biz.company_name ?? "",
+          companyNumber: biz.company_number ?? "",
+          vatNumber: biz.vat_number ?? "",
+          billingEmail: biz.billing_email ?? "",
+          industry: biz.industry ?? "",
+          employeeCount: biz.employee_count ?? "",
+          website: biz.website ?? "",
+        });
+      }
+      setLoading(false);
+    };
+    load();
+  }, []);
+
+  const handleSave = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    setSaving(true);
+    const { error: profileError } = await supabase
+      .from("profiles")
+      .update({
+        full_name: personal.fullName || null,
+        phone: personal.phone || null,
+        account_type: accountType,
+      })
+      .eq("id", user.id);
+    if (profileError) {
+      setSaving(false);
+      return;
+    }
+    if (accountType === "business") {
+      const { data: existing } = await supabase
+        .from("business_profiles")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      const payload = {
+        user_id: user.id,
+        company_name: business.companyName || "My Business",
+        company_number: business.companyNumber || null,
+        vat_number: business.vatNumber || null,
+        billing_email: business.billingEmail || null,
+        industry: business.industry || null,
+        employee_count: business.employeeCount || null,
+        website: business.website || null,
+      };
+      if (existing) {
+        await supabase.from("business_profiles").update(payload).eq("id", existing.id);
+      } else {
+        await supabase.from("business_profiles").insert(payload);
+      }
+    }
+    setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-3xl">
       <h1 className="text-2xl font-bold text-slate-900">Account Settings</h1>
       <p className="mt-1 text-sm text-slate-500">Manage your profile and account type</p>
 
-      {/* Account type toggle */}
       <div className="mt-8">
         <h2 className="text-sm font-semibold text-slate-900">Account Type</h2>
         <p className="mt-1 text-xs text-slate-400">
@@ -111,7 +194,6 @@ export default function AccountPage() {
         </div>
       </div>
 
-      {/* Personal info (always visible) */}
       <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-6">
         <div className="flex items-center gap-2">
           <User className="h-4 w-4 text-slate-400" />
@@ -132,8 +214,8 @@ export default function AccountPage() {
             <input
               type="email"
               value={personal.email}
-              onChange={(e) => setPersonal({ ...personal, email: e.target.value })}
-              className="input-field mt-1"
+              readOnly
+              className="input-field mt-1 bg-slate-50"
             />
           </div>
           <div>
@@ -148,7 +230,6 @@ export default function AccountPage() {
         </div>
       </div>
 
-      {/* Business details (only when business) */}
       {accountType === "business" && (
         <div className="mt-4 rounded-2xl border border-brand-200 bg-white p-6">
           <div className="flex items-center gap-2">
@@ -252,11 +333,10 @@ export default function AccountPage() {
         </div>
       )}
 
-      {/* Save */}
       <div className="mt-6 flex items-center gap-3">
-        <button onClick={handleSave} className="btn-primary gap-2 px-8">
+        <button onClick={handleSave} disabled={saving} className="btn-primary gap-2 px-8">
           <Check className="h-4 w-4" />
-          Save Changes
+          {saving ? "Saving…" : "Save Changes"}
         </button>
         {saved && (
           <span className="text-sm font-medium text-emerald-600">Changes saved</span>

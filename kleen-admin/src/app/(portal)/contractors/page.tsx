@@ -22,11 +22,35 @@ import {
   Landmark,
   ChevronRight,
   ChevronLeft,
+  FileText,
 } from "lucide-react";
 import CustomDropdown from "@/components/ui/CustomDropdown";
 
+const SORT_CODE_LENGTH = 6;
 
-const emptyContractor: Omit<Contractor, "id" | "created_at"> = {
+export interface OperativeServiceRow {
+  id?: string;
+  operative_id?: string;
+  service_id: string;
+  service_name?: string;
+  contract_title: string;
+  contract_content: string;
+  contract_file_url?: string | null;
+  is_active?: boolean;
+}
+const ACCOUNT_NUMBER_LENGTH = 8;
+const UTR_LENGTH = 10;
+const COMPANY_NUMBER_LENGTH = 8;
+
+/** Format 6 digits as XX-XX-XX */
+function formatSortCode(digits: string): string {
+  const d = (digits || "").replace(/\D/g, "").slice(0, SORT_CODE_LENGTH);
+  if (d.length <= 2) return d;
+  if (d.length <= 4) return `${d.slice(0, 2)}-${d.slice(2)}`;
+  return `${d.slice(0, 2)}-${d.slice(2, 4)}-${d.slice(4, 6)}`;
+}
+
+const emptyContractor: Omit<Contractor, "id" | "created_at"> & { operative_services?: OperativeServiceRow[] } = {
   full_name: "",
   email: "",
   phone: "",
@@ -46,6 +70,7 @@ const emptyContractor: Omit<Contractor, "id" | "created_at"> = {
   company_number: "",
   vat_number: "",
   utr_number: "",
+  operative_services: [],
 };
 
 export default function AdminContractorsPage() {
@@ -55,11 +80,15 @@ export default function AdminContractorsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [modal, setModal] = useState<{
-    mode: "add" | "edit";
-    data: typeof emptyContractor & { id?: string };
-  } | null>(null);
+  mode: "add" | "edit";
+  data: typeof emptyContractor & {
+    id?: string;
+    operative_services?: OperativeServiceRow[];
+  };
+} | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Contractor | null>(null);
   const [availableServices, setAvailableServices] = useState<string[]>([]);
+  const [servicesCatalog, setServicesCatalog] = useState<{ id: string; name: string }[]>([]);
   const toast = useAdminNotifications((s) => s.push);
 
   useEffect(() => {
@@ -67,10 +96,13 @@ export default function AdminContractorsPage() {
       const supabase = createClient();
       const { data } = await supabase
         .from("services")
-        .select("name")
+        .select("id, name")
         .eq("is_active", true)
         .order("name");
-      if (data) setAvailableServices(data.map((s: { name: string }) => s.name));
+      if (data) {
+        setAvailableServices(data.map((s: { name: string }) => s.name));
+        setServicesCatalog(data.map((s: { id: string; name: string }) => ({ id: s.id, name: s.name })));
+      }
     };
     loadServices();
   }, []);
@@ -146,7 +178,7 @@ export default function AdminContractorsPage() {
     if (!modal) return;
     const supabase = createClient();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { id, ...data } = modal.data as any;
+    const { id, operative_services: osList, ...data } = modal.data as any;
 
     const payload = {
       full_name: data.full_name,
@@ -182,6 +214,19 @@ export default function AdminContractorsPage() {
       }
 
       if (inserted) {
+        const osList = Array.isArray((modal.data as { operative_services?: OperativeServiceRow[] }).operative_services)
+          ? (modal.data as { operative_services: OperativeServiceRow[] }).operative_services
+          : [];
+        for (const row of osList) {
+          await supabase.from("operative_services").insert({
+            operative_id: inserted.id,
+            service_id: row.service_id,
+            contract_title: row.contract_title || null,
+            contract_content: row.contract_content || null,
+            contract_file_url: row.contract_file_url || null,
+            is_active: true,
+          });
+        }
         addContractor({
           ...data,
           ...payload,
@@ -206,6 +251,34 @@ export default function AdminContractorsPage() {
 
       updateContractor(id, { ...data, ...payload });
       toast({ type: "success", title: "Contractor Updated", message: `${data.full_name} has been updated` });
+
+      // Sync operative_services: insert new, update existing, delete removed
+      const currentList: OperativeServiceRow[] = Array.isArray(osList) ? osList : [];
+      const existingIds = currentList.filter((r: OperativeServiceRow) => r.id).map((r: OperativeServiceRow) => r.id as string);
+      const { data: existingRows } = await supabase
+        .from("operative_services")
+        .select("id")
+        .eq("operative_id", id);
+      const existingDbIds = (existingRows || []).map((r: { id: string }) => r.id);
+      const toDelete = existingDbIds.filter((dbId) => !existingIds.includes(dbId));
+      for (const rowId of toDelete) {
+        await supabase.from("operative_services").delete().eq("id", rowId);
+      }
+      for (const row of currentList) {
+        const rowPayload = {
+          operative_id: id,
+          service_id: row.service_id,
+          contract_title: row.contract_title || null,
+          contract_content: row.contract_content || null,
+          contract_file_url: row.contract_file_url || null,
+          is_active: true,
+        };
+        if (row.id) {
+          await supabase.from("operative_services").update(rowPayload).eq("id", row.id);
+        } else {
+          await supabase.from("operative_services").insert(rowPayload);
+        }
+      }
     }
 
     setModal(null);
@@ -384,12 +457,27 @@ export default function AdminContractorsPage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
                         <button
-                          onClick={() =>
+                          onClick={async () => {
+                            const supabase = createClient();
+                            const { data: osData } = await supabase
+                              .from("operative_services")
+                              .select("id, operative_id, service_id, contract_title, contract_content, contract_file_url, is_active, services(name)")
+                              .eq("operative_id", c.id);
+                            const operative_services: OperativeServiceRow[] = (osData || []).map(
+                              (row: { id: string; service_id: string; contract_title?: string; contract_content?: string; contract_file_url?: string | null; services: { name: string } | null }) => ({
+                                id: row.id,
+                                service_id: row.service_id,
+                                service_name: row.services?.name ?? undefined,
+                                contract_title: row.contract_title || "",
+                                contract_content: row.contract_content || "",
+                                contract_file_url: row.contract_file_url ?? null,
+                              })
+                            );
                             setModal({
                               mode: "edit",
-                              data: { ...c },
-                            })
-                          }
+                              data: { ...c, operative_services },
+                            });
+                          }}
                           className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-white/10 hover:text-white"
                           title="Edit"
                         >
@@ -444,6 +532,7 @@ export default function AdminContractorsPage() {
           mode={modal.mode}
           data={modal.data}
           availableServices={availableServices}
+          servicesCatalog={servicesCatalog}
           onChange={(updates) =>
             setModal((m) => (m ? { ...m, data: { ...m.data, ...updates } } : null))
           }
@@ -491,6 +580,7 @@ function ContractorModal({
   mode,
   data,
   availableServices,
+  servicesCatalog,
   onChange,
   onSave,
   onClose,
@@ -499,13 +589,34 @@ function ContractorModal({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data: any;
   availableServices: string[];
+  servicesCatalog: { id: string; name: string }[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onChange: (updates: any) => void;
   onSave: () => void;
   onClose: () => void;
 }) {
-  const [step, setStep] = useState<1 | 2>(1);
+  const showServicesStep = true; // Services & contracts tab for both add and edit
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [areaInput, setAreaInput] = useState("");
+  const [addServiceId, setAddServiceId] = useState("");
+  const [addServiceSearch, setAddServiceSearch] = useState("");
+  const [addServiceOpen, setAddServiceOpen] = useState(false);
+  const addServiceRef = useRef<HTMLDivElement>(null);
+  const [addContractTitle, setAddContractTitle] = useState("");
+  const [addContractContent, setAddContractContent] = useState("");
+  const operativeServices: OperativeServiceRow[] = Array.isArray(data.operative_services) ? data.operative_services : [];
+  const availableToAdd = servicesCatalog.filter((s) => !operativeServices.some((os) => os.service_id === s.id));
+  const filteredServices = addServiceSearch.trim()
+    ? availableToAdd.filter((s) => s.name.toLowerCase().includes(addServiceSearch.toLowerCase()))
+    : availableToAdd;
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (addServiceRef.current && !addServiceRef.current.contains(e.target as Node)) setAddServiceOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   const addArea = () => {
     const val = areaInput.trim();
@@ -565,6 +676,24 @@ function ContractorModal({
             <Landmark className="h-3.5 w-3.5" />
             Financial
           </button>
+          {showServicesStep && (
+            <>
+              <ChevronRight className="h-3.5 w-3.5 text-slate-600" />
+              <button
+                onClick={() => canProceed && setStep(3)}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  step === 3
+                    ? "bg-brand-500/20 text-brand-400"
+                    : canProceed
+                      ? "text-slate-500 hover:text-slate-300"
+                      : "cursor-not-allowed text-slate-600"
+                }`}
+              >
+                <FileText className="h-3.5 w-3.5" />
+                Services &amp; contracts
+              </button>
+            </>
+          )}
         </div>
 
         {/* ─── Step 1: Details ─── */}
@@ -706,17 +835,28 @@ function ContractorModal({
                   placeholder="As it appears on the bank account"
                 />
                 <div className="grid grid-cols-2 gap-3">
-                  <InputField
-                    label="Sort Code"
-                    value={data.bank_sort_code}
-                    onChange={(v) => onChange({ bank_sort_code: v })}
-                    placeholder="XX-XX-XX"
-                  />
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400">Sort Code</label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={8}
+                      value={formatSortCode(data.bank_sort_code || "")}
+                      onChange={(e) => {
+                        const digits = e.target.value.replace(/\D/g, "").slice(0, SORT_CODE_LENGTH);
+                        onChange({ bank_sort_code: digits });
+                      }}
+                      placeholder="12-34-56"
+                      className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-brand-500"
+                    />
+                  </div>
                   <InputField
                     label="Account Number"
                     value={data.bank_account_number}
-                    onChange={(v) => onChange({ bank_account_number: v })}
+                    onChange={(v) => onChange({ bank_account_number: v.replace(/\D/g, "").slice(0, ACCOUNT_NUMBER_LENGTH) })}
                     placeholder="8 digits"
+                    maxLength={ACCOUNT_NUMBER_LENGTH}
+                    inputMode="numeric"
                   />
                 </div>
               </div>
@@ -734,8 +874,9 @@ function ContractorModal({
                 <InputField
                   label="Company Registration Number"
                   value={data.company_number}
-                  onChange={(v) => onChange({ company_number: v })}
+                  onChange={(v) => onChange({ company_number: v.slice(0, COMPANY_NUMBER_LENGTH) })}
                   placeholder={data.contractor_type === "business" ? "e.g. 12345678" : "N/A for sole traders"}
+                  maxLength={COMPANY_NUMBER_LENGTH}
                 />
                 <div className="grid grid-cols-2 gap-3">
                   <InputField
@@ -747,8 +888,10 @@ function ContractorModal({
                   <InputField
                     label="UTR Number"
                     value={data.utr_number}
-                    onChange={(v) => onChange({ utr_number: v })}
+                    onChange={(v) => onChange({ utr_number: v.replace(/\D/g, "").slice(0, UTR_LENGTH) })}
                     placeholder="10 digits"
+                    maxLength={UTR_LENGTH}
+                    inputMode="numeric"
                   />
                 </div>
               </div>
@@ -765,12 +908,175 @@ function ContractorModal({
           </div>
         )}
 
+        {/* ─── Step 3: Services & contracts (edit only) ─── */}
+        {showServicesStep && step === 3 && (
+          <div className="mt-5 space-y-5">
+            <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-300">
+                <FileText className="h-4 w-4 text-brand-400" />
+                Services &amp; contracts
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                One contract per service. This contract is shown to the customer when they view the contractor&apos;s quote.
+              </p>
+              {operativeServices.length > 0 && (
+                <ul className="mt-4 space-y-3">
+                  {operativeServices.map((os) => (
+                    <li
+                      key={os.id || os.service_id}
+                      className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/5 p-3"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-white">{os.service_name || os.service_id}</p>
+                        {os.contract_title && (
+                          <p className="text-xs text-slate-400">{os.contract_title}</p>
+                        )}
+                        {os.contract_content && (
+                          <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">
+                            {os.contract_content.slice(0, 120)}
+                            {os.contract_content.length > 120 ? "…" : ""}
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onChange({
+                            operative_services: operativeServices.filter(
+                              (x) => (x.id || x.service_id) !== (os.id || os.service_id)
+                            ),
+                          });
+                        }}
+                        className="rounded-lg p-1.5 text-slate-400 hover:bg-red-500/20 hover:text-red-400"
+                        title="Remove service"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {operativeServices.length === 0 && (
+                <p className="mt-3 text-xs text-slate-500">No services added. Add a service and its contract below.</p>
+              )}
+            </div>
+            {availableToAdd.length > 0 && (
+              <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+                <p className="text-xs font-medium text-slate-400">Add service &amp; contract</p>
+                <div className="mt-3 space-y-3">
+                  <div ref={addServiceRef} className="relative">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                      <input
+                        type="text"
+                        value={addServiceSearch}
+                        onChange={(e) => {
+                          setAddServiceSearch(e.target.value);
+                          setAddServiceOpen(true);
+                        }}
+                        onFocus={() => setAddServiceOpen(true)}
+                        placeholder="Search services…"
+                        className="w-full rounded-xl border border-white/10 bg-white/5 py-2.5 pl-9 pr-3 text-sm text-white placeholder-slate-500 outline-none focus:border-brand-500"
+                      />
+                      {addServiceId && (
+                        <button
+                          type="button"
+                          onClick={() => { setAddServiceId(""); setAddServiceSearch(""); setAddServiceOpen(false); }}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:bg-white/10 hover:text-white"
+                          title="Clear selection"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                    {addServiceOpen && filteredServices.length > 0 && (
+                      <div className="absolute left-0 right-0 z-30 mt-1.5 max-h-48 overflow-y-auto rounded-xl border border-white/10 bg-slate-800 py-1 shadow-xl shadow-black/30">
+                        {filteredServices.map((s) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => {
+                              setAddServiceId(s.id);
+                              setAddServiceSearch(s.name);
+                              setAddServiceOpen(false);
+                            }}
+                            className={`flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm transition-colors hover:bg-white/[0.06] hover:text-white ${
+                              addServiceId === s.id ? "bg-brand-500/15 text-brand-400" : "text-slate-300"
+                            }`}
+                          >
+                            {s.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {addServiceOpen && addServiceSearch.trim() && filteredServices.length === 0 && (
+                      <div className="absolute left-0 right-0 z-30 mt-1.5 rounded-xl border border-white/10 bg-slate-800 px-3 py-2.5 text-sm text-slate-500 shadow-xl">
+                        No services match &ldquo;{addServiceSearch}&rdquo;
+                      </div>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    value={addContractTitle}
+                    onChange={(e) => setAddContractTitle(e.target.value)}
+                    placeholder="Contract title (e.g. Driveway Cleaning Agreement)"
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-slate-500 outline-none focus:border-brand-500"
+                  />
+                  <textarea
+                    value={addContractContent}
+                    onChange={(e) => setAddContractContent(e.target.value)}
+                    placeholder="Contract content (terms, scope of work, etc.)"
+                    rows={4}
+                    className="w-full rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-white placeholder-slate-500 outline-none focus:border-brand-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!addServiceId) return;
+                      const service = servicesCatalog.find((s) => s.id === addServiceId);
+                      onChange({
+                        operative_services: [
+                          ...operativeServices,
+                          {
+                            service_id: addServiceId,
+                            service_name: service?.name,
+                            contract_title: addContractTitle.trim(),
+                            contract_content: addContractContent.trim(),
+                          },
+                        ],
+                      });
+                      setAddServiceId("");
+                      setAddServiceSearch("");
+                      setAddServiceOpen(false);
+                      setAddContractTitle("");
+                      setAddContractContent("");
+                    }}
+                    disabled={!addServiceId || !addContractContent.trim()}
+                    className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Add service &amp; contract
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Footer */}
         <div className="mt-6 flex items-center justify-between">
           <div>
             {step === 2 && (
               <button
                 onClick={() => setStep(1)}
+                className="flex items-center gap-1 rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-white/10"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Back
+              </button>
+            )}
+            {step === 3 && (
+              <button
+                onClick={() => setStep(2)}
                 className="flex items-center gap-1 rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-white/10"
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -790,6 +1096,14 @@ function ContractorModal({
                 onClick={() => canProceed && setStep(2)}
                 disabled={!canProceed}
                 className="flex items-center gap-1 rounded-xl bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            ) : step === 2 && showServicesStep ? (
+              <button
+                onClick={() => setStep(3)}
+                className="flex items-center gap-1 rounded-xl bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500"
               >
                 Next
                 <ChevronRight className="h-4 w-4" />
@@ -916,6 +1230,8 @@ function InputField({
   type = "text",
   required,
   placeholder,
+  maxLength,
+  inputMode,
 }: {
   label: string;
   value: string | number;
@@ -923,6 +1239,8 @@ function InputField({
   type?: string;
   required?: boolean;
   placeholder?: string;
+  maxLength?: number;
+  inputMode?: "numeric" | "text" | "decimal" | "email" | "tel" | "search" | "url";
 }) {
   return (
     <div>
@@ -933,6 +1251,8 @@ function InputField({
         onChange={(e) => onChange(e.target.value)}
         required={required}
         placeholder={placeholder}
+        maxLength={maxLength}
+        inputMode={inputMode}
         className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-brand-500"
       />
     </div>

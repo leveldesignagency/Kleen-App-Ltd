@@ -4,10 +4,10 @@ import { useState, useEffect } from "react";
 import { useJobFlowStore } from "@/lib/store";
 import { PaymentMethod } from "@/types";
 import { usePaymentMethodStore } from "@/lib/payment-methods";
+import { createClient } from "@/lib/supabase/client";
 import {
   ArrowLeft,
   ArrowRight,
-  CreditCard,
   Plus,
   Check,
   X,
@@ -47,14 +47,22 @@ export default function Step6Payment() {
   } = useJobFlowStore();
 
   const sharedMethods = usePaymentMethodStore((s) => s.methods);
+  const syncFromSupabase = usePaymentMethodStore((s) => s.syncFromSupabase);
 
   useEffect(() => {
-    if (savedPaymentMethods.length === 0 && sharedMethods.length > 0) {
+    syncFromSupabase(createClient());
+  }, [syncFromSupabase]);
+
+  // Always show the customer's saved cards from Supabase (dashboard). Prefer this over
+  // persisted job-flow state so cards they added in Account/Payment Methods always appear.
+  useEffect(() => {
+    if (sharedMethods.length > 0) {
       setSavedPaymentMethods(sharedMethods);
       const defaultCard = sharedMethods.find((m) => m.isDefault);
       if (defaultCard) setPaymentMethodId(defaultCard.id);
+      else if (sharedMethods.length > 0) setPaymentMethodId(sharedMethods[0].id);
     }
-  }, [sharedMethods]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sharedMethods, setSavedPaymentMethods, setPaymentMethodId]);
 
   const [showAddCard, setShowAddCard] = useState(false);
   const [cardNumber, setCardNumber] = useState("");

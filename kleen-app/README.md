@@ -43,6 +43,32 @@ Open [http://localhost:3000](http://localhost:3000).
 | `DATABASE_URL` | PostgreSQL connection string |
 | `NEXT_PUBLIC_SITE_URL` | Site URL (e.g. http://localhost:3000) |
 
+### Stripe (payments & escrow)
+
+When a customer **accepts a quote**, they are sent to Stripe Checkout to pay the **exact accepted quote amount** (customer price including 17.5% platform fee). Funds are held in your Stripe account (escrow). When you **Release funds** in the admin, Kleen keeps **17.5%** and the rest is paid to the contractor (via Stripe Connect if they have a connected account, otherwise you pay them manually).
+
+| Variable | Description |
+|----------|--------------|
+| `STRIPE_SECRET_KEY` | Stripe secret key (Dashboard → Developers → API keys) |
+| `STRIPE_WEBHOOK_SECRET` | Webhook signing secret (see below) |
+| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Publishable key (optional; for future card-on-file) |
+
+**Webhook (kleen-app):** In Stripe Dashboard → Developers → Webhooks, add endpoint `https://your-domain.com/api/stripe/webhook` (or use `http://localhost:3000/api/stripe/webhook` with Stripe CLI for local). Events: `checkout.session.completed`. Copy the signing secret into `STRIPE_WEBHOOK_SECRET`.
+
+**Local testing:** Run `stripe listen --forward-to localhost:3000/api/stripe/webhook` and use the printed `whsec_...` as `STRIPE_WEBHOOK_SECRET`.
+
+**kleen-admin** needs `STRIPE_SECRET_KEY` and `SUPABASE_SERVICE_ROLE_KEY` for **Release funds**. Contractors with a **Stripe Connect** account ID receive the payout automatically; others are marked as released for manual payout.
+
+### Test accounts (after running Supabase migrations)
+
+| App | Email | Password | Role |
+|-----|--------|----------|------|
+| **Admin** (kleen-admin) | ryan@kleen.co.uk | ryanw1234 | admin |
+| **Customer** (this app) | customer@kleen.co.uk | customer123 | customer |
+
+- **Admin** comes from migrations 003/004. Use in kleen-admin only.
+- **Customer** test account comes from migration 015. Run it in the Supabase SQL Editor if sign-in fails. If you created a test user manually in Supabase Auth, use that email and password instead.
+
 ## Project Structure
 
 ```

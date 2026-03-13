@@ -1,16 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { MapPin, Plus, Pencil, Trash2, Star, Check, X } from "lucide-react";
 import { useAddressStore, SavedAddress } from "@/lib/addresses";
+import { createClient } from "@/lib/supabase/client";
 
 const EMPTY: Omit<SavedAddress, "id"> = { label: "", line1: "", line2: "", city: "", postcode: "", isDefault: false };
 
 export default function AddressesPage() {
-  const { addresses, add, update, remove, setDefault } = useAddressStore();
+  const supabase = createClient();
+  const { addresses, syncFromSupabase, add, update, remove, setDefault } = useAddressStore();
   const [editing, setEditing] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState(EMPTY);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    syncFromSupabase(supabase).then(() => setLoading(false));
+  }, []);
 
   const startEdit = (addr: SavedAddress) => {
     setEditing(addr.id);
@@ -26,21 +34,43 @@ export default function AddressesPage() {
 
   const cancel = () => { setEditing(null); setAdding(false); setForm(EMPTY); };
 
-  const save = () => {
+  const save = async () => {
     if (!form.label.trim() || !form.line1.trim() || !form.postcode.trim()) return;
+    setSaving(true);
     if (adding) {
-      add({
+      await add(supabase, {
         ...form,
-        id: `addr-${Date.now()}`,
         isDefault: addresses.length === 0 ? true : form.isDefault,
       });
+      cancel();
     } else if (editing) {
-      update(editing, form);
+      await update(supabase, editing, form);
+      cancel();
     }
-    cancel();
+    setSaving(false);
+  };
+
+  const handleRemove = async (id: string) => {
+    setSaving(true);
+    await remove(supabase, id);
+    setSaving(false);
+  };
+
+  const handleSetDefault = async (id: string) => {
+    setSaving(true);
+    await setDefault(supabase, id);
+    setSaving(false);
   };
 
   const isEditing = editing !== null || adding;
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -89,9 +119,9 @@ export default function AddressesPage() {
             Set as default address
           </label>
           <div className="mt-5 flex gap-3">
-            <button onClick={save} className="btn-primary gap-2 px-6">
+            <button onClick={save} disabled={saving} className="btn-primary gap-2 px-6">
               <Check className="h-4 w-4" />
-              Save
+              {saving ? "Saving…" : "Save"}
             </button>
             <button onClick={cancel} className="btn-secondary gap-2 px-6">
               <X className="h-4 w-4" />
@@ -131,8 +161,9 @@ export default function AddressesPage() {
             <div className="flex items-center gap-1.5">
               {!addr.isDefault && (
                 <button
-                  onClick={() => setDefault(addr.id)}
-                  className="rounded-lg border border-slate-200 p-2 text-slate-400 transition-colors hover:border-brand-200 hover:text-brand-600"
+                  onClick={() => handleSetDefault(addr.id)}
+                  disabled={saving}
+                  className="rounded-lg border border-slate-200 p-2 text-slate-400 transition-colors hover:border-brand-200 hover:text-brand-600 disabled:opacity-50"
                   title="Set as default"
                 >
                   <Star className="h-4 w-4" />
@@ -146,8 +177,9 @@ export default function AddressesPage() {
                 <Pencil className="h-4 w-4" />
               </button>
               <button
-                onClick={() => remove(addr.id)}
-                className="rounded-lg border border-slate-200 p-2 text-slate-400 transition-colors hover:border-red-200 hover:text-red-500"
+                onClick={() => handleRemove(addr.id)}
+                disabled={saving}
+                className="rounded-lg border border-slate-200 p-2 text-slate-400 transition-colors hover:border-red-200 hover:text-red-500 disabled:opacity-50"
                 title="Delete"
               >
                 <Trash2 className="h-4 w-4" />
@@ -159,7 +191,7 @@ export default function AddressesPage() {
           <div className="py-12 text-center">
             <MapPin className="mx-auto h-10 w-10 text-slate-300" />
             <p className="mt-3 text-sm text-slate-500">No saved addresses yet</p>
-            <p className="text-xs text-slate-400">Addresses from your bookings will appear here automatically</p>
+            <p className="text-xs text-slate-400">Add an address below or from your next booking</p>
           </div>
         )}
       </div>

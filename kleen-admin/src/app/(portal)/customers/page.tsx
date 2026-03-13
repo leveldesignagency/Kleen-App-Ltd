@@ -40,7 +40,7 @@ export default function CustomersPage() {
       const { data } = await supabase
         .from("profiles")
         .select("id, email, full_name, phone, account_type, is_blocked, created_at")
-        .neq("role", "admin")
+        .eq("role", "customer")
         .order("created_at", { ascending: false });
 
       if (data) {

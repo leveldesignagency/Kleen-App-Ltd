@@ -6,6 +6,8 @@ export interface AdminJob {
   service: string;
   cleaning_type: string;
   status: string;
+  cancelled_reason?: string;
+  user_id?: string;
   customer_name: string;
   customer_email: string;
   address: string;
@@ -19,6 +21,11 @@ export interface AdminJob {
   notes?: string;
   created_at: string;
   is_blocked?: boolean;
+  /** Set when customer payment is captured — funds are in your Stripe account */
+  payment_captured_at?: string | null;
+  /** Set when admin has released funds to the contractor (17.5% kept) */
+  funds_released_at?: string | null;
+  accepted_quote_request_id?: string | null;
 }
 
 export type ContractorType = "sole_trader" | "business";
@@ -70,6 +77,7 @@ export interface QuoteResponse {
   customer_price_pence?: number;
   estimated_hours: number;
   available_date?: string;
+  arrival_time?: string;
   notes?: string;
   created_at: string;
 }

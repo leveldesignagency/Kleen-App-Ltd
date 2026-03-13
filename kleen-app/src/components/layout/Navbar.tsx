@@ -95,17 +95,29 @@ export default function Navbar({ user }: NavbarProps) {
               {user ? (
                 <SparkleButton href="/dashboard">Dashboard</SparkleButton>
               ) : (
-                <Link
-                  href="/job-flow"
-                  className={`gap-2 px-5 py-2.5 text-sm transition-all duration-300 ${
-                    transparent
-                      ? "btn-secondary border-white/20 bg-white/10 text-white backdrop-blur-sm hover:bg-white/20"
-                      : "btn-primary"
-                  }`}
-                >
-                  Get Started
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </Link>
+                <>
+                  <Link
+                    href="/job-flow"
+                    className={`gap-2 px-5 py-2.5 text-sm transition-all duration-300 ${
+                      transparent
+                        ? "btn-secondary border-white/20 bg-white/10 text-white backdrop-blur-sm hover:bg-white/20"
+                        : "btn-primary"
+                    }`}
+                  >
+                    Get Started
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                  <Link
+                    href="/sign-in"
+                    className={`text-sm font-medium transition-all duration-300 ${
+                      transparent
+                        ? "text-white/90 hover:text-white"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Log in
+                  </Link>
+                </>
               )}
             </div>
           </div>
@@ -153,14 +165,23 @@ export default function Navbar({ user }: NavbarProps) {
                 Dashboard
               </SparkleButton>
             ) : (
-              <Link
-                href="/job-flow"
-                className="btn-primary w-full gap-2 py-3 text-sm"
-                onClick={() => setMobileOpen(false)}
-              >
-                Get Started
-                <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
+              <>
+                <Link
+                  href="/job-flow"
+                  className="btn-primary flex w-full items-center justify-center gap-2 py-3 text-sm"
+                  onClick={() => setMobileOpen(false)}
+                >
+                  Get Started
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+                <Link
+                  href="/sign-in"
+                  className="block rounded-xl border border-slate-200 bg-white px-4 py-3 text-center text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  onClick={() => setMobileOpen(false)}
+                >
+                  Log in
+                </Link>
+              </>
             )}
           </div>
         </div>

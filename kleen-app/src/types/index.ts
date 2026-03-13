@@ -78,6 +78,8 @@ export interface PaymentMethod {
   last4?: string;
   brand?: string;
   isDefault?: boolean;
+  /** Stripe PaymentMethod id (pm_xxx) when saved via Stripe */
+  stripePaymentMethodId?: string;
 }
 
 export interface UserProfile {

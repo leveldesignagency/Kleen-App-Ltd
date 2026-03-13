@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
 
 type AccountType = "personal" | "business";
 
@@ -12,16 +11,11 @@ interface UserProfileStore {
   setAccountType: (type: AccountType) => void;
 }
 
-export const useUserProfile = create<UserProfileStore>()(
-  persist(
-    (set) => ({
-      fullName: "",
-      email: "",
-      phone: "",
-      accountType: "personal",
-      setProfile: (data) => set((s) => ({ ...s, ...data })),
-      setAccountType: (accountType) => set({ accountType }),
-    }),
-    { name: "kleen-user-profile" }
-  )
-);
+export const useUserProfile = create<UserProfileStore>()((set) => ({
+  fullName: "",
+  email: "",
+  phone: "",
+  accountType: "personal",
+  setProfile: (data) => set((s) => ({ ...s, ...data })),
+  setAccountType: (accountType) => set({ accountType }),
+}));

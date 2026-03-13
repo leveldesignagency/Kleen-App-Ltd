@@ -1,27 +1,73 @@
 "use client";
 
-import { useState } from "react";
-import { User, Mail, Phone, MapPin, CreditCard, Save, Loader2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import Link from "next/link";
+import { User, Mail, Phone, Save, Loader2, CreditCard } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 
 export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState({
-    fullName: "John Doe",
-    email: "john@example.com",
-    phone: "07700 900000",
-    address: "12 Oak Lane",
-    postcode: "SW1A 1AA",
+    fullName: "",
+    email: "",
+    phone: "",
   });
 
+  const supabase = createClient();
+
+  useEffect(() => {
+    const load = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: row } = await supabase
+        .from("profiles")
+        .select("full_name, email, phone")
+        .eq("id", user.id)
+        .single();
+      if (row) {
+        setProfile({
+          fullName: row.full_name ?? "",
+          email: row.email ?? user.email ?? "",
+          phone: row.phone ?? "",
+        });
+      } else if (user.email) {
+        setProfile((p) => ({ ...p, email: user.email ?? "" }));
+      }
+      setLoading(false);
+    };
+    load();
+  }, []);
+
   const handleSave = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
     setSaving(true);
-    await new Promise((r) => setTimeout(r, 1000));
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        full_name: profile.fullName || null,
+        phone: profile.phone || null,
+      })
+      .eq("id", user.id);
     setSaving(false);
+    if (error) {
+      console.error(error);
+      return;
+    }
   };
 
   const updateField = (field: string, value: string) => {
     setProfile((prev) => ({ ...prev, [field]: value }));
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -31,6 +77,7 @@ export default function ProfilePage() {
       <div className="mt-8 space-y-8">
         <div className="card">
           <h2 className="text-lg font-semibold text-slate-900">Personal Information</h2>
+          <p className="mt-1 text-xs text-slate-500">Saved to your account. Email is managed via sign-in.</p>
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className="block text-sm font-medium text-slate-700">Full Name</label>
@@ -51,8 +98,9 @@ export default function ProfilePage() {
                 <input
                   type="email"
                   value={profile.email}
-                  onChange={(e) => updateField("email", e.target.value)}
-                  className="input-field pl-10"
+                  readOnly
+                  className="input-field pl-10 bg-slate-50"
+                  title="Change email via your account provider"
                 />
               </div>
             </div>
@@ -68,41 +116,19 @@ export default function ProfilePage() {
                 />
               </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700">Postcode</label>
-              <div className="relative mt-1">
-                <MapPin className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={profile.postcode}
-                  onChange={(e) => updateField("postcode", e.target.value.toUpperCase())}
-                  className="input-field pl-10"
-                />
-              </div>
-            </div>
-          </div>
-          <div className="mt-4">
-            <label className="block text-sm font-medium text-slate-700">Address</label>
-            <input
-              type="text"
-              value={profile.address}
-              onChange={(e) => updateField("address", e.target.value)}
-              className="input-field mt-1"
-            />
           </div>
         </div>
 
         <div className="card">
           <h2 className="text-lg font-semibold text-slate-900">Payment Methods</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Manage your saved payment methods
-          </p>
+          <p className="mt-1 text-sm text-slate-500">Manage your saved payment methods</p>
           <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
             <CreditCard className="mx-auto h-10 w-10 text-slate-300" />
-            <p className="mt-2 text-sm text-slate-500">No payment methods saved</p>
-            <button className="btn-secondary mt-4 text-xs">
-              Add Payment Method
-            </button>
+            <p className="mt-2 text-sm text-slate-500">Manage cards in Payment Methods</p>
+            <Link href="/dashboard/payment-methods" className="btn-secondary mt-4 inline-flex gap-2 text-xs">
+              <CreditCard className="h-4 w-4" />
+              Payment Methods
+            </Link>
           </div>
         </div>
 

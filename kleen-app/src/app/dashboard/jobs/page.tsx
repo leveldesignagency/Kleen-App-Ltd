@@ -66,34 +66,52 @@ export default function JobsPage() {
   const pushNotification = useNotifications((s) => s.push);
 
   useEffect(() => {
+    const supabase = createClient();
+    let channel: { unsubscribe: () => void } | null = null;
+
     const load = async () => {
-      const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setLoading(false); return; }
 
-      const { data } = await supabase
-        .from("jobs")
-        .select("id, reference, service_id, status, preferred_date, address_line_1, postcode, services(name), quotes(min_price_pence, max_price_pence)")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
+      const fetchJobs = async () => {
+        const { data } = await supabase
+          .from("jobs")
+          .select("id, reference, service_id, status, preferred_date, address_line_1, postcode, services(name), quotes(min_price_pence, max_price_pence)")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false });
+        if (data) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          setJobs(data.map((j: any) => ({
+            id: j.id,
+            reference: j.reference,
+            service_name: j.services?.name || "Cleaning",
+            status: j.status,
+            preferred_date: j.preferred_date,
+            address_line_1: j.address_line_1 || "",
+            postcode: j.postcode || "",
+            min_price: j.quotes?.[0]?.min_price_pence || 0,
+            max_price: j.quotes?.[0]?.max_price_pence || 0,
+          })));
+        }
+      };
 
-      if (data) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        setJobs(data.map((j: any) => ({
-          id: j.id,
-          reference: j.reference,
-          service_name: j.services?.name || "Cleaning",
-          status: j.status,
-          preferred_date: j.preferred_date,
-          address_line_1: j.address_line_1 || "",
-          postcode: j.postcode || "",
-          min_price: j.quotes?.[0]?.min_price_pence || 0,
-          max_price: j.quotes?.[0]?.max_price_pence || 0,
-        })));
-      }
+      await fetchJobs();
       setLoading(false);
+
+      channel = supabase
+        .channel("jobs-list")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "jobs", filter: `user_id=eq.${user.id}` },
+          () => { fetchJobs(); }
+        )
+        .subscribe();
     };
+
     load();
+    return () => {
+      if (channel) channel.unsubscribe();
+    };
   }, []);
 
   const handleCancel = async () => {

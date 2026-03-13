@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useJobFlowStore } from "@/lib/store";
 import { getService, getCategory } from "@/lib/services";
+import { createClient } from "@/lib/supabase/client";
 import { CleaningType, RoomSize } from "@/types";
 import {
   RefreshCw,
@@ -48,26 +49,116 @@ interface RecurringSchedule {
   totalRuns: number;
 }
 
-/* TODO: replace with Supabase query */
-const MOCK_SCHEDULES: RecurringSchedule[] = [];
-
 export default function RecurringCleansPage() {
   const router = useRouter();
+  const supabase = createClient();
   const prefill = useJobFlowStore((s) => s.prefill);
-  const [schedules, setSchedules] = useState<RecurringSchedule[]>(MOCK_SCHEDULES);
+  const [schedules, setSchedules] = useState<RecurringSchedule[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [updating, setUpdating] = useState<string | null>(null);
 
-  const togglePause = (id: string) => {
-    setSchedules((prev) =>
-      prev.map((s) =>
-        s.id === id
-          ? { ...s, status: s.status === "active" ? "paused" : "active" }
-          : s
-      )
-    );
+  useEffect(() => {
+    const load = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+      const { data: rows } = await supabase
+        .from("recurring_schedules")
+        .select(`
+          id,
+          template_id,
+          frequency,
+          preferred_day,
+          preferred_time,
+          status,
+          next_run_date,
+          total_runs,
+          job_templates (
+            service_id,
+            cleaning_type,
+            size,
+            quantity,
+            complexity,
+            address_line_1,
+            address_line_2,
+            city,
+            postcode,
+            preferred_time
+          )
+        `)
+        .eq("user_id", user.id);
+      if (!rows) {
+        setLoading(false);
+        return;
+      }
+      const list: RecurringSchedule[] = rows
+        .filter((r: { job_templates: unknown }) => r.job_templates)
+        .map((r: {
+          id: string;
+          template_id: string;
+          frequency: string;
+          preferred_day: number;
+          preferred_time: string;
+          status: string;
+          next_run_date: string;
+          total_runs: number;
+          job_templates: {
+            service_id: string;
+            cleaning_type: string;
+            size: string;
+            quantity: number;
+            complexity: string;
+            address_line_1: string;
+            address_line_2?: string | null;
+            city?: string | null;
+            postcode: string;
+            preferred_time: string;
+          };
+        }) => {
+          const t = r.job_templates;
+          const svc = getService(t.service_id);
+          return {
+            id: r.id,
+            templateId: r.template_id,
+            serviceId: t.service_id,
+            categoryId: svc?.categoryId ?? "",
+            cleaningType: t.cleaning_type as CleaningType,
+            size: t.size as RoomSize,
+            quantity: t.quantity,
+            complexity: t.complexity as "standard" | "deep",
+            address: [t.address_line_1, t.address_line_2, t.city].filter(Boolean).join(", "),
+            postcode: t.postcode,
+            frequency: r.frequency as Frequency,
+            preferredDay: r.preferred_day,
+            preferredTime: (t.preferred_time || r.preferred_time || "09:00").toString().slice(0, 5),
+            status: r.status as ScheduleStatus,
+            nextRunDate: r.next_run_date,
+            totalRuns: r.total_runs,
+          };
+        });
+      setSchedules(list);
+      setLoading(false);
+    };
+    load();
+  }, []);
+
+  const togglePause = async (id: string) => {
+    const s = schedules.find((x) => x.id === id);
+    if (!s) return;
+    setUpdating(id);
+    const newStatus = s.status === "active" ? "paused" : "active";
+    await supabase.from("recurring_schedules").update({ status: newStatus }).eq("id", id);
+    setSchedules((prev) => prev.map((x) => (x.id === id ? { ...x, status: newStatus } : x)));
+    setUpdating(null);
   };
 
-  const cancelSchedule = (id: string) => {
+  const cancelSchedule = async (id: string) => {
+    setUpdating(id);
+    await supabase.from("recurring_schedules").update({ status: "cancelled" }).eq("id", id);
     setSchedules((prev) => prev.filter((s) => s.id !== id));
+    setUpdating(null);
   };
 
   const handleBookNow = (s: RecurringSchedule) => {
@@ -88,6 +179,14 @@ export default function RecurringCleansPage() {
   const activeCount = schedules.filter((s) => s.status === "active").length;
   const pausedCount = schedules.filter((s) => s.status === "paused").length;
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between">
@@ -106,7 +205,6 @@ export default function RecurringCleansPage() {
         </button>
       </div>
 
-      {/* Summary pills */}
       <div className="mt-6 flex gap-3">
         <div className="flex items-center gap-2 rounded-full bg-accent-50 px-4 py-2">
           <CheckCircle2 className="h-4 w-4 text-accent-600" />
@@ -141,6 +239,7 @@ export default function RecurringCleansPage() {
             const service = getService(schedule.serviceId);
             const category = getCategory(schedule.categoryId);
             const isActive = schedule.status === "active";
+            const busy = updating === schedule.id;
 
             return (
               <div
@@ -152,7 +251,6 @@ export default function RecurringCleansPage() {
                 }`}
               >
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                  {/* Left: info */}
                   <div className="flex-1">
                     <div className="flex items-center gap-3">
                       <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${isActive ? "bg-brand-50" : "bg-slate-100"}`}>
@@ -205,7 +303,6 @@ export default function RecurringCleansPage() {
                     </div>
                   </div>
 
-                  {/* Right: actions */}
                   <div className="flex items-center gap-2 sm:flex-col sm:items-end">
                     <button
                       onClick={() => handleBookNow(schedule)}
@@ -217,7 +314,8 @@ export default function RecurringCleansPage() {
                     <div className="flex gap-2">
                       <button
                         onClick={() => togglePause(schedule.id)}
-                        className="rounded-lg border border-slate-200 p-2 text-slate-400 transition-colors hover:border-slate-300 hover:text-slate-600"
+                        disabled={busy}
+                        className="rounded-lg border border-slate-200 p-2 text-slate-400 transition-colors hover:border-slate-300 hover:text-slate-600 disabled:opacity-50"
                         title={isActive ? "Pause" : "Resume"}
                       >
                         {isActive ? (
@@ -228,7 +326,8 @@ export default function RecurringCleansPage() {
                       </button>
                       <button
                         onClick={() => cancelSchedule(schedule.id)}
-                        className="rounded-lg border border-slate-200 p-2 text-slate-400 transition-colors hover:border-red-200 hover:text-red-500"
+                        disabled={busy}
+                        className="rounded-lg border border-slate-200 p-2 text-slate-400 transition-colors hover:border-red-200 hover:text-red-500 disabled:opacity-50"
                         title="Cancel schedule"
                       >
                         <Trash2 className="h-4 w-4" />

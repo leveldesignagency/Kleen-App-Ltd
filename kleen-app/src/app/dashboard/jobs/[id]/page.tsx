@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useNotifications } from "@/lib/notifications";
@@ -41,11 +41,14 @@ const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
   cancelled:            { label: "Cancelled",          className: "bg-slate-100 text-slate-500" },
 };
 
-const CANCELLABLE = ["pending", "quoted", "awaiting_quotes", "sent_to_customer"];
+/** Job can be cancelled until it has commenced (actual_start set). After that, no cancel. */
+const TERMINAL_NO_CANCEL = ["cancelled", "completed", "funds_released"];
+const CANCELLATION_REFUND_HOURS = 48;
 
 const WORKFLOW_STEPS = [
-  { key: "pending", label: "Submitted" },
+  { key: "submitted", label: "Submitted" },
   { key: "awaiting_quotes", label: "Getting Quotes" },
+  { key: "quotes_received", label: "Quotes Ready" },
   { key: "sent_to_customer", label: "Quotes Available" },
   { key: "customer_accepted", label: "Accepted" },
   { key: "awaiting_completion", label: "In Progress" },
@@ -53,17 +56,24 @@ const WORKFLOW_STEPS = [
 ];
 
 function getStepIndex(status: string): number {
-  const aliases: Record<string, string> = {
-    quoted: "awaiting_quotes",
-    quotes_received: "awaiting_quotes",
-    accepted: "customer_accepted",
-    in_progress: "awaiting_completion",
-    pending_confirmation: "awaiting_completion",
-    funds_released: "completed",
+  // Map each status to the step index so the progress bar reflects reality.
+  // "pending" = just submitted → show "Getting Quotes" (step 1) so customer isn't stuck on "Submitted"
+  const statusToStep: Record<string, number> = {
+    pending: 1,
+    awaiting_quotes: 1,
+    quotes_received: 2,
+    quoted: 2,
+    sent_to_customer: 3,
+    customer_accepted: 4,
+    accepted: 4,
+    awaiting_completion: 5,
+    in_progress: 5,
+    pending_confirmation: 5,
+    completed: 6,
+    funds_released: 6,
   };
-  const normalized = aliases[status] || status;
-  const idx = WORKFLOW_STEPS.findIndex((s) => s.key === normalized);
-  return idx >= 0 ? idx : 0;
+  const step = statusToStep[status];
+  return step !== undefined ? step : 1;
 }
 
 /* ─── Types ───────────────────────────────────────────────────────────────── */
@@ -90,6 +100,11 @@ interface JobDetail {
   accepted_quote_request_id: string | null;
   contractor_confirmed_complete_at: string | null;
   customer_confirmed_complete_at: string | null;
+  /** When work actually started; once set, customer can no longer cancel. */
+  actual_start: string | null;
+  /** When payment was captured; 48h from this = full refund if cancelled. */
+  payment_captured_at: string | null;
+  cancelled_at: string | null;
 }
 
 interface CustomerQuote {
@@ -114,14 +129,23 @@ export default function CustomerJobDetailPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [cancelModal, setCancelModal] = useState(false);
-  const [declineQuotesModal, setDeclineQuotesModal] = useState(false);
   const [confirmCompleteModal, setConfirmCompleteModal] = useState(false);
 
+  const searchParams = useSearchParams();
   useEffect(() => {
-    const load = async () => {
-      const supabase = createClient();
+    if (searchParams.get("payment") === "success") {
+      toast({ type: "success", title: "Payment complete", message: "Your quote has been accepted and payment received." });
+      router.replace(`/dashboard/jobs/${id}`, { scroll: false });
+    }
+  }, [searchParams, router, id, toast]);
+
+  useEffect(() => {
+    const supabase = createClient();
+    let channel: { unsubscribe: () => void } | null = null;
+
+    const load = async (isInitial: boolean) => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { setLoading(false); return; }
+      if (!user) { if (isInitial) setLoading(false); return; }
 
       const { data: j } = await supabase
         .from("jobs")
@@ -135,7 +159,7 @@ export default function CustomerJobDetailPage() {
         .eq("user_id", user.id)
         .single();
 
-      if (!j) { setLoading(false); return; }
+      if (!j) { if (isInitial) setLoading(false); return; }
 
       setJob({
         id: j.id,
@@ -165,9 +189,11 @@ export default function CustomerJobDetailPage() {
         accepted_quote_request_id: j.accepted_quote_request_id || null,
         contractor_confirmed_complete_at: j.contractor_confirmed_complete_at || null,
         customer_confirmed_complete_at: j.customer_confirmed_complete_at || null,
+        actual_start: j.actual_start || null,
+        payment_captured_at: j.payment_captured_at || null,
+        cancelled_at: j.cancelled_at || null,
       });
 
-      // Fetch customer-facing quotes (only those with a customer_price_pence set)
       const showQuotes = [
         "sent_to_customer", "customer_accepted", "accepted",
         "awaiting_completion", "in_progress", "pending_confirmation",
@@ -177,15 +203,22 @@ export default function CustomerJobDetailPage() {
       if (showQuotes) {
         const { data: qrData } = await supabase
           .from("quote_requests")
-          .select("id, operative_id, quote_responses(id, quote_request_id, customer_price_pence, estimated_hours, available_date), operatives(avg_rating)")
+          .select("id, operative_id, operatives(avg_rating)")
           .eq("job_id", id as string)
           .eq("status", "quoted");
-
-        if (qrData) {
+        if (qrData?.length) {
+          const qrIds = (qrData as { id: string }[]).map((r) => r.id);
+          const { data: respData } = await supabase
+            .from("quote_responses")
+            .select("id, quote_request_id, customer_price_pence, estimated_hours, available_date")
+            .in("quote_request_id", qrIds);
+          const byRequestId = (respData || []).reduce((acc, r) => {
+            acc[r.quote_request_id] = r;
+            return acc;
+          }, {} as Record<string, { id: string; quote_request_id: string; customer_price_pence: number; estimated_hours?: number; available_date?: string | null }>);
           const mapped: CustomerQuote[] = [];
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          qrData.forEach((qr: any, i: number) => {
-            const resp = qr.quote_responses?.[0];
+          qrData.forEach((qr: { id: string; operative_id: string; operatives?: { avg_rating?: number } }, i: number) => {
+            const resp = byRequestId[qr.id];
             if (resp?.customer_price_pence) {
               mapped.push({
                 id: resp.id,
@@ -200,77 +233,63 @@ export default function CustomerJobDetailPage() {
           });
           mapped.sort((a, b) => a.customer_price_pence - b.customer_price_pence);
           setQuotes(mapped);
+        } else {
+          setQuotes([]);
         }
+      } else {
+        setQuotes([]);
       }
 
-      setLoading(false);
+      if (isInitial) setLoading(false);
     };
-    load();
+
+    load(true).then(() => {
+      channel = supabase
+        .channel(`job-detail-${id}`)
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "jobs", filter: `id=eq.${id}` },
+          () => load(false)
+        )
+        .subscribe();
+    });
+
+    const onFocus = () => load(false);
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", onFocus);
+    }
+    return () => {
+      if (channel) channel.unsubscribe();
+      if (typeof window !== "undefined") window.removeEventListener("focus", onFocus);
+    };
   }, [id]);
 
   /* ─── Actions ─────────────────────────────────────────────────────── */
-
-  const handleAcceptQuote = async (q: CustomerQuote) => {
-    if (!job) return;
-    setActionLoading(true);
-    const supabase = createClient();
-
-    const { error } = await supabase
-      .from("jobs")
-      .update({
-        status: "customer_accepted",
-        accepted_quote_request_id: q.quote_request_id,
-        customer_accepted_at: new Date().toISOString(),
-      })
-      .eq("id", job.id);
-
-    if (error) {
-      toast({ type: "error", title: "Error", message: "Failed to accept quote. Please try again." });
-    } else {
-      setJob({ ...job, status: "customer_accepted", accepted_quote_request_id: q.quote_request_id });
-      toast({ type: "success", title: "Quote Accepted", message: "Your contractor will be notified and the job will begin shortly." });
-    }
-    setActionLoading(false);
-  };
 
   const handleCancel = async () => {
     if (!job) return;
     setActionLoading(true);
     const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    const now = new Date().toISOString();
 
     const { error } = await supabase
       .from("jobs")
-      .update({ status: "cancelled" })
+      .update({
+        status: "cancelled",
+        cancelled_at: now,
+        cancelled_by: user?.id ?? null,
+      })
       .eq("id", job.id);
 
     if (error) {
       toast({ type: "error", title: "Error", message: "Failed to cancel job." });
     } else {
-      setJob({ ...job, status: "cancelled" });
+      setJob({ ...job, status: "cancelled", cancelled_at: now });
       toast({ type: "info", title: "Job Cancelled", message: `${job.reference} has been cancelled.` });
     }
     setActionLoading(false);
     setCancelModal(false);
-  };
-
-  const handleDeclineAllQuotes = async () => {
-    if (!job) return;
-    setActionLoading(true);
-    const supabase = createClient();
-
-    const { error } = await supabase
-      .from("jobs")
-      .update({ status: "cancelled", cancelled_reason: "quotes_declined" })
-      .eq("id", job.id);
-
-    if (error) {
-      toast({ type: "error", title: "Error", message: "Failed to decline quotes." });
-    } else {
-      setJob({ ...job, status: "cancelled" });
-      toast({ type: "info", title: "Quotes Declined", message: "Quotes declined. You can submit a new job anytime." });
-    }
-    setActionLoading(false);
-    setDeclineQuotesModal(false);
   };
 
   const handleConfirmComplete = async () => {
@@ -335,8 +354,14 @@ export default function CustomerJobDetailPage() {
   /* ─── Derived State ───────────────────────────────────────────────── */
 
   const badge = STATUS_CONFIG[job.status] ?? STATUS_CONFIG.pending;
-  const canCancel = CANCELLABLE.includes(job.status);
-  const isTerminal = ["cancelled", "disputed", "funds_released"].includes(job.status);
+  const jobCommenced = Boolean(job.actual_start);
+  const canCancel =
+    !TERMINAL_NO_CANCEL.includes(job.status) &&
+    !jobCommenced;
+  const isWithinRefundWindow =
+    job.payment_captured_at &&
+    Date.now() - new Date(job.payment_captured_at).getTime() < CANCELLATION_REFUND_HOURS * 60 * 60 * 1000;
+  const isTerminal = ["cancelled", "disputed", "funds_released", "completed"].includes(job.status);
   const currentStep = getStepIndex(job.status);
   const showQuotesSection = ["sent_to_customer", "customer_accepted", "accepted", "awaiting_completion", "in_progress", "pending_confirmation", "completed", "funds_released"].includes(job.status);
   const canAcceptQuote = job.status === "sent_to_customer" && !job.accepted_quote_request_id;
@@ -424,6 +449,11 @@ export default function CustomerJobDetailPage() {
         <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center">
           <XCircle className="mx-auto h-8 w-8 text-slate-400" />
           <p className="mt-2 text-sm font-medium text-slate-600">This job has been cancelled</p>
+          {job.cancelled_at && (
+            <p className="mt-0.5 text-xs text-slate-500">
+              Cancelled {new Date(job.cancelled_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+            </p>
+          )}
           <Link href="/job-flow" className="mt-2 inline-block text-sm font-medium text-brand-600 hover:underline">
             Submit a new job
           </Link>
@@ -470,98 +500,78 @@ export default function CustomerJobDetailPage() {
           )}
         </div>
 
-        {/* Right: Quotes + Actions */}
+        {/* Right: Quotes (simple) + link to View quotes page for accept/decline */}
         <div className="space-y-6">
-          {/* Quotes Section */}
-          {showQuotesSection && quotes.length > 0 && (
+          {showQuotesSection && (
             <div className="rounded-2xl border border-slate-200 bg-white p-5">
               <h2 className="text-sm font-semibold text-slate-900">
-                {canAcceptQuote ? "Choose Your Quote" : "Your Quote"}
+                {job.accepted_quote_request_id ? "Your quote" : "Quotes"}
               </h2>
-              {canAcceptQuote && (
-                <p className="mt-1 text-xs text-slate-500">
-                  {quotes.length} quote{quotes.length !== 1 ? "s" : ""} available. Select the one that works best for you.
-                </p>
-              )}
-
-              <div className="mt-4 space-y-3">
-                {quotes.map((q, i) => {
-                  const isAccepted = job.accepted_quote_request_id === q.quote_request_id;
-                  const isBestPrice = i === 0 && canAcceptQuote;
-
-                  return (
-                    <div
-                      key={q.id}
-                      className={`rounded-xl border p-4 transition-colors ${
-                        isAccepted
-                          ? "border-brand-300 bg-brand-50"
-                          : isBestPrice
-                          ? "border-emerald-200 bg-emerald-50"
-                          : "border-slate-200 bg-slate-50"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm font-semibold text-slate-900">{q.contractor_label}</p>
-                            {isAccepted && (
-                              <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-bold text-brand-700">
-                                ACCEPTED
-                              </span>
-                            )}
-                            {isBestPrice && !isAccepted && (
-                              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-                                BEST PRICE
-                              </span>
-                            )}
-                          </div>
-                          {q.contractor_rating > 0 && (
-                            <div className="mt-1 flex items-center gap-1 text-xs text-amber-600">
-                              <Star className="h-3 w-3 fill-current" />
-                              {q.contractor_rating.toFixed(1)}
-                            </div>
-                          )}
-                        </div>
-                        <p className="text-xl font-bold text-slate-900">
-                          {formatPrice(q.customer_price_pence)}
-                        </p>
-                      </div>
-
-                      <div className="mt-3 flex gap-4 text-xs text-slate-500">
-                        <span>Est. {q.estimated_hours}h</span>
-                        {q.available_date && (
-                          <span>
-                            Available {new Date(q.available_date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
-                          </span>
-                        )}
-                      </div>
-
-                      {canAcceptQuote && (
-                        <button
-                          onClick={() => handleAcceptQuote(q)}
-                          disabled={actionLoading}
-                          className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-500 disabled:opacity-50"
+              {quotes.length > 0 ? (
+                <>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {quotes.length} quote{quotes.length !== 1 ? "s" : ""}
+                    {canAcceptQuote && " — choose one on the quotes page."}
+                  </p>
+                  <div className="mt-4 space-y-2">
+                    {quotes.map((q, i) => {
+                      const isAccepted = job.accepted_quote_request_id === q.quote_request_id;
+                      return (
+                        <div
+                          key={q.id}
+                          className={`flex items-center justify-between rounded-xl border px-3 py-2.5 ${
+                            isAccepted ? "border-brand-200 bg-brand-50" : "border-slate-100 bg-slate-50"
+                          }`}
                         >
-                          {actionLoading ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <CheckCircle2 className="h-4 w-4" />
-                          )}
-                          Accept Quote
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              {canAcceptQuote && quotes.length > 0 && (
-                <div className="mt-4 border-t border-slate-200 pt-4">
-                  <button
-                    onClick={() => setDeclineQuotesModal(true)}
-                    className="w-full rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-slate-900 truncate">
+                              {q.contractor_label}
+                              {isAccepted && (
+                                <span className="ml-1.5 text-xs font-semibold text-brand-600">(chosen)</span>
+                              )}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              Est. {q.estimated_hours}h
+                              {q.available_date && (
+                                <> · Available {new Date(q.available_date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</>
+                              )}
+                            </p>
+                          </div>
+                          <p className="ml-3 shrink-0 text-sm font-bold text-slate-900">
+                            {formatPrice(q.customer_price_pence)}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {canAcceptQuote && (
+                    <Link
+                      href={`/dashboard/jobs/${job.id}/quotes`}
+                      className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-500"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      View quotes & choose
+                    </Link>
+                  )}
+                  {job.accepted_quote_request_id && acceptedQuote && (
+                    <p className="mt-3 text-center text-xs text-slate-500">
+                      Chosen: {acceptedQuote.contractor_label} — {formatPrice(acceptedQuote.customer_price_pence)}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-center">
+                  <AlertTriangle className="mx-auto h-8 w-8 text-amber-500" />
+                  <p className="mt-2 text-sm font-medium text-amber-800">Quotes should appear here</p>
+                  <p className="mt-1 text-xs text-amber-700">
+                    If you were just sent quotes, try refreshing or open the quotes page.
+                  </p>
+                  <Link
+                    href={`/dashboard/jobs/${job.id}/quotes`}
+                    className="mt-3 inline-block rounded-xl bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500"
                   >
-                    Decline All Quotes
-                  </button>
+                    View quotes
+                  </Link>
                 </div>
               )}
             </div>
@@ -572,7 +582,7 @@ export default function CustomerJobDetailPage() {
             <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5 text-center">
               <Clock className="mx-auto h-8 w-8 text-blue-500" />
               <p className="mt-2 text-sm font-medium text-blue-700">
-                {job.status === "pending" ? "Your job is being reviewed" : "We're collecting quotes for you"}
+                {job.status === "pending" ? "Your job is being reviewed" : "We're collecting quotes for you".replace("'", "\u2019")}
               </p>
               <p className="mt-1 text-xs text-blue-500">
                 You'll be notified as soon as quotes are available.
@@ -638,8 +648,17 @@ export default function CustomerJobDetailPage() {
             <h2 className="text-lg font-bold text-slate-900">Cancel Job</h2>
             <p className="mt-2 text-sm text-slate-500">
               Are you sure you want to cancel <span className="font-medium text-slate-700">{job.reference}</span>?
-              This cannot be undone. You can submit a new job anytime.
+              This cannot be undone.
             </p>
+            {job.payment_captured_at ? (
+              <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                {isWithinRefundWindow
+                  ? "You're within 48 hours of payment — you'll receive a full refund after cancellation."
+                  : "Your 48-hour refund window has passed. You can still cancel, but no refund will be issued."}
+              </p>
+            ) : (
+              <p className="mt-2 text-xs text-slate-500">You can submit a new job anytime.</p>
+            )}
             <div className="mt-6 flex justify-end gap-2">
               <button onClick={() => setCancelModal(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
                 Keep Job
@@ -647,30 +666,6 @@ export default function CustomerJobDetailPage() {
               <button onClick={handleCancel} disabled={actionLoading} className="flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50">
                 {actionLoading && <Loader2 className="h-4 w-4 animate-spin" />}
                 Cancel Job
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ─── Decline All Quotes Modal ─────────────────────────────────── */}
-      {declineQuotesModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setDeclineQuotesModal(false)}>
-          <div className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <button onClick={() => setDeclineQuotesModal(false)} className="absolute right-4 top-4 text-slate-400 hover:text-slate-600">
-              <X className="h-4 w-4" />
-            </button>
-            <h2 className="text-lg font-bold text-slate-900">Decline All Quotes</h2>
-            <p className="mt-2 text-sm text-slate-500">
-              Are you sure? You can request new quotes by contacting us. You can also submit a new job anytime.
-            </p>
-            <div className="mt-6 flex justify-end gap-2">
-              <button onClick={() => setDeclineQuotesModal(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
-                Keep Quotes
-              </button>
-              <button onClick={handleDeclineAllQuotes} disabled={actionLoading} className="flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50">
-                {actionLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-                Decline All
               </button>
             </div>
           </div>

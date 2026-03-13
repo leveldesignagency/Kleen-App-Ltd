@@ -56,34 +56,53 @@ export default function DashboardOverview() {
   const pushNotification = useNotifications((s) => s.push);
 
   useEffect(() => {
+    const supabase = createClient();
+    let channel: { unsubscribe: () => void } | null = null;
+
     const load = async () => {
-      const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setLoading(false); return; }
 
-      const { data } = await supabase
-        .from("jobs")
-        .select("id, reference, service_id, status, preferred_date, created_at, services(name), quotes(min_price_pence, max_price_pence)")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(10);
+      const fetchJobs = async () => {
+        const { data } = await supabase
+          .from("jobs")
+          .select("id, reference, service_id, status, preferred_date, created_at, services(name), quotes(min_price_pence, max_price_pence)")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(30);
+        if (data) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          setJobs(data.map((j: any) => ({
+            id: j.id,
+            reference: j.reference,
+            service_name: j.services?.name || "Cleaning",
+            status: j.status,
+            preferred_date: j.preferred_date,
+            min_price: j.quotes?.[0]?.min_price_pence || 0,
+            max_price: j.quotes?.[0]?.max_price_pence || 0,
+            created_at: j.created_at,
+          })));
+        }
+      };
 
-      if (data) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        setJobs(data.map((j: any) => ({
-          id: j.id,
-          reference: j.reference,
-          service_name: j.services?.name || "Cleaning",
-          status: j.status,
-          preferred_date: j.preferred_date,
-          min_price: j.quotes?.[0]?.min_price_pence || 0,
-          max_price: j.quotes?.[0]?.max_price_pence || 0,
-          created_at: j.created_at,
-        })));
-      }
+      await fetchJobs();
       setLoading(false);
+
+      // Real-time: when admin updates a job, refresh the list
+      channel = supabase
+        .channel("dashboard-jobs")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "jobs", filter: `user_id=eq.${user.id}` },
+          () => { fetchJobs(); }
+        )
+        .subscribe();
     };
+
     load();
+    return () => {
+      if (channel) channel.unsubscribe();
+    };
   }, []);
 
   const handleCancel = async () => {
@@ -129,6 +148,9 @@ export default function DashboardOverview() {
 
   const formatPrice = (min: number, max: number) =>
     min > 0 ? `£${(min / 100).toFixed(0)}–£${(max / 100).toFixed(0)}` : "—";
+
+  const recentJobs = jobs.filter((j) => j.status !== "cancelled").slice(0, 10);
+  const cancelledJobs = jobs.filter((j) => j.status === "cancelled").slice(0, 10);
 
   if (loading) {
     return (
@@ -178,14 +200,14 @@ export default function DashboardOverview() {
         </div>
 
         <div className="mt-4 space-y-3">
-          {jobs.length === 0 ? (
+          {recentJobs.length === 0 ? (
             <div className="card py-12 text-center">
               <Briefcase className="mx-auto h-10 w-10 text-slate-300" />
               <p className="mt-3 text-sm text-slate-500">No jobs yet</p>
               <p className="text-xs text-slate-400">Book your first clean to get started</p>
             </div>
           ) : (
-            jobs.map((job) => {
+            recentJobs.map((job) => {
               const statusConf = STATUS_CONFIG[job.status] ?? STATUS_CONFIG.pending;
               const isRecent = Date.now() - new Date(job.created_at).getTime() < 60 * 60 * 1000;
               const canCancel = CANCELLABLE.includes(job.status);
@@ -251,6 +273,53 @@ export default function DashboardOverview() {
           )}
         </div>
       </div>
+
+      {cancelledJobs.length > 0 && (
+        <div className="mt-10">
+          <h2 className="text-lg font-semibold text-slate-900">Cancelled Jobs</h2>
+          <p className="mt-0.5 text-sm text-slate-500">Jobs you or we have cancelled</p>
+          <div className="mt-4 space-y-3">
+            {cancelledJobs.map((job) => {
+              const isRecent = Date.now() - new Date(job.created_at).getTime() < 60 * 60 * 1000;
+              return (
+                <div
+                  key={job.id}
+                  className={`card border-red-200 p-0 transition-all opacity-90 ${isRecent ? "ring-1 ring-red-200" : ""}`}
+                >
+                  <Link
+                    href={`/dashboard/jobs/${job.id}`}
+                    className="flex items-center justify-between p-4 transition-colors hover:bg-slate-50"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100">
+                        <Briefcase className="h-4.5 w-4.5 text-slate-400" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-700">{job.service_name}</p>
+                        <p className="text-xs text-slate-400">
+                          {job.reference} &middot;{" "}
+                          {new Date(job.preferred_date).toLocaleDateString("en-GB", {
+                            day: "numeric",
+                            month: "short",
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="hidden text-sm text-slate-500 sm:block">
+                        {formatPrice(job.min_price, job.max_price)}
+                      </span>
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500">
+                        Cancelled
+                      </span>
+                    </div>
+                  </Link>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <BookAgainSection />
 

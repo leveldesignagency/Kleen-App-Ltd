@@ -92,11 +92,11 @@ export default function Step7Confirm() {
       complexity: detail.complexity,
     });
 
-    // Insert the quote estimate
+    // Insert the quote estimate (form estimate is in pounds; DB stores pence)
     await supabase.from("quotes").insert({
       job_id: job.id,
-      min_price_pence: est.minPrice,
-      max_price_pence: est.maxPrice,
+      min_price_pence: Math.round(est.minPrice * 100),
+      max_price_pence: Math.round(est.maxPrice * 100),
       estimated_duration_min: est.estimatedDuration,
       operatives_required: est.operativesRequired,
     });
@@ -111,11 +111,11 @@ export default function Step7Confirm() {
     });
 
     if (store.address && store.postcode) {
-      addAddressIfNew(store.address, store.postcode);
+      addAddressIfNew(supabase, store.address, store.postcode);
     }
 
     if (paymentMethod) {
-      addPaymentIfNew(paymentMethod);
+      addPaymentIfNew(supabase, paymentMethod);
     }
 
     store.reset();

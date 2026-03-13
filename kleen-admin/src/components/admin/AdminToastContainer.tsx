@@ -23,7 +23,7 @@ export default function AdminToastContainer() {
   if (toasts.length === 0) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 z-[60] flex flex-col gap-2">
+    <div className="fixed right-0 top-0 z-[60] flex flex-col gap-2 p-4 sm:p-6">
       {toasts.map((toast) => {
         const Icon = ICON_MAP[toast.type];
         return (

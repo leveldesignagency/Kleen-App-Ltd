@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useJobFlowStore } from "@/lib/store";
 import { getService, getCategory } from "@/lib/services";
 import PriceEstimateCard from "@/components/ui/PriceEstimateCard";
-import { ArrowLeft, ArrowRight, MapPin, Calendar, Clock, AlertCircle, Home, ChevronDown } from "lucide-react";
-import { useAddressStore } from "@/lib/addresses";
+import { ArrowLeft, ArrowRight, MapPin, Calendar, Clock, AlertCircle, Home, Building2, User } from "lucide-react";
+import { useAddressStore, type SavedAddress } from "@/lib/addresses";
+import { createClient } from "@/lib/supabase/client";
+import CustomDropdown from "@/components/ui/CustomDropdown";
+import Link from "next/link";
 
 const UK_POSTCODE_RE =
   /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i;
@@ -73,14 +76,63 @@ export default function Step5Estimate() {
 
   const [errors, setErrors] = useState<FieldErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [selectedAddressId, setSelectedAddressId] = useState<string>("");
+  const [bookingAs, setBookingAs] = useState<"personal" | "business">("personal");
+  const [businessName, setBusinessName] = useState<string>("");
   const savedAddresses = useAddressStore((s) => s.addresses);
+  const syncFromSupabase = useAddressStore((s) => s.syncFromSupabase);
 
-  const handleSelectAddress = (addr: { line1: string; postcode: string }) => {
-    setAddress(addr.line1);
+  useEffect(() => {
+    syncFromSupabase(createClient());
+  }, [syncFromSupabase]);
+
+  // Load profile account type and business name
+  useEffect(() => {
+    const load = async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: profile } = await supabase.from("profiles").select("account_type").eq("id", user.id).single();
+      if (profile?.account_type === "business") setBookingAs("business");
+      const { data: biz } = await supabase.from("business_profiles").select("company_name").eq("user_id", user.id).maybeSingle();
+      if (biz?.company_name) setBusinessName(biz.company_name);
+    };
+    load();
+  }, []);
+
+  const handleSelectAddress = (addr: SavedAddress | null) => {
+    if (!addr) {
+      setSelectedAddressId("");
+      setAddress("");
+      setPostcode("");
+      return;
+    }
+    setSelectedAddressId(addr.id);
+    const fullAddress = [addr.line1, addr.line2, addr.city].filter(Boolean).join(", ");
+    setAddress(fullAddress);
     setPostcode(addr.postcode);
     clearError("address");
     clearError("postcode");
   };
+
+  const addressDropdownOptions = [
+    { value: "", label: "Enter new address" },
+    ...savedAddresses.map((addr) => ({
+      value: addr.id,
+      label: `${addr.label} — ${addr.line1}, ${addr.postcode}`,
+    })),
+  ];
+
+  // Auto-fill with default or first saved address when addresses first load from Supabase.
+  useEffect(() => {
+    if (savedAddresses.length > 0 && !address.trim() && !postcode.trim()) {
+      const defaultAddr = savedAddresses.find((a) => a.isDefault) ?? savedAddresses[0];
+      setSelectedAddressId(defaultAddr.id);
+      const fullAddress = [defaultAddr.line1, defaultAddr.line2, defaultAddr.city].filter(Boolean).join(", ");
+      setAddress(fullAddress);
+      setPostcode(defaultAddr.postcode);
+    }
+  }, [savedAddresses]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!estimate || !serviceId) {
     setStep(4);
@@ -174,31 +226,70 @@ export default function Step5Estimate() {
         <div className="space-y-4">
           <h3 className="text-sm font-semibold text-slate-900">Location & Schedule</h3>
 
+          {/* Booking as: Personal / Business */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700">Booking as</label>
+            <p className="mt-0.5 text-xs text-slate-500">Choose how this job will be billed and under which account</p>
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setBookingAs("personal")}
+                className={`flex flex-1 items-center justify-center gap-2 rounded-xl border-2 py-2.5 text-sm font-medium transition-all ${
+                  bookingAs === "personal"
+                    ? "border-brand-500 bg-brand-50 text-brand-700"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                }`}
+              >
+                <User className="h-4 w-4" />
+                Personal
+              </button>
+              <button
+                type="button"
+                onClick={() => setBookingAs("business")}
+                className={`flex flex-1 items-center justify-center gap-2 rounded-xl border-2 py-2.5 text-sm font-medium transition-all ${
+                  bookingAs === "business"
+                    ? "border-brand-500 bg-brand-50 text-brand-700"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                }`}
+              >
+                <Building2 className="h-4 w-4" />
+                Business
+              </button>
+            </div>
+            {bookingAs === "business" && (
+              <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                {businessName ? (
+                  <p className="text-sm font-medium text-slate-700">{businessName}</p>
+                ) : (
+                  <p className="text-sm text-slate-600">No business details saved yet.</p>
+                )}
+                <Link href="/dashboard/account" className="mt-1 inline-block text-xs font-medium text-brand-600 hover:underline">
+                  Manage business details in Account →
+                </Link>
+              </div>
+            )}
+          </div>
+
+          {/* Address dropdown */}
           {savedAddresses.length > 0 && (
             <div>
-              <label className="block text-xs font-medium text-slate-500">Saved addresses</label>
-              <div className="mt-1.5 flex flex-wrap gap-2">
-                {savedAddresses.map((addr) => {
-                  const isSelected = address === addr.line1 && postcode === addr.postcode;
-                  return (
-                    <button
-                      key={addr.id}
-                      type="button"
-                      onClick={() => handleSelectAddress(addr)}
-                      className={`flex items-center gap-2 rounded-xl border-2 px-3 py-2 text-left text-xs transition-all ${
-                        isSelected
-                          ? "border-brand-500 bg-brand-50 text-brand-700"
-                          : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-                      }`}
-                    >
-                      <Home className="h-3.5 w-3.5 flex-shrink-0" />
-                      <span>
-                        <span className="font-semibold">{addr.label}</span>
-                        <span className="ml-1 text-slate-400">{addr.postcode}</span>
-                      </span>
-                    </button>
-                  );
-                })}
+              <label className="block text-sm font-medium text-slate-700">Choose from your addresses</label>
+              <p className="mt-0.5 text-xs text-slate-500">Select an address below or choose &quot;Enter new address&quot; to type one</p>
+              <div className="mt-1.5">
+                <CustomDropdown
+                  value={selectedAddressId}
+                  onChange={(value) => {
+                    if (value === "") handleSelectAddress(null);
+                    else {
+                      const addr = savedAddresses.find((a) => a.id === value);
+                      if (addr) handleSelectAddress(addr);
+                    }
+                  }}
+                  options={addressDropdownOptions}
+                  icon={Home}
+                  placeholder="Select address"
+                  className="w-full"
+                />
               </div>
             </div>
           )}
@@ -213,6 +304,7 @@ export default function Step5Estimate() {
                 type="text"
                 value={address}
                 onChange={(e) => {
+                  setSelectedAddressId("");
                   setAddress(e.target.value);
                   clearError("address");
                 }}
@@ -237,6 +329,7 @@ export default function Step5Estimate() {
               type="text"
               value={postcode}
               onChange={(e) => {
+                setSelectedAddressId("");
                 setPostcode(e.target.value.toUpperCase());
                 clearError("postcode");
               }}

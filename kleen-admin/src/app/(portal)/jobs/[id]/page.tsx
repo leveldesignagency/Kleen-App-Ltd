@@ -27,6 +27,7 @@ import {
   XCircle,
   RefreshCw,
 } from "lucide-react";
+import CustomDropdown from "@/components/ui/CustomDropdown";
 
 const SERVICE_FEE_RATE = 0.175; // 17.5%
 
@@ -56,13 +57,6 @@ const QR_STATUS_BADGE: Record<string, { label: string; cls: string }> = {
   expired:  { label: "Expired",  cls: "bg-slate-500/20 text-slate-400" },
 };
 
-const DEADLINE_OPTIONS = [
-  { label: "24 hours", hours: 24 },
-  { label: "48 hours", hours: 48 },
-  { label: "72 hours", hours: 72 },
-  { label: "1 week", hours: 168 },
-];
-
 const WORKFLOW_STEPS = [
   { key: "pending", label: "Submitted" },
   { key: "awaiting_quotes", label: "Sent to Contractors" },
@@ -72,6 +66,13 @@ const WORKFLOW_STEPS = [
   { key: "awaiting_completion", label: "In Progress" },
   { key: "completed", label: "Completed" },
   { key: "funds_released", label: "Funds Released" },
+];
+
+const DEADLINE_OPTIONS = [
+  { label: "24 hours", hours: 24 },
+  { label: "48 hours", hours: 48 },
+  { label: "72 hours", hours: 72 },
+  { label: "1 week", hours: 168 },
 ];
 
 function getStepIndex(status: string): number {
@@ -84,6 +85,67 @@ function getStepIndex(status: string): number {
   const normalized = aliases[status] || status;
   const idx = WORKFLOW_STEPS.findIndex((s) => s.key === normalized);
   return idx >= 0 ? idx : 0;
+}
+
+/** Format time string "09:00" or "09:00:00" for display (e.g. "9:00 am") */
+function formatTimeForDisplay(t: string): string {
+  if (!t) return "—";
+  const parts = String(t).trim().split(":");
+  const h = parseInt(parts[0] || "0", 10);
+  const m = parts[1] ? parseInt(parts[1], 10) : 0;
+  if (h === 12) return `12:${m.toString().padStart(2, "0")} pm`;
+  if (h === 0) return `12:${m.toString().padStart(2, "0")} am`;
+  if (h > 12) return `${h - 12}:${m.toString().padStart(2, "0")} pm`;
+  return `${h}:${m.toString().padStart(2, "0")} am`;
+}
+
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => ({ value: i.toString().padStart(2, "0"), label: i.toString().padStart(2, "0") }));
+const MINUTE_OPTIONS = ["00", "15", "30", "45"].map((m) => ({ value: m, label: m }));
+
+function TimePicker({
+  value,
+  onChange,
+  placeholder,
+  className = "",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  className?: string;
+}) {
+  const parts = value ? value.split(":") : [];
+  const h = parts[0]?.padStart(2, "0") ?? "";
+  const m = parts[1]?.padStart(2, "0") ?? "";
+  const hourOpts = [{ value: "", label: "Not set" }, ...HOUR_OPTIONS];
+  return (
+    <div className={`flex gap-2 ${className}`}>
+      <div className="flex-1">
+        <CustomDropdown
+          value={h}
+          onChange={(hour) => {
+            if (!hour) onChange("");
+            else onChange(`${hour}:${m || "00"}`);
+          }}
+          options={hourOpts}
+          placeholder="Hour"
+        />
+      </div>
+      <div className="flex-1">
+        <CustomDropdown
+          value={m}
+          onChange={(min) => {
+            if (!h) return;
+            onChange(`${h}:${min || "00"}`);
+          }}
+          options={h ? [{ value: "", label: "—" }, ...MINUTE_OPTIONS] : MINUTE_OPTIONS}
+          placeholder="Min"
+        />
+      </div>
+      {!value && placeholder && (
+        <span className="self-center text-xs text-slate-500">{placeholder}</span>
+      )}
+    </div>
+  );
 }
 
 export default function AdminJobDetailPage() {
@@ -109,9 +171,22 @@ export default function AdminJobDetailPage() {
   const [sending, setSending] = useState(false);
   const [showComparison, setShowComparison] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
-  const [enteringResponseFor, setEnteringResponseFor] = useState<string | null>(null);
-  const [responseForm, setResponseForm] = useState({ pricePounds: "", hours: "", availableDate: "", notes: "" });
+  const [showAddQuoteModal, setShowAddQuoteModal] = useState(false);
+  const [addQuoteForm, setAddQuoteForm] = useState({ contractorId: "", pricePounds: "", hours: "", arrivalTime: "", notes: "" });
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelReasonOther, setCancelReasonOther] = useState("");
+  const [blockCustomer, setBlockCustomer] = useState(false);
   const toast = useAdminNotifications((s) => s.push);
+
+  const CANCEL_REASONS = [
+    { value: "customer_request", label: "Customer request" },
+    { value: "no_contractor_available", label: "No contractor available" },
+    { value: "duplicate", label: "Duplicate job" },
+    { value: "payment_issue", label: "Payment issue" },
+    { value: "quotes_declined", label: "Customer declined all quotes" },
+    { value: "other", label: "Other" },
+  ] as const;
 
   const job = jobs.find((j) => j.id === id);
   const quoteRequestsList = Array.isArray(quoteRequests) ? quoteRequests : [];
@@ -120,6 +195,10 @@ export default function AdminJobDetailPage() {
     [quoteRequestsList, id]
   );
   const activeContractors = contractors.filter((c) => c.is_active);
+  const addQuoteContractors = useMemo(
+    () => activeContractors.filter((c) => !jobQuotes.some((q) => q.operative_id === c.id)),
+    [activeContractors, jobQuotes]
+  );
 
   useEffect(() => {
     const load = async () => {
@@ -128,7 +207,7 @@ export default function AdminJobDetailPage() {
       if (jobs.length === 0) {
         const { data: jobsData } = await supabase
           .from("jobs")
-          .select("*, job_details(*), profiles(full_name, email, is_blocked), services(name), quotes(min_price_pence, max_price_pence, operatives_required)")
+          .select("*, job_details(*), profiles!user_id(full_name, email, is_blocked), services(name), quotes(min_price_pence, max_price_pence, operatives_required)")
           .order("created_at", { ascending: false });
 
         if (jobsData) {
@@ -140,6 +219,7 @@ export default function AdminJobDetailPage() {
               service: j.services?.name || "Cleaning",
               cleaning_type: j.cleaning_type || "domestic",
               status: j.status,
+              user_id: j.user_id,
               customer_name: j.profiles?.full_name || "Unknown",
               customer_email: j.profiles?.email || "",
               address: [j.address_line_1, j.address_line_2, j.city].filter(Boolean).join(", "),
@@ -153,6 +233,9 @@ export default function AdminJobDetailPage() {
               notes: j.notes || "",
               created_at: j.created_at,
               is_blocked: j.profiles?.is_blocked || false,
+              payment_captured_at: j.payment_captured_at ?? null,
+              funds_released_at: j.funds_released_at ?? null,
+              accepted_quote_request_id: j.accepted_quote_request_id ?? null,
             }))
           );
         }
@@ -196,37 +279,59 @@ export default function AdminJobDetailPage() {
         .order("created_at", { ascending: false });
 
       if (qrData) {
-        setQuoteRequests(
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          qrData.map((qr: any) => ({
-            id: qr.id,
-            job_id: qr.job_id,
-            operative_id: qr.operative_id,
-            operative_name: qr.operatives?.full_name || "Unknown",
-            status: qr.status,
-            deadline: qr.deadline,
-            message: qr.message,
-            sent_at: qr.sent_at,
-            viewed_at: qr.viewed_at,
-            responded_at: qr.responded_at,
-            quote_response: qr.quote_responses?.[0] || undefined,
-          }))
-        );
+        const mapped = qrData.map((qr: { id: string; job_id: string; operative_id: string; operatives?: { full_name?: string }; status: string; deadline: string; message?: string; sent_at: string; viewed_at?: string; responded_at?: string; quote_responses?: Array<{ price_pence: number }> }) => ({
+          id: qr.id,
+          job_id: qr.job_id,
+          operative_id: qr.operative_id,
+          operative_name: qr.operatives?.full_name || "Unknown",
+          status: qr.status,
+          deadline: qr.deadline,
+          message: qr.message,
+          sent_at: qr.sent_at,
+          viewed_at: qr.viewed_at,
+          responded_at: qr.responded_at,
+          quote_response: qr.quote_responses?.[0] || undefined,
+        }));
+        const prev = useAdminStore.getState().quoteRequests;
+        const next = (Array.isArray(prev) ? prev : []).filter((q: QuoteRequest) => q.job_id !== id).concat(mapped);
+        setQuoteRequests(next);
+        const quotedPrices = qrData.map((qr: { quote_responses?: Array<{ price_pence: number }> }) => qr.quote_responses?.[0]?.price_pence).filter((p: number | undefined): p is number => p != null && p > 0);
+        if (quotedPrices.length > 0) {
+          const price_estimate = Math.round(quotedPrices.reduce((a, b) => a + b, 0) / quotedPrices.length);
+          updateJob(id as string, { price_estimate });
+        }
       }
 
       setLoading(false);
     };
     load();
-  }, [id, jobs.length, contractors.length, setJobs, setContractors, setQuoteRequests]);
+  }, [id, jobs.length, contractors.length, setJobs, setContractors, setQuoteRequests, updateJob]);
 
   const refreshJobData = useCallback(async () => {
     const supabase = createClient();
+    const { data: qrData } = await supabase
+      .from("quote_requests")
+      .select("*, quote_responses(*), operatives(full_name)")
+      .eq("job_id", id as string)
+      .order("created_at", { ascending: false });
+
     const { data: j } = await supabase
       .from("jobs")
-      .select("*, job_details(*), profiles(full_name, email, is_blocked), services(name), quotes(min_price_pence, max_price_pence, operatives_required)")
+      .select("*, job_details(*), profiles!user_id(full_name, email, is_blocked), services(name), quotes(min_price_pence, max_price_pence, operatives_required)")
       .eq("id", id as string)
       .single();
+
     if (j) {
+      const quotedPrices = (qrData || [])
+        .map((qr: { quote_responses?: Array<{ price_pence: number }> }) => qr.quote_responses?.[0]?.price_pence)
+        .filter((p: number | undefined): p is number => p != null && p > 0);
+      const fromQuotes = (j as { quotes?: Array<{ min_price_pence: number; max_price_pence: number }> }).quotes?.[0];
+      const price_estimate =
+        quotedPrices.length > 0
+          ? Math.round(quotedPrices.reduce((a, b) => a + b, 0) / quotedPrices.length)
+          : fromQuotes
+            ? Math.round((fromQuotes.min_price_pence + fromQuotes.max_price_pence) / 2)
+            : 0;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const mapped: any = {
         id: j.id,
@@ -234,27 +339,28 @@ export default function AdminJobDetailPage() {
         service: (j as any).services?.name || "Cleaning",
         cleaning_type: j.cleaning_type || "domestic",
         status: j.status,
+        cancelled_reason: (j as any).cancelled_reason,
+        user_id: (j as any).user_id,
         customer_name: (j as any).profiles?.full_name || "Unknown",
         customer_email: (j as any).profiles?.email || "",
         address: [j.address_line_1, j.address_line_2, j.city].filter(Boolean).join(", "),
         postcode: j.postcode || "",
         date: j.preferred_date || j.created_at,
         time: j.preferred_time || "",
-        price_estimate: (j as any).quotes?.[0] ? Math.round(((j as any).quotes[0].min_price_pence + (j as any).quotes[0].max_price_pence) / 2) : 0,
+        price_estimate,
         rooms: (j as any).job_details?.[0]?.quantity || 0,
         operatives: (j as any).quotes?.[0]?.operatives_required || 1,
         complexity: (j as any).job_details?.[0]?.complexity || "standard",
         notes: j.notes || "",
         created_at: j.created_at,
         is_blocked: (j as any).profiles?.is_blocked || false,
+        payment_captured_at: (j as any).payment_captured_at ?? null,
+        funds_released_at: (j as any).funds_released_at ?? null,
+        accepted_quote_request_id: (j as any).accepted_quote_request_id ?? null,
       };
       updateJob(j.id, mapped);
     }
-    const { data: qrData } = await supabase
-      .from("quote_requests")
-      .select("*, quote_responses(*), operatives(full_name)")
-      .eq("job_id", id as string)
-      .order("created_at", { ascending: false });
+
     if (qrData) {
       const mapped = qrData.map((qr: { id: string; job_id: string; operative_id: string; operatives?: { full_name?: string }; status: string; deadline: string; message?: string; sent_at: string; viewed_at?: string; responded_at?: string; quote_responses?: Array<{ id: string; quote_request_id: string; price_pence: number; customer_price_pence?: number; estimated_hours: number; available_date?: string; notes?: string; created_at: string }> }) => ({
         id: qr.id,
@@ -269,14 +375,28 @@ export default function AdminJobDetailPage() {
         responded_at: qr.responded_at,
         quote_response: qr.quote_responses?.[0] || undefined,
       }));
-      setQuoteRequests((prev) => (Array.isArray(prev) ? prev : []).filter((q) => q.job_id !== id).concat(mapped));
+      const prev = useAdminStore.getState().quoteRequests;
+      const next = (Array.isArray(prev) ? prev : []).filter((q: QuoteRequest) => q.job_id !== id).concat(mapped);
+      setQuoteRequests(next);
     }
   }, [id, updateJob, setQuoteRequests]);
 
   useEffect(() => {
     if (!id || loading) return;
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`admin-job-detail-${id}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "jobs", filter: `id=eq.${id}` },
+        () => refreshJobData()
+      )
+      .subscribe();
     const interval = setInterval(refreshJobData, 30000);
-    return () => clearInterval(interval);
+    return () => {
+      channel.unsubscribe();
+      clearInterval(interval);
+    };
   }, [id, loading, refreshJobData]);
 
   const handleSendQuotes = async () => {
@@ -356,6 +476,34 @@ export default function AdminJobDetailPage() {
       .update({ status: "sent_to_customer", quotes_sent_to_customer_at: new Date().toISOString() })
       .eq("id", job.id);
 
+    // Sync customer-facing quote so dashboard shows price (public.quotes)
+    const prices = quotedResponses
+      .map((qr) => qr.quote_response?.customer_price_pence ?? Math.round((qr.quote_response?.price_pence ?? 0) * (1 + SERVICE_FEE_RATE)))
+      .filter((p): p is number => p != null && p > 0);
+    if (prices.length > 0) {
+      const minP = Math.min(...prices);
+      const maxP = Math.max(...prices);
+      const first = quotedResponses[0]?.quote_response;
+      const durationMin = first?.estimated_hours ? Math.round(Number(first.estimated_hours) * 60) : 60;
+      const { data: existing } = await supabase.from("quotes").select("id").eq("job_id", job.id).limit(1).maybeSingle();
+      if (existing) {
+        await supabase.from("quotes").update({
+          min_price_pence: minP,
+          max_price_pence: maxP,
+          estimated_duration_min: durationMin,
+          operatives_required: 1,
+        }).eq("id", existing.id);
+      } else {
+        await supabase.from("quotes").insert({
+          job_id: job.id,
+          min_price_pence: minP,
+          max_price_pence: maxP,
+          estimated_duration_min: durationMin,
+          operatives_required: 1,
+        });
+      }
+    }
+
     updateJob(job.id, { status: "sent_to_customer" });
     toast({ type: "success", title: "Quotes Sent to Customer", message: "Customer will be notified to choose a quote" });
     setActionLoading(false);
@@ -365,6 +513,22 @@ export default function AdminJobDetailPage() {
     if (!job || !qr.quote_response) return;
     setActionLoading(true);
     const supabase = createClient();
+    const now = new Date().toISOString();
+
+    // Send job details to contractor by email (if Resend is configured)
+    try {
+      const emailRes = await fetch("/api/jobs/send-contractor-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: job.id }),
+      });
+      const emailData = await emailRes.json().catch(() => ({}));
+      if (!emailRes.ok) {
+        toast({ type: "warning", title: "Email not sent", message: emailData.error || "Could not send email. Add RESEND_API_KEY to enable." });
+      }
+    } catch {
+      toast({ type: "warning", title: "Email not sent", message: "Could not send email to contractor." });
+    }
 
     await supabase
       .from("jobs")
@@ -372,6 +536,7 @@ export default function AdminJobDetailPage() {
         status: "awaiting_completion",
         accepted_quote_request_id: qr.id,
         customer_accepted_at: new Date().toISOString(),
+        actual_start: now, // Job considered "commenced" — customer can no longer cancel
       })
       .eq("id", job.id);
 
@@ -384,93 +549,156 @@ export default function AdminJobDetailPage() {
       }, { onConflict: "job_id,operative_id" });
 
     updateJob(job.id, { status: "awaiting_completion" });
-    toast({ type: "success", title: "Forwarded to Contractor", message: `${qr.operative_name} has been notified to begin work` });
+    toast({ type: "success", title: "Forwarded to Contractor", message: `Job updated. ${qr.operative_name} has been emailed the job details.` });
     setActionLoading(false);
   };
 
-  const handleEnterQuoteResponse = async (quoteRequestId: string) => {
-    const pricePence = Math.round(parseFloat(responseForm.pricePounds || "0") * 100);
-    if (pricePence <= 0) {
-      toast({ type: "error", title: "Invalid price", message: "Enter a valid price in pounds." });
+  const handleAddQuote = async () => {
+    const operativeId = addQuoteForm.contractorId;
+    const pricePence = Math.round(parseFloat(addQuoteForm.pricePounds || "0") * 100);
+    if (!operativeId || pricePence <= 0 || !job) {
+      toast({ type: "error", title: "Invalid", message: "Select a contractor and enter a valid price." });
+      return;
+    }
+    const existing = jobQuotes.find((q) => q.operative_id === operativeId);
+    if (existing) {
+      toast({ type: "error", title: "Already added", message: "This contractor already has a quote for this job." });
       return;
     }
     setActionLoading(true);
     const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    const deadline = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString();
+    const respondedAt = new Date().toISOString();
 
-    const { data: inserted, error: insertError } = await supabase
-      .from("quote_responses")
+    // Link only the contract for THIS job's service (not any other contracts on the contractor's profile)
+    const { data: jobRow } = await supabase.from("jobs").select("service_id").eq("id", job.id).single();
+    const serviceId = (jobRow as { service_id?: string } | null)?.service_id ?? null;
+    let operativeServiceId: string | null = null;
+    if (serviceId) {
+      const { data: os } = await supabase
+        .from("operative_services")
+        .select("id")
+        .eq("operative_id", operativeId)
+        .eq("service_id", serviceId)
+        .eq("is_active", true)
+        .maybeSingle();
+      operativeServiceId = (os as { id: string } | null)?.id ?? null;
+      if (!operativeServiceId) {
+        toast({ type: "warning", title: "No contract", message: "This contractor has no service contract for this job type. Add one in Contractors → Edit → Services & contracts. Quote will still be added." });
+      }
+    }
+
+    const { data: qr, error: qrError } = await supabase
+      .from("quote_requests")
       .insert({
-        quote_request_id: quoteRequestId,
-        price_pence: pricePence,
-        estimated_hours: responseForm.hours ? parseFloat(responseForm.hours) : null,
-        available_date: responseForm.availableDate || null,
-        notes: responseForm.notes || null,
+        job_id: job.id,
+        operative_id: operativeId,
+        sent_by: user?.id,
+        deadline,
+        status: "quoted",
+        responded_at: respondedAt,
       })
-      .select()
+      .select("*, operatives(full_name)")
       .single();
 
-    if (insertError) {
-      toast({ type: "error", title: "Failed to save quote", message: insertError.message });
+    if (qrError || !qr) {
+      toast({ type: "error", title: "Failed", message: qrError?.message || "Could not create quote request." });
       setActionLoading(false);
       return;
     }
 
-    const respondedAt = new Date().toISOString();
-    await supabase
-      .from("quote_requests")
-      .update({ status: "quoted", responded_at: respondedAt })
-      .eq("id", quoteRequestId);
+    const jobDate = job?.date ? String(job.date).slice(0, 10) : null;
+    const { data: resp, error: respError } = await supabase
+      .from("quote_responses")
+      .insert({
+        quote_request_id: qr.id,
+        price_pence: pricePence,
+        estimated_hours: addQuoteForm.hours ? parseFloat(addQuoteForm.hours) : null,
+        available_date: jobDate || null,
+        arrival_time: addQuoteForm.arrivalTime ? `${addQuoteForm.arrivalTime}:00` : null,
+        notes: addQuoteForm.notes || null,
+        operative_service_id: operativeServiceId,
+      })
+      .select()
+      .single();
 
-    const qr = jobQuotes.find((x) => x.id === quoteRequestId);
-    if (qr) {
-      updateQuoteRequest(quoteRequestId, {
-        status: "quoted",
-        responded_at: respondedAt,
-        quote_response: {
-          id: inserted.id,
-          quote_request_id: quoteRequestId,
-          price_pence: pricePence,
-          estimated_hours: responseForm.hours ? parseFloat(responseForm.hours) : 0,
-          available_date: responseForm.availableDate || undefined,
-          notes: responseForm.notes || undefined,
-          created_at: inserted.created_at,
-        },
-      });
+    if (respError || !resp) {
+      toast({ type: "error", title: "Failed", message: respError?.message || "Could not save quote." });
+      setActionLoading(false);
+      return;
     }
 
-    const allForJob = quoteRequestsList.filter((x) => x.job_id === id);
-    const updatedAll = allForJob.map((x) =>
-      x.id === quoteRequestId ? { ...x, status: "quoted" as const, responded_at: respondedAt, quote_response: inserted } : x
-    );
-    const terminalStatuses = ["quoted", "declined", "expired"];
-    const allResponded = updatedAll.every((x) => terminalStatuses.includes(x.status));
-    if (allResponded && job) {
-      await supabase.from("jobs").update({ status: "quotes_received" }).eq("id", job.id);
-      updateJob(job.id, { status: "quotes_received" });
+    const operativeName = (qr as { operatives?: { full_name?: string } }).operatives?.full_name || "Unknown";
+    addQuoteRequest({
+      id: qr.id,
+      job_id: qr.job_id,
+      operative_id: qr.operative_id,
+      operative_name: operativeName,
+      status: "quoted",
+      deadline: qr.deadline,
+      message: qr.message,
+      sent_at: qr.sent_at,
+      responded_at: respondedAt,
+      quote_response: {
+        id: resp.id,
+        quote_request_id: qr.id,
+        price_pence: pricePence,
+        estimated_hours: addQuoteForm.hours ? parseFloat(addQuoteForm.hours) : 0,
+        available_date: jobDate || undefined,
+        arrival_time: addQuoteForm.arrivalTime || undefined,
+        notes: addQuoteForm.notes || undefined,
+        created_at: resp.created_at,
+      },
+    });
+
+    const newStatus = job.status === "pending" ? "quotes_received" : job.status;
+    if (newStatus !== job.status) {
+      await supabase.from("jobs").update({ status: newStatus }).eq("id", job.id);
+      updateJob(job.id, { status: newStatus });
     }
 
-    setEnteringResponseFor(null);
-    setResponseForm({ pricePounds: "", hours: "", availableDate: "", notes: "" });
-    toast({ type: "success", title: "Quote recorded", message: "Contractor quote has been saved." });
+    setShowAddQuoteModal(false);
+    setAddQuoteForm({ contractorId: "", pricePounds: "", hours: "", arrivalTime: "", notes: "" });
+    toast({ type: "success", title: "Quote added", message: `${operativeName}'s quote has been added.` });
     setActionLoading(false);
   };
 
-  const handleMarkDeclined = async (quoteRequestId: string) => {
+  const handleSendOneQuoteToCustomer = async (qr: QuoteRequest) => {
+    if (!job || !qr.quote_response) return;
     setActionLoading(true);
     const supabase = createClient();
-    await supabase.from("quote_requests").update({ status: "declined" }).eq("id", quoteRequestId);
-    const qr = jobQuotes.find((x) => x.id === quoteRequestId);
-    if (qr) updateQuoteRequest(quoteRequestId, { status: "declined" });
-
-    const allForJob = quoteRequestsList.filter((x) => x.job_id === id);
-    const updatedAll = allForJob.map((x) => (x.id === quoteRequestId ? { ...x, status: "declined" as const } : x));
-    const terminalStatuses = ["quoted", "declined", "expired"];
-    const allResponded = updatedAll.every((x) => terminalStatuses.includes(x.status));
-    if (allResponded && job) {
-      await supabase.from("jobs").update({ status: "quotes_received" }).eq("id", job.id);
-      updateJob(job.id, { status: "quotes_received" });
+    const customerPrice = Math.round(qr.quote_response.price_pence * (1 + SERVICE_FEE_RATE));
+    await supabase
+      .from("quote_responses")
+      .update({ customer_price_pence: customerPrice })
+      .eq("id", qr.quote_response.id);
+    await supabase
+      .from("jobs")
+      .update({ status: "sent_to_customer", quotes_sent_to_customer_at: new Date().toISOString() })
+      .eq("id", job.id);
+    // Sync customer-facing quote (public.quotes) so dashboard shows price
+    const durationMin = qr.quote_response.estimated_hours ? Math.round(Number(qr.quote_response.estimated_hours) * 60) : 60;
+    const { data: existing } = await supabase.from("quotes").select("id").eq("job_id", job.id).limit(1).maybeSingle();
+    if (existing) {
+      await supabase.from("quotes").update({
+        min_price_pence: customerPrice,
+        max_price_pence: customerPrice,
+        estimated_duration_min: durationMin,
+        operatives_required: 1,
+      }).eq("id", existing.id);
+    } else {
+      await supabase.from("quotes").insert({
+        job_id: job.id,
+        min_price_pence: customerPrice,
+        max_price_pence: customerPrice,
+        estimated_duration_min: durationMin,
+        operatives_required: 1,
+      });
     }
-    toast({ type: "info", title: "Marked declined", message: "Contractor has been marked as declined." });
+    updateJob(job.id, { status: "sent_to_customer" });
+    updateQuoteRequest(qr.id, { quote_response: { ...qr.quote_response, customer_price_pence: customerPrice } });
+    toast({ type: "success", title: "Sent to customer", message: `Quote from ${qr.operative_name} sent to customer.` });
     setActionLoading(false);
   };
 
@@ -515,26 +743,94 @@ export default function AdminJobDetailPage() {
   const handleReleaseFunds = async () => {
     if (!job) return;
     setActionLoading(true);
-    const supabase = createClient();
+    try {
+      const res = await fetch("/api/stripe/release-funds", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: job.id }),
+      });
+      const data = await res.json().catch(() => ({}));
 
-    // TODO: Integrate Stripe payout here
-    await supabase
-      .from("jobs")
-      .update({ status: "funds_released", funds_released_at: new Date().toISOString() })
-      .eq("id", job.id);
+      if (!res.ok) {
+        toast({
+          type: "error",
+          title: "Release failed",
+          message: data.error || "Could not release funds.",
+        });
+        setActionLoading(false);
+        return;
+      }
 
-    updateJob(job.id, { status: "funds_released" });
-    toast({ type: "success", title: "Funds Released", message: "Payment has been sent to the contractor" });
-    setActionLoading(false);
+      updateJob(job.id, { status: "funds_released" });
+      toast({
+        type: "success",
+        title: "Funds Released",
+        message: data.transferred
+          ? "Payment has been sent to the contractor's Stripe account."
+          : "Job marked as paid. Pay the contractor manually (no Stripe Connect account).",
+      });
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const handleCancelJob = async () => {
+    if (!job || !cancelReason.trim()) return;
+    const reasonText = cancelReason === "other" && cancelReasonOther.trim()
+      ? `other: ${cancelReasonOther.trim()}`
+      : cancelReason;
+    setActionLoading(true);
+    const supabase = createClient();
+    const { data: { user: adminUser } } = await supabase.auth.getUser();
+    const now = new Date().toISOString();
+    const { error: jobError } = await supabase
+      .from("jobs")
+      .update({
+        status: "cancelled",
+        cancelled_reason: reasonText,
+        cancelled_at: now,
+        cancelled_by: adminUser?.id ?? null,
+      })
+      .eq("id", job.id);
+    if (jobError) {
+      toast({ type: "error", title: "Error", message: jobError.message });
+      setActionLoading(false);
+      return;
+    }
+    updateJob(job.id, { status: "cancelled", cancelled_reason: reasonText });
+    if (blockCustomer && job.user_id) {
+      await supabase.from("profiles").update({ is_blocked: true }).eq("id", job.user_id);
+      toast({ type: "info", title: "Job Cancelled", message: `${job.reference} has been cancelled. Customer has been blocked.` });
+    } else {
+      toast({ type: "info", title: "Job Cancelled", message: `${job.reference} has been cancelled.` });
+    }
+    setShowCancelModal(false);
+    setCancelReason("");
+    setCancelReasonOther("");
+    setBlockCustomer(false);
+    setActionLoading(false);
+  };
+
+  const handleReinstateJob = async () => {
     if (!job) return;
     setActionLoading(true);
     const supabase = createClient();
-    await supabase.from("jobs").update({ status: "cancelled" }).eq("id", job.id);
-    updateJob(job.id, { status: "cancelled" });
-    toast({ type: "info", title: "Job Cancelled", message: `${job.reference} has been cancelled` });
+    const { error } = await supabase
+      .from("jobs")
+      .update({
+        status: "pending",
+        cancelled_reason: null,
+        cancelled_at: null,
+        cancelled_by: null,
+      })
+      .eq("id", job.id);
+    if (error) {
+      toast({ type: "error", title: "Error", message: error.message });
+      setActionLoading(false);
+      return;
+    }
+    updateJob(job.id, { status: "pending", cancelled_reason: undefined });
+    toast({ type: "success", title: "Job reinstated", message: `${job.reference} is active again. You can add quotes and send to customer.` });
     setActionLoading(false);
   };
 
@@ -564,7 +860,6 @@ export default function AdminJobDetailPage() {
   const pendingCount = jobQuotes.filter((q) => q.status === "sent" || q.status === "viewed").length;
   const quotedResponses = jobQuotes.filter((q) => q.quote_response);
   const postcodeArea = job.postcode ? job.postcode.split(" ")[0] : "N/A";
-  const currentStep = getStepIndex(job.status);
   const isTerminal = ["cancelled", "disputed", "funds_released"].includes(job.status);
 
   return (
@@ -596,9 +891,17 @@ export default function AdminJobDetailPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {!isTerminal && (
+            <Link
+              href={`/jobs/${job.id}/quotes`}
+              className="flex items-center gap-2 rounded-xl border border-white/10 px-4 py-2.5 text-sm font-medium text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+            >
+              View quotes
+            </Link>
+          )}
           {!isTerminal && job.status !== "completed" && (
             <button
-              onClick={handleCancelJob}
+              onClick={() => setShowCancelModal(true)}
               disabled={actionLoading}
               className="flex items-center gap-2 rounded-xl border border-red-500/30 px-3 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/10"
             >
@@ -614,46 +917,23 @@ export default function AdminJobDetailPage() {
             <RefreshCw className="h-4 w-4" />
             Refresh
           </button>
-          {job.status === "pending" && (
+          {!isTerminal && !["completed", "funds_released"].includes(job.status) && (
             <button
-              onClick={() => setShowSendPanel(true)}
+              onClick={() => setShowAddQuoteModal(true)}
               className="flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-500"
             >
-              <Send className="h-4 w-4" />
-              Send for Quotes
+              <Plus className="h-4 w-4" />
+              Add Quote
             </button>
           )}
         </div>
       </div>
 
-      {/* Workflow Progress */}
+      {/* Job status (admin view: single status) */}
       {!isTerminal && (
-        <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-          <div className="flex items-center gap-1 overflow-x-auto">
-            {WORKFLOW_STEPS.map((step, i) => {
-              const done = i <= currentStep;
-              const active = i === currentStep;
-              return (
-                <div key={step.key} className="flex items-center gap-1">
-                  {i > 0 && (
-                    <div className={`h-px w-4 sm:w-8 ${done ? "bg-brand-500" : "bg-white/10"}`} />
-                  )}
-                  <div
-                    className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                      active
-                        ? "bg-brand-500/20 text-brand-400 ring-1 ring-brand-500/40"
-                        : done
-                        ? "bg-emerald-500/15 text-emerald-400"
-                        : "bg-white/5 text-slate-500"
-                    }`}
-                  >
-                    {done && !active && <Check className="h-3 w-3" />}
-                    {step.label}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+        <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-3">
+          <p className="text-xs text-slate-500">Status</p>
+          <p className="mt-0.5 text-sm font-medium text-slate-200">{badge.label}</p>
         </div>
       )}
 
@@ -669,7 +949,7 @@ export default function AdminJobDetailPage() {
               <Field label="Complexity" value={job.complexity} />
               <Field label="Rooms" value={String(job.rooms)} />
               <Field label="Operatives" value={String(job.operatives)} />
-              <Field label="Estimate" value={`£${(job.price_estimate / 100).toFixed(2)}`} />
+              <Field label="Estimate" value={job.price_estimate > 0 ? `£${(job.price_estimate / 100).toFixed(2)}` : "—"} />
               <Field label="Scheduled Date" value={new Date(job.date).toLocaleDateString("en-GB")} />
               <Field label="Time" value={job.time || "Flexible"} />
               <Field label="Postcode Area" value={postcodeArea} />
@@ -709,7 +989,7 @@ export default function AdminJobDetailPage() {
               <MiniField label="Rooms" value={String(job.rooms)} />
               <MiniField label="Operatives" value={String(job.operatives)} />
               <MiniField label="Area" value={postcodeArea} />
-              <MiniField label="Estimate" value={`£${(job.price_estimate / 100).toFixed(2)}`} />
+              <MiniField label="Estimate" value={job.price_estimate > 0 ? `£${(job.price_estimate / 100).toFixed(2)}` : "—"} />
             </div>
           </div>
         </div>
@@ -722,70 +1002,92 @@ export default function AdminJobDetailPage() {
             quotedResponses={quotedResponses}
             actionLoading={actionLoading}
             onSendForQuotes={() => setShowSendPanel(true)}
+            onAddQuote={() => setShowAddQuoteModal(true)}
             onSendToCustomer={handleSendToCustomer}
             onForwardToContractor={handleForwardToContractor}
             onConfirmCompletion={handleConfirmCompletion}
             onReleaseFunds={handleReleaseFunds}
+            onReinstateJob={handleReinstateJob}
           />
 
-          {/* Quote Counter */}
-          {sentCount > 0 && (
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-              <h2 className="text-sm font-semibold text-slate-300">Quote Tracking</h2>
-              <div className="mt-4 space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-400">Requests sent</span>
-                  <span className="font-semibold">{sentCount}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-400">Responses received</span>
-                  <span className="font-semibold text-emerald-400">{respondedCount}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-400">Awaiting response</span>
-                  <span className="font-semibold text-amber-400">{pendingCount}</span>
-                </div>
-
-                {sentCount > 0 && (
-                  <div className="mt-2">
-                    <div className="h-2 overflow-hidden rounded-full bg-white/10">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-brand-500 to-emerald-500 transition-all"
-                        style={{
-                          width: `${(respondedCount / sentCount) * 100}%`,
-                        }}
-                      />
+          {/* Quote Counter — always show when not terminal; empty state when no quotes */}
+          {!isTerminal && (
+            <>
+              {sentCount > 0 ? (
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+                  <h2 className="text-sm font-semibold text-slate-300">Quote Tracking</h2>
+                  <div className="mt-4 space-y-3">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-slate-400">Requests sent</span>
+                      <span className="font-semibold">{sentCount}</span>
                     </div>
-                    <p className="mt-1 text-xs text-slate-500">{respondedCount}/{sentCount} responded</p>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-slate-400">Responses received</span>
+                      <span className="font-semibold text-emerald-400">{respondedCount}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-slate-400">Awaiting response</span>
+                      <span className="font-semibold text-amber-400">{pendingCount}</span>
+                    </div>
+
+                    <div className="mt-2">
+                      <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-brand-500 to-emerald-500 transition-all"
+                          style={{
+                            width: `${(respondedCount / sentCount) * 100}%`,
+                          }}
+                        />
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">{respondedCount}/{sentCount} responded</p>
+                    </div>
                   </div>
-                )}
-              </div>
 
-              {quotedResponses.length >= 2 && (
-                <button
-                  onClick={() => setShowComparison(true)}
-                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-brand-500/30 bg-brand-500/10 px-3 py-2 text-sm font-medium text-brand-400 transition-colors hover:bg-brand-500/20"
-                >
-                  <BarChart3 className="h-4 w-4" />
-                  Compare Quotes
-                </button>
+                  {quotedResponses.length >= 2 && (
+                    <button
+                      onClick={() => setShowComparison(true)}
+                      className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-brand-500/30 bg-brand-500/10 px-3 py-2 text-sm font-medium text-brand-400 transition-colors hover:bg-brand-500/20"
+                    >
+                      <BarChart3 className="h-4 w-4" />
+                      Compare Quotes
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+                  <h2 className="text-sm font-semibold text-slate-300">Quote Tracking</h2>
+                  <p className="mt-2 text-sm text-slate-400">No quotes yet.</p>
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => setShowAddQuoteModal(true)}
+                      className="flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-500"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add Quote
+                    </button>
+                    <Link
+                      href={`/jobs/${job.id}/quotes`}
+                      className="flex items-center gap-2 rounded-xl border border-white/10 px-4 py-2.5 text-sm font-medium text-slate-300 transition-colors hover:bg-white/10"
+                    >
+                      View quotes
+                    </Link>
+                  </div>
+                </div>
               )}
-            </div>
-          )}
 
-          {/* Individual Quote Requests */}
-          {sentCount > 0 && (
+          {/* Individual Quote Requests — display only; click card goes to View quotes page */}
+              {sentCount > 0 ? (
             <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
               <h2 className="text-sm font-semibold text-slate-300">Contractor Quotes</h2>
+              <p className="mt-1 text-xs text-slate-400">Click a quote to open it on the View quotes page.</p>
               <div className="mt-3 space-y-2">
                 {jobQuotes.map((qr) => {
                   const qrBadge = QR_STATUS_BADGE[qr.status] ?? QR_STATUS_BADGE.sent;
-                  const canEnterResponse = (qr.status === "sent" || qr.status === "viewed") && !qr.quote_response;
-                  const showForm = enteringResponseFor === qr.id;
                   return (
-                    <div
+                    <Link
                       key={qr.id}
-                      className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3"
+                      href={`/jobs/${job.id}/quotes/${qr.id}`}
+                      className="block rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 transition-colors hover:bg-white/[0.06]"
                     >
                       <div className="flex items-center justify-between">
                         <p className="text-sm font-medium">{qr.operative_name}</p>
@@ -798,93 +1100,6 @@ export default function AdminJobDetailPage() {
                         {" · Deadline "}
                         {new Date(qr.deadline).toLocaleDateString("en-GB")}
                       </p>
-
-                      {showForm && (
-                        <div className="mt-3 space-y-3 rounded-lg border border-brand-500/30 bg-brand-500/5 p-3">
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className="block text-[11px] text-slate-400">Price (£)</label>
-                              <input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                value={responseForm.pricePounds}
-                                onChange={(e) => setResponseForm((f) => ({ ...f, pricePounds: e.target.value }))}
-                                className="mt-0.5 w-full rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-sm text-white outline-none focus:border-brand-500"
-                                placeholder="e.g. 150"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-[11px] text-slate-400">Est. hours</label>
-                              <input
-                                type="number"
-                                step="0.5"
-                                min="0"
-                                value={responseForm.hours}
-                                onChange={(e) => setResponseForm((f) => ({ ...f, hours: e.target.value }))}
-                                className="mt-0.5 w-full rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-sm text-white outline-none focus:border-brand-500"
-                                placeholder="e.g. 3"
-                              />
-                            </div>
-                          </div>
-                          <div>
-                            <label className="block text-[11px] text-slate-400">Available date (optional)</label>
-                            <input
-                              type="date"
-                              value={responseForm.availableDate}
-                              onChange={(e) => setResponseForm((f) => ({ ...f, availableDate: e.target.value }))}
-                              className="mt-0.5 w-full rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-sm text-white outline-none focus:border-brand-500"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[11px] text-slate-400">Notes (optional)</label>
-                            <textarea
-                              value={responseForm.notes}
-                              onChange={(e) => setResponseForm((f) => ({ ...f, notes: e.target.value }))}
-                              rows={2}
-                              className="mt-0.5 w-full rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-sm text-white outline-none focus:border-brand-500"
-                              placeholder="Contractor notes…"
-                            />
-                          </div>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => handleEnterQuoteResponse(qr.id)}
-                              disabled={actionLoading}
-                              className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-500 disabled:opacity-50"
-                            >
-                              {actionLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
-                              Save Quote
-                            </button>
-                            <button
-                              onClick={() => { setEnteringResponseFor(null); setResponseForm({ pricePounds: "", hours: "", availableDate: "", notes: "" }); }}
-                              className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/10"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      {canEnterResponse && !showForm && (
-                        <div className="mt-2 flex gap-2">
-                          <button
-                            onClick={() => setEnteringResponseFor(qr.id)}
-                            className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-brand-500"
-                          >
-                            <Plus className="h-3 w-3" />
-                            Enter Response
-                          </button>
-                          <button
-                            onClick={() => handleMarkDeclined(qr.id)}
-                            disabled={actionLoading}
-                            className="flex items-center gap-1.5 rounded-lg border border-red-500/40 px-2.5 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/10 disabled:opacity-50"
-                          >
-                            <XCircle className="h-3 w-3" />
-                            Mark Declined
-                          </button>
-                        </div>
-                      )}
-
                       {qr.quote_response && (
                         <div className="mt-2 rounded-lg bg-emerald-500/10 p-2">
                           <div className="flex items-center justify-between">
@@ -901,18 +1116,31 @@ export default function AdminJobDetailPage() {
                           <div className="mt-1 flex items-center gap-1.5 text-xs text-violet-400">
                             <Banknote className="h-3 w-3" />
                             £{(Math.round(qr.quote_response.price_pence * (1 + SERVICE_FEE_RATE)) / 100).toFixed(2)}
-                            <span className="text-slate-500">customer price (inc. 17.5% fee)</span>
+                            <span className="text-slate-500">customer (inc. 17.5% fee)</span>
                           </div>
                           {qr.quote_response.notes && (
                             <p className="mt-1 text-xs text-slate-400">{qr.quote_response.notes}</p>
                           )}
                         </div>
                       )}
-                    </div>
+                    </Link>
                   );
                 })}
               </div>
             </div>
+              ) : (
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+                  <h2 className="text-sm font-semibold text-slate-300">Contractor Quotes</h2>
+                  <p className="mt-2 text-sm text-slate-400">No quotes yet. Add a quote above or from the job header.</p>
+                  <Link
+                    href={`/jobs/${job.id}/quotes`}
+                    className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-brand-400 hover:text-brand-300"
+                  >
+                    View quotes
+                  </Link>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -937,6 +1165,176 @@ export default function AdminJobDetailPage() {
         />
       )}
 
+      {showAddQuoteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setShowAddQuoteModal(false)}>
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-slate-900 p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold text-white">Add Quote</h2>
+            <p className="mt-1 text-sm text-slate-400">Add a contractor quote manually. They will appear in the list and can be sent to the customer individually or all at once.</p>
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="block text-[11px] text-slate-400">Contractor</label>
+                <CustomDropdown
+                  value={addQuoteForm.contractorId}
+                  onChange={(v) => setAddQuoteForm((f) => ({ ...f, contractorId: v }))}
+                  options={addQuoteContractors.map((c) => ({
+                    value: c.id,
+                    label: c.full_name || c.email || c.id.slice(0, 8),
+                  }))}
+                  placeholder="Select contractor"
+                  className="mt-0.5"
+                />
+                {addQuoteContractors.length === 0 && (
+                  <p className="mt-1 text-xs text-amber-400">All active contractors already have a quote for this job.</p>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] text-slate-400">Price (£)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={addQuoteForm.pricePounds}
+                    onChange={(e) => setAddQuoteForm((f) => ({ ...f, pricePounds: e.target.value }))}
+                    className="mt-0.5 w-full rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-sm text-white outline-none focus:border-brand-500"
+                    placeholder="e.g. 150"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-slate-400">Est. hours</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    value={addQuoteForm.hours}
+                    onChange={(e) => setAddQuoteForm((f) => ({ ...f, hours: e.target.value }))}
+                    className="mt-0.5 w-full rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-sm text-white outline-none focus:border-brand-500"
+                    placeholder="e.g. 3"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] text-slate-400">Available date</label>
+                  <div className="mt-0.5 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-2 text-sm text-slate-400">
+                    {job?.date
+                      ? new Date(String(job.date).slice(0, 10)).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" })
+                      : "—"}
+                  </div>
+                  <p className="mt-0.5 text-[10px] text-slate-500">Customer&apos;s choice (locked)</p>
+                </div>
+                <div>
+                  <label className="block text-[11px] text-slate-400">Customer requested time</label>
+                  <div className="mt-0.5 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-2 text-sm text-slate-300">
+                    {job?.time ? formatTimeForDisplay(job.time) : "Flexible"}
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className="block text-[11px] text-slate-400">Time of arrival (optional)</label>
+                <TimePicker
+                  value={addQuoteForm.arrivalTime}
+                  onChange={(v) => setAddQuoteForm((f) => ({ ...f, arrivalTime: v }))}
+                  placeholder="e.g. 09:30"
+                  className="mt-0.5"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] text-slate-400">Notes (optional)</label>
+                <textarea
+                  value={addQuoteForm.notes}
+                  onChange={(e) => setAddQuoteForm((f) => ({ ...f, notes: e.target.value }))}
+                  rows={2}
+                  className="mt-0.5 w-full rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-sm text-white outline-none focus:border-brand-500"
+                  placeholder="Contractor notes…"
+                />
+              </div>
+            </div>
+            <div className="mt-5 flex gap-2">
+              <button
+                onClick={handleAddQuote}
+                disabled={actionLoading || addQuoteContractors.length === 0 || !addQuoteForm.contractorId || !addQuoteForm.pricePounds}
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-brand-600 py-2.5 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
+              >
+                {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                Add Quote
+              </button>
+              <button
+                onClick={() => { setShowAddQuoteModal(false); setAddQuoteForm({ contractorId: "", pricePounds: "", hours: "", arrivalTime: "", notes: "" }); }}
+                className="rounded-xl border border-white/10 px-4 py-2.5 text-sm font-medium text-slate-300 hover:bg-white/10"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel job modal — reason required, optional block customer */}
+      {showCancelModal && job && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => !actionLoading && setShowCancelModal(false)}>
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-slate-900 p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold text-white">Cancel job</h2>
+            <p className="mt-1 text-sm text-slate-400">
+              Choose a reason and optionally block this customer from booking again.
+            </p>
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="block text-[11px] font-medium text-slate-400">Reason for cancellation *</label>
+                <CustomDropdown
+                  value={cancelReason}
+                  onChange={setCancelReason}
+                  options={CANCEL_REASONS.map((r) => ({ value: r.value, label: r.label }))}
+                  placeholder="Select reason"
+                  className="mt-1"
+                />
+              </div>
+              {cancelReason === "other" && (
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-400">Details (optional)</label>
+                  <textarea
+                    value={cancelReasonOther}
+                    onChange={(e) => setCancelReasonOther(e.target.value)}
+                    rows={2}
+                    className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-sm text-white placeholder:text-slate-500 outline-none focus:border-red-500/50"
+                    placeholder="Brief explanation…"
+                  />
+                </div>
+              )}
+              <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 transition-colors hover:bg-white/[0.06]">
+                <input
+                  type="checkbox"
+                  checked={blockCustomer}
+                  onChange={(e) => setBlockCustomer(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-500 text-red-500 focus:ring-red-500/30"
+                />
+                <span className="text-sm text-slate-300">Block this customer from booking again</span>
+              </label>
+              {job.is_blocked && (
+                <p className="text-xs text-amber-400">This customer is already blocked.</p>
+              )}
+            </div>
+            <div className="mt-5 flex gap-2">
+              <button
+                onClick={() => { setShowCancelModal(false); setCancelReason(""); setCancelReasonOther(""); setBlockCustomer(false); }}
+                disabled={actionLoading}
+                className="flex-1 rounded-xl border border-white/10 py-2.5 text-sm font-medium text-slate-300 hover:bg-white/10 disabled:opacity-50"
+              >
+                Back
+              </button>
+              <button
+                onClick={handleCancelJob}
+                disabled={actionLoading || !cancelReason.trim()}
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-red-600 py-2.5 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50"
+              >
+                {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+                Confirm cancellation
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showComparison && (
         <QuoteComparisonModal
           quotes={quotedResponses}
@@ -954,19 +1352,23 @@ function WorkflowActions({
   quotedResponses,
   actionLoading,
   onSendForQuotes,
+  onAddQuote,
   onSendToCustomer,
   onForwardToContractor,
   onConfirmCompletion,
   onReleaseFunds,
+  onReinstateJob,
 }: {
-  job: { status: string; reference: string };
+  job: { status: string; reference: string; cancelled_reason?: string };
   quotedResponses: QuoteRequest[];
   actionLoading: boolean;
   onSendForQuotes: () => void;
+  onAddQuote: () => void;
   onSendToCustomer: () => void;
   onForwardToContractor: (qr: QuoteRequest) => void;
   onConfirmCompletion: (by: "contractor" | "customer") => void;
   onReleaseFunds: () => void;
+  onReinstateJob?: () => void;
 }) {
   const status = job.status;
 
@@ -983,32 +1385,43 @@ function WorkflowActions({
   }
 
   if (status === "cancelled") {
+    const quotesDeclined = (job as { cancelled_reason?: string }).cancelled_reason === "quotes_declined";
     return (
       <div className="rounded-2xl border border-slate-500/20 bg-white/[0.03] p-5">
         <div className="flex items-center gap-2 text-slate-400">
           <XCircle className="h-5 w-5" />
           <h2 className="text-sm font-semibold">Job Cancelled</h2>
         </div>
+        <p className="mt-2 text-sm text-slate-500">
+          {quotesDeclined ? "Customer declined all quotes." : "This job is no longer active."}
+          {onReinstateJob && " You can reinstate it to add quotes and send to customer again."}
+        </p>
+        {onReinstateJob && (
+          <button
+            onClick={onReinstateJob}
+            disabled={actionLoading}
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-500 disabled:opacity-50"
+          >
+            {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Reinstate job
+          </button>
+        )}
       </div>
     );
   }
 
   if (status === "pending") {
     return (
-      <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-5">
-        <div className="flex items-center gap-2 text-amber-400">
-          <Clock className="h-5 w-5" />
-          <h2 className="text-sm font-semibold">New Job Submitted</h2>
-        </div>
-        <p className="mt-2 text-sm text-slate-400">
-          Send this job spec to contractors to collect quotes.
-        </p>
+      <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5">
+        <p className="text-xs text-slate-500">Semi-automated &quot;Send for quotes&quot; flow (request quotes from contractors) coming later.</p>
         <button
-          onClick={onSendForQuotes}
-          className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 py-2.5 text-sm font-medium text-white hover:bg-brand-500"
+          disabled
+          className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 py-2.5 text-sm font-medium text-slate-500"
+          title="Coming soon"
         >
           <Send className="h-4 w-4" />
-          Send for Quotes
+          Send for quotes
+          <span className="rounded bg-slate-600/50 px-1.5 py-0.5 text-[10px]">Coming soon</span>
         </button>
       </div>
     );
@@ -1021,13 +1434,13 @@ function WorkflowActions({
         <div className="flex items-center gap-2 text-blue-400">
           <Clock className="h-5 w-5" />
           <h2 className="text-sm font-semibold">
-            {hasQuotes ? "Quotes Ready" : "Awaiting Contractor Quotes"}
+            {hasQuotes ? "Quotes Ready" : "Add Quotes"}
           </h2>
         </div>
         <p className="mt-2 text-sm text-slate-400">
           {hasQuotes
-            ? `${quotedResponses.length} quote(s) received. Send to the customer with your 17.5% service fee applied.`
-            : "Waiting for contractors to respond with their quotes."}
+            ? `${quotedResponses.length} quote(s). Send all to customer with 17.5% fee, or send individually from each quote below.`
+            : "Add quotes from your contractors using the Add Quote button."}
         </p>
         {hasQuotes && (
           <button
@@ -1036,16 +1449,18 @@ function WorkflowActions({
             className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 py-2.5 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
           >
             {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Forward className="h-4 w-4" />}
-            Send Quotes to Customer
+            Send All to Customer
           </button>
         )}
-        <button
-          onClick={onSendForQuotes}
-          className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 py-2 text-sm font-medium text-slate-300 hover:bg-white/10"
-        >
-          <Plus className="h-4 w-4" />
-          Request More Quotes
-        </button>
+        <div className="mt-2">
+          <button
+            onClick={onAddQuote}
+            className="flex w-full min-w-[12rem] items-center justify-center gap-2 rounded-xl bg-brand-600 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-500"
+          >
+            <Plus className="h-4 w-4" />
+            Add Quote
+          </button>
+        </div>
       </div>
     );
   }
@@ -1058,7 +1473,7 @@ function WorkflowActions({
           <h2 className="text-sm font-semibold">Waiting for Customer</h2>
         </div>
         <p className="mt-2 text-sm text-slate-400">
-          Quotes have been sent. The customer will choose their preferred quote in their dashboard. Refresh the page to see if they have accepted.
+          Quotes have been sent. The customer will choose their preferred quote in their dashboard. Refresh the page to see if they have accepted. You can still add more quotes and send them to the customer.
         </p>
         {quotedResponses.length > 0 && (
           <div className="mt-3 space-y-2">
@@ -1076,24 +1491,48 @@ function WorkflowActions({
             ))}
           </div>
         )}
+        <div className="mt-3">
+          <button
+            onClick={onAddQuote}
+            className="flex w-full min-w-[12rem] items-center justify-center gap-2 rounded-xl bg-brand-600 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-500"
+          >
+            <Plus className="h-4 w-4" />
+            Add Quote
+          </button>
+        </div>
       </div>
     );
   }
 
   if (status === "customer_accepted" || status === "accepted") {
+    const jobWithPayment = job as { payment_captured_at?: string | null; funds_released_at?: string | null };
+    const paymentHeld = !!jobWithPayment.payment_captured_at && !jobWithPayment.funds_released_at;
     return (
       <div className="rounded-2xl border border-brand-500/20 bg-brand-500/5 p-5">
         <div className="flex items-center gap-2 text-brand-400">
           <UserCheck className="h-5 w-5" />
           <h2 className="text-sm font-semibold">Customer Accepted a Quote</h2>
         </div>
+        {paymentHeld && (
+          <div className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
+            <p className="text-sm font-medium text-emerald-300">Payment held in your Stripe account</p>
+            <p className="mt-1 text-xs text-slate-400">
+              Funds are in escrow. When the job is complete, use &quot;Release Funds&quot; to send the contractor share (82.5%) to the contractor; Kleen retains 17.5% commission.
+            </p>
+          </div>
+        )}
         <p className="mt-2 text-sm text-slate-400">
           Forward the full job spec to the chosen contractor so they can begin work.
         </p>
-        {quotedResponses.length > 0 && (
+        {quotedResponses.length > 0 && (() => {
+          const acceptedId = (job as { accepted_quote_request_id?: string | null }).accepted_quote_request_id;
+          const toShow = acceptedId
+            ? quotedResponses.filter((qr) => qr.id === acceptedId)
+            : quotedResponses;
+          return toShow.length > 0 ? (
           <div className="mt-3 space-y-2">
             <p className="text-xs font-medium text-slate-400">Forward to chosen contractor:</p>
-            {quotedResponses.map((qr) => (
+            {toShow.map((qr) => (
               <button
                 key={qr.id}
                 onClick={() => onForwardToContractor(qr)}
@@ -1120,7 +1559,8 @@ function WorkflowActions({
               </button>
             ))}
           </div>
-        )}
+          ) : null;
+        })()}
       </div>
     );
   }

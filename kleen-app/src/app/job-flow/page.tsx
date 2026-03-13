@@ -29,7 +29,7 @@ export default function JobFlowPage() {
       if (user) {
         setProfile({
           email: user.email || "",
-          fullName: user.user_metadata?.full_name || "",
+          fullName: user.user_metadata?.full_name || user.user_metadata?.name || "",
         });
         if (step === 1) setStep(2);
       }
@@ -53,6 +53,7 @@ export default function JobFlowPage() {
             width={100}
             height={42}
             className="h-8 w-auto brightness-0 invert opacity-80"
+            priority
           />
         </Link>
         <Link

@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import Link from "next/link";
+import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAdminStore, AdminJob } from "@/lib/admin-store";
 import {
+  AlertCircle,
   Briefcase,
   Search,
   Filter,
@@ -49,24 +51,32 @@ const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
 };
 
 export default function AdminJobsPage() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const prevPathname = useRef<string | null>(null);
   const { jobs, setJobs } = useAdminStore();
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedJob, setSelectedJob] = useState<AdminJob | null>(null);
 
   useEffect(() => {
-    if (jobs.length > 0) {
-      setLoading(false);
-      return;
-    }
+    const supabase = createClient();
+    let channel: { unsubscribe: () => void } | null = null;
+
     const load = async () => {
-      const supabase = createClient();
-      const { data } = await supabase
+      setLoadError(null);
+      const { data, error } = await supabase
         .from("jobs")
-        .select("*, job_details(*), profiles(full_name, email, is_blocked), services(name), quotes(min_price_pence, max_price_pence, operatives_required)")
+        .select("*, job_details(*), profiles!user_id(full_name, email, is_blocked), services(name), quotes(min_price_pence, max_price_pence, operatives_required)")
         .order("created_at", { ascending: false });
 
+      if (error) {
+        setLoadError(error.message || "Failed to load jobs");
+        setLoading(false);
+        return;
+      }
       if (data) {
         setJobs(
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -94,8 +104,82 @@ export default function AdminJobsPage() {
       }
       setLoading(false);
     };
+
+    load().then(() => {
+      channel = supabase
+        .channel("admin-jobs-list")
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "jobs" },
+          () => load()
+        )
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "jobs" },
+          () => load()
+        )
+        .subscribe();
+    });
+
+    const onFocus = () => load();
+    const onVisibilityChange = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") load();
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", onFocus);
+      document.addEventListener("visibilitychange", onVisibilityChange);
+    }
+    return () => {
+      if (channel) channel.unsubscribe();
+      if (typeof window !== "undefined") {
+        window.removeEventListener("focus", onFocus);
+        document.removeEventListener("visibilitychange", onVisibilityChange);
+      }
+    };
+  }, [setJobs]);
+
+  // Refetch when navigating back to the jobs list from a child page (e.g. after sending quotes) so status is up to date
+  useEffect(() => {
+    const prev = prevPathname.current;
+    prevPathname.current = pathname;
+    if (pathname !== "/jobs") return;
+    const cameFromChild = prev != null && prev !== "/jobs";
+    if (!cameFromChild) return;
+    const supabase = createClient();
+    let cancelled = false;
+    const load = async () => {
+      const { data } = await supabase
+        .from("jobs")
+        .select("*, job_details(*), profiles!user_id(full_name, email, is_blocked), services(name), quotes(min_price_pence, max_price_pence, operatives_required)")
+        .order("created_at", { ascending: false });
+      if (cancelled || !data) return;
+      setJobs(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        data.map((j: any) => ({
+          id: j.id,
+          reference: j.reference || j.id.slice(0, 8).toUpperCase(),
+          service: j.services?.name || "Cleaning",
+          cleaning_type: j.cleaning_type || "domestic",
+          status: j.status,
+          customer_name: j.profiles?.full_name || "Unknown",
+          customer_email: j.profiles?.email || "",
+          address: [j.address_line_1, j.address_line_2, j.city].filter(Boolean).join(", "),
+          postcode: j.postcode || "",
+          date: j.preferred_date || j.created_at,
+          time: j.preferred_time || "",
+          price_estimate: j.quotes?.[0] ? Math.round((j.quotes[0].min_price_pence + j.quotes[0].max_price_pence) / 2) : 0,
+          rooms: j.job_details?.[0]?.quantity || 0,
+          operatives: j.quotes?.[0]?.operatives_required || 1,
+          complexity: j.job_details?.[0]?.complexity || "standard",
+          notes: j.notes || "",
+          created_at: j.created_at,
+          is_blocked: j.profiles?.is_blocked || false,
+        }))
+      );
+    };
     load();
-  }, [jobs.length, setJobs]);
+    return () => { cancelled = true; };
+  }, [pathname, setJobs]);
 
   const filtered = useMemo(() => {
     let list = jobs;
@@ -125,6 +209,12 @@ export default function AdminJobsPage() {
 
   return (
     <div>
+      {loadError && (
+        <div className="mb-4 flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          <AlertCircle className="h-5 w-5 shrink-0" />
+          <span>{loadError}</span>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Jobs</h1>
@@ -186,7 +276,8 @@ export default function AdminJobsPage() {
                   return (
                     <tr
                       key={job.id}
-                      className="border-b border-white/[0.06] transition-colors hover:bg-white/[0.03]"
+                      onClick={() => router.push(`/jobs/${job.id}`)}
+                      className="cursor-pointer border-b border-white/[0.06] transition-colors hover:bg-white/[0.06]"
                     >
                       <td className="px-4 py-3 font-mono text-xs text-slate-300">
                         {job.reference}
@@ -215,7 +306,7 @@ export default function AdminJobsPage() {
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center gap-1">
                           <button
                             onClick={() => setSelectedJob(job)}
