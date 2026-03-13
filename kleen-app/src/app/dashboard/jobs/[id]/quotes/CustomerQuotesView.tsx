@@ -158,6 +158,7 @@ export default function CustomerQuotesView({
     if (!id) return;
     const supabase = createClient();
     pmStore.syncFromSupabase(supabase);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   useEffect(() => {
@@ -237,7 +238,6 @@ export default function CustomerQuotesView({
     const supabase = createClient();
 
     if (undoState.type === "accepted") {
-      const now = new Date().toISOString();
       await supabase
         .from("jobs")
         .update({

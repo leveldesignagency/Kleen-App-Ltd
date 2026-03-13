@@ -16,7 +16,6 @@ import {
   CheckCircle2,
   XCircle,
   X,
-  Star,
   AlertTriangle,
   Banknote,
   Check,
@@ -514,7 +513,7 @@ export default function CustomerJobDetailPage() {
                     {canAcceptQuote && " — choose one on the quotes page."}
                   </p>
                   <div className="mt-4 space-y-2">
-                    {quotes.map((q, i) => {
+                    {quotes.map((q) => {
                       const isAccepted = job.accepted_quote_request_id === q.quote_request_id;
                       return (
                         <div
@@ -582,10 +581,10 @@ export default function CustomerJobDetailPage() {
             <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5 text-center">
               <Clock className="mx-auto h-8 w-8 text-blue-500" />
               <p className="mt-2 text-sm font-medium text-blue-700">
-                {job.status === "pending" ? "Your job is being reviewed" : "We're collecting quotes for you".replace("'", "\u2019")}
+                {job.status === "pending" ? "Your job is being reviewed" : "We&apos;re collecting quotes for you"}
               </p>
               <p className="mt-1 text-xs text-blue-500">
-                You'll be notified as soon as quotes are available.
+                You&apos;ll be notified as soon as quotes are available.
               </p>
             </div>
           )}

@@ -7,7 +7,6 @@ import {
   Trash2,
   Star,
   Check,
-  X,
   ExternalLink,
   Landmark,
   FileText,
@@ -59,6 +58,7 @@ export default function PaymentMethodsPage() {
   useEffect(() => {
     const load = async () => {
       await pmStore.syncFromSupabase(supabase);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { data: profile } = await supabase.from("profiles").select("account_type").eq("id", user.id).single();

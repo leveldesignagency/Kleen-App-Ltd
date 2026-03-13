@@ -18,6 +18,7 @@ export default function AddressesPage() {
 
   useEffect(() => {
     syncFromSupabase(supabase).then(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const startEdit = (addr: SavedAddress) => {

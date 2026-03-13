@@ -142,6 +142,7 @@ export default function RecurringCleansPage() {
       setLoading(false);
     };
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const togglePause = async (id: string) => {

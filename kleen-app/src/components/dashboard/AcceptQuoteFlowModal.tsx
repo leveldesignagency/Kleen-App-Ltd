@@ -174,6 +174,7 @@ export function AcceptQuoteFlowModal({
       }
     }, 90000);
     return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [payLoading, toast]);
 
   const handleSignContract = async (e: React.FormEvent) => {
