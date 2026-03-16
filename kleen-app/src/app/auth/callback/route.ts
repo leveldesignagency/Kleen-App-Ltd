@@ -7,10 +7,9 @@ export async function GET(request: Request) {
   const code = searchParams.get("code");
   const next = searchParams.get("next") ?? "/dashboard";
 
-  // Prefer production site URL so we never redirect to localhost after OAuth when deployed
+  // Production: redirect to canonical site URL. No localhost – live app only.
   const baseUrl =
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    `${url.protocol}//${url.host}`;
+    process.env.NEXT_PUBLIC_SITE_URL || `${url.protocol}//${url.host}`;
 
   if (code) {
     const supabase = createServerSupabaseClient();

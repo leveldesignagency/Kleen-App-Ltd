@@ -12,9 +12,10 @@ The customer app already has a “Continue with Google” button. To make it wor
    - **Supabase callback** (from your Supabase project):
      - `https://<YOUR_SUPABASE_PROJECT_REF>.supabase.co/auth/v1/callback`
    - Example: `https://lticdjufnasigivblsyg.supabase.co/auth/v1/callback` (replace with your project ref from Supabase URL).
-6. **Authorized JavaScript origins** (optional but recommended):
+6. **Authorized JavaScript origins** – add your live domains:
+   - `https://www.kleenapp.co.uk`
+   - `https://kleenapp.co.uk`
    - `https://dashboard.kleenapp.co.uk`
-   - `http://localhost:3000` (for local dev)
 7. Create and copy the **Client ID** and **Client secret**.
 
 ## 2. Supabase Dashboard
@@ -23,10 +24,11 @@ The customer app already has a “Continue with Google” button. To make it wor
 2. Enable the provider.
 3. Paste **Client ID** and **Client secret** from Google.
 4. **Authentication → URL configuration**:
-   - **Site URL**: `https://dashboard.kleenapp.co.uk` (production) or your Vercel preview URL when testing.
-   - **Redirect URLs**: add:
+   - **Site URL**: your live app URL (e.g. `https://www.kleenapp.co.uk`).
+   - **Redirect URLs**: add your live URLs only:
+     - `https://www.kleenapp.co.uk/**`
+     - `https://kleenapp.co.uk/**`
      - `https://dashboard.kleenapp.co.uk/**`
-     - `http://localhost:3000/**` (for local dev)
 
 Save. The customer app’s “Continue with Google” will then use Supabase’s Google provider and redirect back to your site after sign-in.
 
@@ -38,16 +40,15 @@ To make it feel more like your app:
 
 - In **Google Cloud Console → OAuth consent screen**, set a clear **App name** (e.g. “Kleen”) and **App logo**. Google will show that name and logo on the consent screen; the “Sign in to …” line may still show the Supabase domain for technical reasons.
 
-## 4. Production redirect (no localhost after login)
+## 4. Production redirect (live app only)
 
-Set **NEXT_PUBLIC_SITE_URL** in Vercel to your live site (e.g. `https://www.kleenapp.co.uk`). The app uses this for the OAuth redirect so users are sent back to your domain after Google sign-in, not to localhost.
+Set **NEXT_PUBLIC_SITE_URL** in Vercel (kleen-app) to your canonical live URL (e.g. `https://www.kleenapp.co.uk`). The app uses this for the OAuth redirect so users always land back on your domain after Google sign-in.
 
-In **Supabase → Authentication → URL configuration**, set **Redirect URLs** to include:
+In **Supabase → Authentication → URL configuration**, **Redirect URLs** should include only your live URLs:
 
 - `https://www.kleenapp.co.uk/**`
 - `https://kleenapp.co.uk/**`
 - `https://dashboard.kleenapp.co.uk/**`
-- `http://localhost:3000/**` (for local dev)
 
 ## 5. Optional: restrict to your domain
 

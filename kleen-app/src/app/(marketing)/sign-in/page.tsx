@@ -21,14 +21,19 @@ export default function SignInPage() {
     setError("");
     setOauthLoading(true);
     const supabase = createClient();
-    // Use production URL when set so OAuth always redirects back to your site, not localhost
+    // Production: use NEXT_PUBLIC_SITE_URL (set on Vercel). No localhost – live app only.
     const baseUrl =
-      typeof window !== "undefined"
-        ? (process.env.NEXT_PUBLIC_SITE_URL || window.location.origin)
-        : (process.env.NEXT_PUBLIC_SITE_URL || "");
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      (typeof window !== "undefined" ? window.location.origin : "");
+    if (!baseUrl) {
+      setError("Unable to start sign in");
+      setOauthLoading(false);
+      return;
+    }
+    const redirectTo = `${baseUrl}/auth/callback?next=/dashboard`;
     const { error: err } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${baseUrl}/auth/callback?next=/dashboard` },
+      options: { redirectTo },
     });
     if (err) {
       setError(err.message);
