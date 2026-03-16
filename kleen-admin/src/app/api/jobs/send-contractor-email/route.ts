@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { Resend } from "resend";
 
+// Use Resend's default so only RESEND_API_KEY is required; no domain verification needed
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "Kleen <onboarding@resend.dev>";
 
 export async function POST(request: NextRequest) {

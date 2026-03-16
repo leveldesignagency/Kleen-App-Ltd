@@ -4,6 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { Resend } from "resend";
 
+// Use Resend's default so only RESEND_API_KEY is required; no domain verification needed
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "Kleen <onboarding@resend.dev>";
 const CUSTOMER_DASHBOARD_URL = process.env.CUSTOMER_DASHBOARD_URL || "https://dashboard.kleenapp.co.uk";
 

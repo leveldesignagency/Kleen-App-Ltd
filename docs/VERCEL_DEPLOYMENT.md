@@ -65,7 +65,7 @@ Add the domain: **admin.kleenapp.co.uk** (in Vercel → Settings → Domains).
 | `SUPABASE_SERVICE_ROLE_KEY` | Same as kleen-app |
 | `STRIPE_SECRET_KEY` | Same Stripe account |
 | `RESEND_API_KEY` | From Resend |
-| `RESEND_FROM_EMAIL` | e.g. `Kleen <hello@kleenapp.co.uk>`. In Resend, verify kleenapp.co.uk (add the SPF/DKIM records they give you in Wix DNS). Incoming email can stay on Wix (keep MX); Resend only sends. |
+| `RESEND_FROM_EMAIL` | e.g. `Kleen <info@kleenapp.co.uk>` or `Kleen <noreply@kleenapp.co.uk>`. In Resend, verify kleenapp.co.uk (add the SPF/DKIM records they give you in Wix DNS). Incoming email can stay on Wix (keep MX); Resend only sends. |
 
 Set each for **Production** (and optionally Preview if you use branch deploys).
 
