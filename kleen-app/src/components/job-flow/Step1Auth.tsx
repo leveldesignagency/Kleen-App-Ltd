@@ -23,11 +23,11 @@ export default function Step1Auth() {
     setError("");
     setOauthLoading(true);
     const supabase = createClient();
-    // Use current origin so sign-in from dashboard.kleenapp.co.uk returns to dashboard, etc.
     const origin =
       typeof window !== "undefined" ? window.location.origin : "";
-    if (!origin) {
-      setError("Unable to start sign in");
+    // Never use localhost – redirect must go to live site
+    if (!origin || origin.includes("localhost")) {
+      setError("Please use the live site (www.kleenapp.co.uk) to continue.");
       setOauthLoading(false);
       return;
     }

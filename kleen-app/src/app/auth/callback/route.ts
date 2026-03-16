@@ -7,9 +7,14 @@ export async function GET(request: Request) {
   const code = searchParams.get("code");
   const next = searchParams.get("next") ?? "/dashboard";
 
-  // After login: always send to dashboard.kleenapp.co.uk (set NEXT_PUBLIC_SITE_URL on Vercel)
+  // After login: send to dashboard. Never redirect to localhost (Vercel must set NEXT_PUBLIC_SITE_URL).
+  const requestHost = `${url.protocol}//${url.host}`;
   const dashboardBase =
-    process.env.NEXT_PUBLIC_SITE_URL || `${url.protocol}//${url.host}`;
+    process.env.NEXT_PUBLIC_SITE_URL && !process.env.NEXT_PUBLIC_SITE_URL.includes("localhost")
+      ? process.env.NEXT_PUBLIC_SITE_URL
+      : requestHost.includes("localhost")
+        ? "https://dashboard.kleenapp.co.uk"
+        : requestHost;
 
   if (code) {
     const supabase = createServerSupabaseClient();

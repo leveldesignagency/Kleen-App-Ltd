@@ -54,6 +54,19 @@ Flow: user on **www.kleenapp.co.uk** or **kleenapp.co.uk** → Get started (job 
 
 Set **NEXT_PUBLIC_SITE_URL** in Vercel (kleen-app) to **https://dashboard.kleenapp.co.uk**. The auth callback uses this so every successful login redirects to the dashboard subdomain.
 
-## 6. Optional: restrict to your domain
+## 6. Stop redirects to localhost
+
+If after Google sign-in users land on **localhost:3000** with a `?code=...` URL, fix these:
+
+**Supabase → Authentication → URL configuration**
+- **Site URL** must be a **live** URL, e.g. `https://dashboard.kleenapp.co.uk`. If it is `http://localhost:3000`, change it and save.
+- **Redirect URLs**: remove `http://localhost:3000/**` if it is in the list. Keep only your live URLs (`https://dashboard.kleenapp.co.uk/**`, `https://www.kleenapp.co.uk/**`, `https://kleenapp.co.uk/**`).
+
+**Vercel → kleen-app → Environment Variables**
+- **NEXT_PUBLIC_SITE_URL** must be `https://dashboard.kleenapp.co.uk`. If it is `http://localhost:3000` or missing, set it and redeploy.
+
+The app now blocks “Continue with Google” on localhost and forces the callback to redirect to the live dashboard when the request host is localhost.
+
+## 7. Optional: restrict to your domain
 
 In Google OAuth consent screen you can limit sign-in to users from your organisation, or leave it open for any Google account. Restrictive options can be added later.

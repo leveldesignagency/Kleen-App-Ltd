@@ -21,11 +21,11 @@ export default function SignInPage() {
     setError("");
     setOauthLoading(true);
     const supabase = createClient();
-    // Use current origin so sign-in from dashboard.kleenapp.co.uk returns to dashboard, etc.
     const origin =
       typeof window !== "undefined" ? window.location.origin : "";
-    if (!origin) {
-      setError("Unable to start sign in");
+    // Never use localhost – redirect must go to live site (Supabase will send user here after OAuth)
+    if (!origin || origin.includes("localhost")) {
+      setError("Please sign in from the live site (www.kleenapp.co.uk or dashboard.kleenapp.co.uk).");
       setOauthLoading(false);
       return;
     }
