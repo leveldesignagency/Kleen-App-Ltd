@@ -463,15 +463,19 @@ export default function AdminContractorsPage() {
                               .from("operative_services")
                               .select("id, operative_id, service_id, contract_title, contract_content, contract_file_url, is_active, services(name)")
                               .eq("operative_id", c.id);
+                            type OsRow = { id: string; service_id: string; contract_title?: string; contract_content?: string; contract_file_url?: string | null; services: { name: string } | { name: string }[] | null };
                             const operative_services: OperativeServiceRow[] = (osData || []).map(
-                              (row: { id: string; service_id: string; contract_title?: string; contract_content?: string; contract_file_url?: string | null; services: { name: string } | null }) => ({
-                                id: row.id,
-                                service_id: row.service_id,
-                                service_name: row.services?.name ?? undefined,
-                                contract_title: row.contract_title || "",
-                                contract_content: row.contract_content || "",
-                                contract_file_url: row.contract_file_url ?? null,
-                              })
+                              (row: OsRow) => {
+                                const svc = Array.isArray(row.services) ? row.services[0] : row.services;
+                                return {
+                                  id: row.id,
+                                  service_id: row.service_id,
+                                  service_name: svc?.name ?? undefined,
+                                  contract_title: row.contract_title || "",
+                                  contract_content: row.contract_content || "",
+                                  contract_file_url: row.contract_file_url ?? null,
+                                };
+                              }
                             );
                             setModal({
                               mode: "edit",

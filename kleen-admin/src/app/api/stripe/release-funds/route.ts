@@ -4,11 +4,16 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 const PLATFORM_FEE_RATE = 0.175; // 17.5% — Kleen keeps this; rest goes to contractor
 
 export async function POST(request: NextRequest) {
   try {
+    const stripeKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeKey) {
+      return NextResponse.json({ error: "Stripe not configured" }, { status: 503 });
+    }
+    const stripe = new Stripe(stripeKey);
+
     const cookieStore = cookies();
     const supabaseAuth = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -23,7 +28,7 @@ export async function POST(request: NextRequest) {
         },
       }
     );
-    const { data: { user } } = await supabaseAuth.getUser();
+    const { data: { user } } = await supabaseAuth.auth.getUser();
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

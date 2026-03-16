@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { useAdminStore, Contractor, QuoteRequest } from "@/lib/admin-store";
+import { useAdminStore, Contractor, QuoteRequest, QuoteResponse } from "@/lib/admin-store";
 import { useAdminNotifications } from "@/lib/admin-notifications";
 import {
   ArrowLeft,
@@ -279,19 +279,22 @@ export default function AdminJobDetailPage() {
         .order("created_at", { ascending: false });
 
       if (qrData) {
-        const mapped = qrData.map((qr: { id: string; job_id: string; operative_id: string; operatives?: { full_name?: string }; status: string; deadline: string; message?: string; sent_at: string; viewed_at?: string; responded_at?: string; quote_responses?: Array<{ price_pence: number }> }) => ({
-          id: qr.id,
-          job_id: qr.job_id,
-          operative_id: qr.operative_id,
-          operative_name: qr.operatives?.full_name || "Unknown",
-          status: qr.status,
-          deadline: qr.deadline,
-          message: qr.message,
-          sent_at: qr.sent_at,
-          viewed_at: qr.viewed_at,
-          responded_at: qr.responded_at,
-          quote_response: qr.quote_responses?.[0] || undefined,
-        }));
+        const mapped: QuoteRequest[] = qrData.map((qr: { id: string; job_id: string; operative_id: string; operatives?: { full_name?: string } | { full_name?: string }[]; status: string; deadline: string; message?: string; sent_at: string; viewed_at?: string; responded_at?: string; quote_responses?: Array<{ price_pence: number }> }) => {
+          const op = Array.isArray(qr.operatives) ? qr.operatives[0] : qr.operatives;
+          return {
+            id: qr.id,
+            job_id: qr.job_id,
+            operative_id: qr.operative_id,
+            operative_name: op?.full_name || "Unknown",
+            status: qr.status as QuoteRequest["status"],
+            deadline: qr.deadline,
+            message: qr.message,
+            sent_at: qr.sent_at,
+            viewed_at: qr.viewed_at,
+            responded_at: qr.responded_at,
+            quote_response: (qr.quote_responses?.[0] as QuoteResponse | undefined) || undefined,
+          };
+        });
         const prev = useAdminStore.getState().quoteRequests;
         const next = (Array.isArray(prev) ? prev : []).filter((q: QuoteRequest) => q.job_id !== id).concat(mapped);
         setQuoteRequests(next);
@@ -362,19 +365,22 @@ export default function AdminJobDetailPage() {
     }
 
     if (qrData) {
-      const mapped = qrData.map((qr: { id: string; job_id: string; operative_id: string; operatives?: { full_name?: string }; status: string; deadline: string; message?: string; sent_at: string; viewed_at?: string; responded_at?: string; quote_responses?: Array<{ id: string; quote_request_id: string; price_pence: number; customer_price_pence?: number; estimated_hours: number; available_date?: string; notes?: string; created_at: string }> }) => ({
-        id: qr.id,
-        job_id: qr.job_id,
-        operative_id: qr.operative_id,
-        operative_name: qr.operatives?.full_name || "Unknown",
-        status: qr.status,
-        deadline: qr.deadline,
-        message: qr.message,
-        sent_at: qr.sent_at,
-        viewed_at: qr.viewed_at,
-        responded_at: qr.responded_at,
-        quote_response: qr.quote_responses?.[0] || undefined,
-      }));
+      const mapped: QuoteRequest[] = qrData.map((qr: { id: string; job_id: string; operative_id: string; operatives?: { full_name?: string } | { full_name?: string }[]; status: string; deadline: string; message?: string; sent_at: string; viewed_at?: string; responded_at?: string; quote_responses?: Array<{ id: string; quote_request_id: string; price_pence: number; customer_price_pence?: number; estimated_hours: number; available_date?: string; notes?: string; created_at: string }> }) => {
+        const op = Array.isArray(qr.operatives) ? qr.operatives[0] : qr.operatives;
+        return {
+          id: qr.id,
+          job_id: qr.job_id,
+          operative_id: qr.operative_id,
+          operative_name: op?.full_name || "Unknown",
+          status: qr.status as QuoteRequest["status"],
+          deadline: qr.deadline,
+          message: qr.message,
+          sent_at: qr.sent_at,
+          viewed_at: qr.viewed_at,
+          responded_at: qr.responded_at,
+          quote_response: (qr.quote_responses?.[0] as QuoteResponse | undefined) || undefined,
+        };
+      });
       const prev = useAdminStore.getState().quoteRequests;
       const next = (Array.isArray(prev) ? prev : []).filter((q: QuoteRequest) => q.job_id !== id).concat(mapped);
       setQuoteRequests(next);

@@ -4,16 +4,17 @@ import { cookies } from "next/headers";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "Kleen <onboarding@resend.dev>";
 
 export async function POST(request: NextRequest) {
-  if (!process.env.RESEND_API_KEY) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
     return NextResponse.json(
       { error: "Email not configured (RESEND_API_KEY missing)" },
       { status: 503 }
     );
   }
+  const resend = new Resend(apiKey);
 
   const cookieStore = cookies();
   const supabaseAuth = createServerClient(
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest) {
       },
     }
   );
-  const { data: { user } } = await supabaseAuth.getUser();
+  const { data: { user } } = await supabaseAuth.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
