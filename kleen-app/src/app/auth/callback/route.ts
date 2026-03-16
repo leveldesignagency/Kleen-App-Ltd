@@ -2,17 +2,24 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
+  const url = new URL(request.url);
+  const { searchParams } = url;
   const code = searchParams.get("code");
   const next = searchParams.get("next") ?? "/dashboard";
 
+  // Prefer production site URL so we never redirect to localhost after OAuth when deployed
+  const baseUrl =
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    `${url.protocol}//${url.host}`;
+
   if (code) {
     const supabase = createServerSupabaseClient();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error) {
-      return NextResponse.redirect(`${origin}${next}`);
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+    if (!error && data?.user) {
+      // Supabase + handle_new_user trigger already create profile for new OAuth users
+      return NextResponse.redirect(`${baseUrl}${next}`);
     }
   }
 
-  return NextResponse.redirect(`${origin}/sign-in`);
+  return NextResponse.redirect(`${baseUrl}/sign-in`);
 }

@@ -21,10 +21,14 @@ export default function SignInPage() {
     setError("");
     setOauthLoading(true);
     const supabase = createClient();
-    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    // Use production URL when set so OAuth always redirects back to your site, not localhost
+    const baseUrl =
+      typeof window !== "undefined"
+        ? (process.env.NEXT_PUBLIC_SITE_URL || window.location.origin)
+        : (process.env.NEXT_PUBLIC_SITE_URL || "");
     const { error: err } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${origin}/auth/callback?next=/dashboard` },
+      options: { redirectTo: `${baseUrl}/auth/callback?next=/dashboard` },
     });
     if (err) {
       setError(err.message);
