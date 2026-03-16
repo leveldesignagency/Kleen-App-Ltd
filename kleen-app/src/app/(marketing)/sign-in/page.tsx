@@ -21,16 +21,15 @@ export default function SignInPage() {
     setError("");
     setOauthLoading(true);
     const supabase = createClient();
-    // Production: use NEXT_PUBLIC_SITE_URL (set on Vercel). No localhost – live app only.
-    const baseUrl =
-      process.env.NEXT_PUBLIC_SITE_URL ||
-      (typeof window !== "undefined" ? window.location.origin : "");
-    if (!baseUrl) {
+    // Use current origin so sign-in from dashboard.kleenapp.co.uk returns to dashboard, etc.
+    const origin =
+      typeof window !== "undefined" ? window.location.origin : "";
+    if (!origin) {
       setError("Unable to start sign in");
       setOauthLoading(false);
       return;
     }
-    const redirectTo = `${baseUrl}/auth/callback?next=/dashboard`;
+    const redirectTo = `${origin}/auth/callback?next=/dashboard`;
     const { error: err } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo },

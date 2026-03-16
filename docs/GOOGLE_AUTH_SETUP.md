@@ -23,14 +23,14 @@ The customer app already has a “Continue with Google” button. To make it wor
 1. **Authentication → Providers** → open **Google**.
 2. Enable the provider.
 3. Paste **Client ID** and **Client secret** from Google.
-4. **Authentication → URL configuration**:
-   - **Site URL**: your live app URL (e.g. `https://www.kleenapp.co.uk`).
-   - **Redirect URLs**: add your live URLs only:
+4. **Authentication → URL configuration** (required for sign-in to work):
+   - **Site URL**: your main live app URL (e.g. `https://dashboard.kleenapp.co.uk` if that’s where the app lives).
+   - **Redirect URLs** – add every URL where users can sign in (missing = redirect fails, no dashboard):
+     - `https://dashboard.kleenapp.co.uk/**`
      - `https://www.kleenapp.co.uk/**`
      - `https://kleenapp.co.uk/**`
-     - `https://dashboard.kleenapp.co.uk/**`
 
-Save. The customer app’s “Continue with Google” will then use Supabase’s Google provider and redirect back to your site after sign-in.
+Save. The app uses the **current origin** so if users sign in from dashboard.kleenapp.co.uk they are sent back to dashboard.kleenapp.co.uk/dashboard.
 
 ## 3. Why does Google show “Sign in to lticdjufnasigivblsyg.supabase.co”?
 
@@ -40,16 +40,20 @@ To make it feel more like your app:
 
 - In **Google Cloud Console → OAuth consent screen**, set a clear **App name** (e.g. “Kleen”) and **App logo**. Google will show that name and logo on the consent screen; the “Sign in to …” line may still show the Supabase domain for technical reasons.
 
-## 4. Production redirect (live app only)
+## 4. Redirect URLs in Supabase
 
-Set **NEXT_PUBLIC_SITE_URL** in Vercel (kleen-app) to your canonical live URL (e.g. `https://www.kleenapp.co.uk`). The app uses this for the OAuth redirect so users always land back on your domain after Google sign-in.
+In **Supabase → Authentication → URL configuration**, **Redirect URLs** must include **every** domain where users can hit sign-in or job flow (so the OAuth callback is allowed):
 
-In **Supabase → Authentication → URL configuration**, **Redirect URLs** should include only your live URLs:
-
+- `https://dashboard.kleenapp.co.uk/**`
 - `https://www.kleenapp.co.uk/**`
 - `https://kleenapp.co.uk/**`
-- `https://dashboard.kleenapp.co.uk/**`
 
-## 5. Optional: restrict to your domain
+## 5. After login → dashboard.kleenapp.co.uk
+
+Flow: user on **www.kleenapp.co.uk** or **kleenapp.co.uk** → Get started (job flow) or Log in (sign-in page) → Continue with Google → after OAuth they are sent to **dashboard.kleenapp.co.uk/dashboard**.
+
+Set **NEXT_PUBLIC_SITE_URL** in Vercel (kleen-app) to **https://dashboard.kleenapp.co.uk**. The auth callback uses this so every successful login redirects to the dashboard subdomain.
+
+## 6. Optional: restrict to your domain
 
 In Google OAuth consent screen you can limit sign-in to users from your organisation, or leave it open for any Google account. Restrictive options can be added later.

@@ -23,18 +23,17 @@ export default function Step1Auth() {
     setError("");
     setOauthLoading(true);
     const supabase = createClient();
-    // Production: use NEXT_PUBLIC_SITE_URL (set on Vercel). No localhost – live app only.
-    const baseUrl =
-      process.env.NEXT_PUBLIC_SITE_URL ||
-      (typeof window !== "undefined" ? window.location.origin : "");
-    if (!baseUrl) {
+    // Use current origin so sign-in from dashboard.kleenapp.co.uk returns to dashboard, etc.
+    const origin =
+      typeof window !== "undefined" ? window.location.origin : "";
+    if (!origin) {
       setError("Unable to start sign in");
       setOauthLoading(false);
       return;
     }
     const { error: err } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${baseUrl}/auth/callback?next=/job-flow` },
+      options: { redirectTo: `${origin}/auth/callback?next=/dashboard` },
     });
     if (err) {
       setError(err.message);
