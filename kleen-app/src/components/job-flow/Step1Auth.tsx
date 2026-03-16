@@ -31,9 +31,14 @@ export default function Step1Auth() {
       setOauthLoading(false);
       return;
     }
+    // Use dashboard subdomain for callback so the session cookie is set there (same domain they'll land on)
+    const dashboardBase = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "";
+    const callbackOrigin =
+      dashboardBase && !dashboardBase.includes("localhost") ? dashboardBase : origin;
+    const redirectTo = `${callbackOrigin}/auth/callback?next=/dashboard`;
     const { error: err } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${origin}/auth/callback?next=/dashboard` },
+      options: { redirectTo },
     });
     if (err) {
       setError(err.message);

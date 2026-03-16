@@ -52,7 +52,10 @@ In **Supabase → Authentication → URL configuration**, **Redirect URLs** must
 
 Flow: user on **www.kleenapp.co.uk** or **kleenapp.co.uk** → Get started (job flow) or Log in (sign-in page) → Continue with Google → after OAuth they are sent to **dashboard.kleenapp.co.uk/dashboard**.
 
-Set **NEXT_PUBLIC_SITE_URL** in Vercel (kleen-app) to **https://dashboard.kleenapp.co.uk**. The auth callback uses this so every successful login redirects to the dashboard subdomain.
+Set **NEXT_PUBLIC_SITE_URL** in Vercel (kleen-app) to **https://dashboard.kleenapp.co.uk**. The app uses this in two places:
+
+- **OAuth redirectTo**: Sign-in and job-flow send Google to **dashboard.kleenapp.co.uk/auth/callback** (not www), so the session cookie is set on the dashboard subdomain. That way when we redirect to dashboard.kleenapp.co.uk/dashboard, the user is logged in.
+- **Auth callback**: After exchanging the code for a session, the callback redirects to `NEXT_PUBLIC_SITE_URL` + `/dashboard` so users land on the dashboard with a valid session.
 
 ## 6. Stop redirects to localhost
 
