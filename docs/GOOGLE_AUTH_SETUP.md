@@ -25,10 +25,11 @@ The customer app already has a “Continue with Google” button. To make it wor
 3. Paste **Client ID** and **Client secret** from Google.
 4. **Authentication → URL configuration** (required for sign-in to work):
    - **Site URL**: your main live app URL (e.g. `https://dashboard.kleenapp.co.uk` if that’s where the app lives).
-   - **Redirect URLs** – add every URL where users can sign in (missing = redirect fails, no dashboard):
+   - **Redirect URLs** – add every URL where users can sign in (missing = redirect fails or 500):
      - `https://dashboard.kleenapp.co.uk/**`
      - `https://www.kleenapp.co.uk/**`
      - `https://kleenapp.co.uk/**`
+     - `https://admin.kleenapp.co.uk/**`  ← required for admin portal login
 
 Save. The app uses the **current origin** so if users sign in from dashboard.kleenapp.co.uk they are sent back to dashboard.kleenapp.co.uk/dashboard.
 
@@ -47,6 +48,7 @@ In **Supabase → Authentication → URL configuration**, **Redirect URLs** must
 - `https://dashboard.kleenapp.co.uk/**`
 - `https://www.kleenapp.co.uk/**`
 - `https://kleenapp.co.uk/**`
+- `https://admin.kleenapp.co.uk/**`
 
 ## 5. After login → dashboard.kleenapp.co.uk
 
@@ -63,7 +65,7 @@ If after Google sign-in users land on **localhost:3000** with a `?code=...` URL,
 
 **Supabase → Authentication → URL configuration**
 - **Site URL** must be a **live** URL, e.g. `https://dashboard.kleenapp.co.uk`. If it is `http://localhost:3000`, change it and save.
-- **Redirect URLs**: remove `http://localhost:3000/**` if it is in the list. Keep only your live URLs (`https://dashboard.kleenapp.co.uk/**`, `https://www.kleenapp.co.uk/**`, `https://kleenapp.co.uk/**`).
+- **Redirect URLs**: remove `http://localhost:3000/**` if it is in the list. Keep only your live URLs (`https://dashboard.kleenapp.co.uk/**`, `https://www.kleenapp.co.uk/**`, `https://kleenapp.co.uk/**`, `https://admin.kleenapp.co.uk/**`).
 
 **Vercel → kleen-app → Environment Variables**
 - **NEXT_PUBLIC_SITE_URL** must be `https://dashboard.kleenapp.co.uk`. If it is `http://localhost:3000` or missing, set it and redeploy.

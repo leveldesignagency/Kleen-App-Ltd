@@ -103,6 +103,7 @@ export default function QuoteEditPage() {
           available_date?: string;
           notes?: string;
           created_at: string;
+          sent_to_customer_at?: string | null;
         } | null;
         const mapped: QuoteRequest = {
           id: qr.id,
@@ -118,6 +119,7 @@ export default function QuoteEditPage() {
           quote_response: resp
             ? {
                 id: resp.id,
+                sent_to_customer_at: resp.sent_to_customer_at,
                 quote_request_id: resp.quote_request_id,
                 price_pence: Number(resp.price_pence),
                 customer_price_pence: resp.customer_price_pence != null ? Number(resp.customer_price_pence) : undefined,
@@ -170,6 +172,7 @@ export default function QuoteEditPage() {
           estimated_hours: form.hours ? parseFloat(form.hours) : null,
           available_date: form.availableDate || null,
           notes: form.notes || null,
+          sent_to_customer_at: null, // edited → allow "Send to customer" again
         })
         .eq("id", quote.quote_response.id);
       setQuote((prev) =>
@@ -182,11 +185,12 @@ export default function QuoteEditPage() {
                 estimated_hours: form.hours ? parseFloat(form.hours) : 0,
                 available_date: form.availableDate || undefined,
                 notes: form.notes || undefined,
+                sent_to_customer_at: null,
               },
             }
           : prev
       );
-      toast({ type: "success", title: "Quote updated", message: "Changes saved." });
+      toast({ type: "success", title: "Quote updated", message: "Changes saved. You can send to customer again." });
     } else {
       const { data: inserted, error: insertError } = await supabase
         .from("quote_responses")
@@ -250,7 +254,7 @@ export default function QuoteEditPage() {
     const customerPrice = Math.round(quote.quote_response.price_pence * (1 + SERVICE_FEE_RATE));
     await supabase
       .from("quote_responses")
-      .update({ customer_price_pence: customerPrice })
+      .update({ customer_price_pence: customerPrice, sent_to_customer_at: new Date().toISOString() })
       .eq("id", quote.quote_response.id);
     await supabase
       .from("jobs")
@@ -275,6 +279,22 @@ export default function QuoteEditPage() {
       });
     }
     setJob((p) => (p ? { ...p, status: "sent_to_customer" } : null));
+    setQuote((p) =>
+      p?.quote_response ? { ...p, quote_response: { ...p.quote_response, sent_to_customer_at: new Date().toISOString() } } : p
+    );
+    try {
+      const res = await fetch("/api/jobs/notify-customer-quotes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: job.id, quoteCount: 1 }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast({ type: "warning", title: "Email not sent", message: data.error || "Customer notification email could not be sent." });
+      }
+    } catch {
+      toast({ type: "warning", title: "Email not sent", message: "Customer notification email could not be sent." });
+    }
     toast({ type: "success", title: "Sent to customer", message: `Quote from ${quote.operative_name} sent to customer.` });
     setSaving(false);
   };
@@ -315,7 +335,8 @@ export default function QuoteEditPage() {
   }
 
   const badge = QR_STATUS_BADGE[quote.status] ?? QR_STATUS_BADGE.sent;
-  const canSend = quote.quote_response && !["sent_to_customer", "customer_accepted", "accepted", "completed", "funds_released"].includes(job.status);
+  const terminalStatuses = ["customer_accepted", "accepted", "completed", "funds_released"];
+  const canSend = quote.quote_response && !terminalStatuses.includes(job.status) && quote.quote_response.sent_to_customer_at == null;
   const canAddResponse = (quote.status === "sent" || quote.status === "viewed") && !quote.quote_response;
 
   return (

@@ -160,7 +160,7 @@ export default function JobQuotesPage() {
       const responsesByRequestId = (respData || []).reduce((acc, r) => {
         acc[r.quote_request_id] = r;
         return acc;
-      }, {} as Record<string, { id: string; quote_request_id: string; price_pence: number; customer_price_pence?: number; estimated_hours: number; available_date?: string; notes?: string; created_at: string }>);
+      }, {} as Record<string, { id: string; quote_request_id: string; price_pence: number; customer_price_pence?: number; estimated_hours: number; available_date?: string; notes?: string; created_at: string; sent_to_customer_at?: string | null }>);
 
       const mapped: QuoteRequest[] = qrData.map((qr: {
         id: string;
@@ -196,6 +196,7 @@ export default function JobQuotesPage() {
                 available_date: resp.available_date,
                 notes: resp.notes,
                 created_at: resp.created_at,
+                sent_to_customer_at: resp.sent_to_customer_at,
               }
             : undefined,
         };
@@ -384,9 +385,10 @@ export default function JobQuotesPage() {
     }
     setSendingAll(true);
     const supabase = createClient();
+    const sentAt = new Date().toISOString();
     for (const qr of withResponse) {
       const customerPrice = Math.round(qr.quote_response!.price_pence * (1 + SERVICE_FEE_RATE));
-      await supabase.from("quote_responses").update({ customer_price_pence: customerPrice }).eq("id", qr.quote_response!.id);
+      await supabase.from("quote_responses").update({ customer_price_pence: customerPrice, sent_to_customer_at: sentAt }).eq("id", qr.quote_response!.id);
     }
     await supabase
       .from("jobs")
@@ -402,6 +404,26 @@ export default function JobQuotesPage() {
       await supabase.from("quotes").insert({ job_id: job.id, min_price_pence: customerPrice, max_price_pence: customerPrice, estimated_duration_min: durationMin, operatives_required: 1 });
     }
     setJob((prev) => prev ? { ...prev, status: "sent_to_customer" } : null);
+    setQuotes((prev) =>
+      prev.map((q) =>
+        q.quote_response && withResponse.some((w) => w.id === q.id)
+          ? { ...q, quote_response: { ...q.quote_response, customer_price_pence: Math.round(q.quote_response.price_pence * (1 + SERVICE_FEE_RATE)), sent_to_customer_at: sentAt } }
+          : q
+      )
+    );
+    try {
+      const res = await fetch("/api/jobs/notify-customer-quotes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: job.id, quoteCount: withResponse.length }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast({ type: "warning", title: "Email not sent", message: data.error || "Customer notification email could not be sent." });
+      }
+    } catch {
+      toast({ type: "warning", title: "Email not sent", message: "Customer notification email could not be sent." });
+    }
     toast({ type: "success", title: "Sent to customer", message: `${withResponse.length} quote(s) sent to customer.` });
     setSendingAll(false);
   };
@@ -411,7 +433,8 @@ export default function JobQuotesPage() {
     setSendingOne(qr.id);
     const supabase = createClient();
     const customerPrice = Math.round(qr.quote_response.price_pence * (1 + SERVICE_FEE_RATE));
-    await supabase.from("quote_responses").update({ customer_price_pence: customerPrice }).eq("id", qr.quote_response.id);
+    const sentAt = new Date().toISOString();
+    await supabase.from("quote_responses").update({ customer_price_pence: customerPrice, sent_to_customer_at: sentAt }).eq("id", qr.quote_response.id);
     await supabase
       .from("jobs")
       .update({ status: "sent_to_customer", quotes_sent_to_customer_at: new Date().toISOString() })
@@ -427,10 +450,23 @@ export default function JobQuotesPage() {
     setQuotes((prev) =>
       prev.map((q) =>
         q.id === qr.id && q.quote_response
-          ? { ...q, quote_response: { ...q.quote_response, customer_price_pence: customerPrice } }
+          ? { ...q, quote_response: { ...q.quote_response, customer_price_pence: customerPrice, sent_to_customer_at: sentAt } }
           : q
       )
     );
+    try {
+      const res = await fetch("/api/jobs/notify-customer-quotes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: job.id, quoteCount: 1 }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast({ type: "warning", title: "Email not sent", message: data.error || "Customer notification email could not be sent." });
+      }
+    } catch {
+      toast({ type: "warning", title: "Email not sent", message: "Customer notification email could not be sent." });
+    }
     toast({ type: "success", title: "Sent to customer", message: `Quote from ${qr.operative_name} sent. Customer dashboard updated.` });
     setSendingOne(null);
   };
@@ -455,7 +491,7 @@ export default function JobQuotesPage() {
   const terminalOrAccepted = ["customer_accepted", "accepted", "completed", "funds_released"];
   const canSend = !terminalOrAccepted.includes(job.status) && quotes.some((q) => q.quote_response);
   const hasQuotesToSend = quotes.some(
-    (q) => q.quote_response && (job.status !== "sent_to_customer" || (q.quote_response as { customer_price_pence?: number }).customer_price_pence == null)
+    (q) => q.quote_response && (q.quote_response.sent_to_customer_at == null)
   );
   const showSendAllButton = quotes.length > 0 && !terminalOrAccepted.includes(job.status) && hasQuotesToSend;
 
@@ -555,8 +591,8 @@ export default function JobQuotesPage() {
                 {quotes.map((qr) => {
                   const customerRejected = job.status === "cancelled" && job.cancelled_reason === "quotes_declined";
                   const badge = customerRejected ? QR_STATUS_BADGE.rejected_by_customer : (QR_STATUS_BADGE[qr.status] ?? QR_STATUS_BADGE.sent);
-                  const notYetSent = (qr.quote_response as { customer_price_pence?: number } | undefined)?.customer_price_pence == null;
-const canSendOne = qr.quote_response && !terminalOrAccepted.includes(job.status) && (job.status !== "sent_to_customer" || notYetSent);
+                  const notYetSent = qr.quote_response?.sent_to_customer_at == null;
+                  const canSendOne = qr.quote_response && !terminalOrAccepted.includes(job.status) && notYetSent;
                   return (
                     <div
                       key={qr.id}

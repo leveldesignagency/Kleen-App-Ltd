@@ -466,13 +466,14 @@ export default function AdminJobDetailPage() {
     setActionLoading(true);
     const supabase = createClient();
 
-    // Calculate customer prices (contractor price + 17.5%) for each quoted response
+    // Calculate customer prices and mark as sent for each quoted response
+    const sentAt = new Date().toISOString();
     for (const qr of quotedResponses) {
-      if (qr.quote_response && !qr.quote_response.customer_price_pence) {
-        const customerPrice = Math.round(qr.quote_response.price_pence * (1 + SERVICE_FEE_RATE));
+      if (qr.quote_response) {
+        const customerPrice = qr.quote_response.customer_price_pence ?? Math.round(qr.quote_response.price_pence * (1 + SERVICE_FEE_RATE));
         await supabase
           .from("quote_responses")
-          .update({ customer_price_pence: customerPrice })
+          .update({ customer_price_pence: customerPrice, sent_to_customer_at: sentAt })
           .eq("id", qr.quote_response.id);
       }
     }
@@ -511,6 +512,19 @@ export default function AdminJobDetailPage() {
     }
 
     updateJob(job.id, { status: "sent_to_customer" });
+    try {
+      const res = await fetch("/api/jobs/notify-customer-quotes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: job.id, quoteCount: quotedResponses.length }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast({ type: "warning", title: "Email not sent", message: data.error || "Customer notification email could not be sent." });
+      }
+    } catch {
+      toast({ type: "warning", title: "Email not sent", message: "Customer notification email could not be sent." });
+    }
     toast({ type: "success", title: "Quotes Sent to Customer", message: "Customer will be notified to choose a quote" });
     setActionLoading(false);
   };
@@ -675,13 +689,14 @@ export default function AdminJobDetailPage() {
     setActionLoading(true);
     const supabase = createClient();
     const customerPrice = Math.round(qr.quote_response.price_pence * (1 + SERVICE_FEE_RATE));
+    const sentAt = new Date().toISOString();
     await supabase
       .from("quote_responses")
-      .update({ customer_price_pence: customerPrice })
+      .update({ customer_price_pence: customerPrice, sent_to_customer_at: sentAt })
       .eq("id", qr.quote_response.id);
     await supabase
       .from("jobs")
-      .update({ status: "sent_to_customer", quotes_sent_to_customer_at: new Date().toISOString() })
+      .update({ status: "sent_to_customer", quotes_sent_to_customer_at: sentAt })
       .eq("id", job.id);
     // Sync customer-facing quote (public.quotes) so dashboard shows price
     const durationMin = qr.quote_response.estimated_hours ? Math.round(Number(qr.quote_response.estimated_hours) * 60) : 60;
@@ -703,7 +718,20 @@ export default function AdminJobDetailPage() {
       });
     }
     updateJob(job.id, { status: "sent_to_customer" });
-    updateQuoteRequest(qr.id, { quote_response: { ...qr.quote_response, customer_price_pence: customerPrice } });
+    updateQuoteRequest(qr.id, { quote_response: { ...qr.quote_response, customer_price_pence: customerPrice, sent_to_customer_at: sentAt } });
+    try {
+      const res = await fetch("/api/jobs/notify-customer-quotes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: job.id, quoteCount: 1 }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast({ type: "warning", title: "Email not sent", message: data.error || "Customer notification email could not be sent." });
+      }
+    } catch {
+      toast({ type: "warning", title: "Email not sent", message: "Customer notification email could not be sent." });
+    }
     toast({ type: "success", title: "Sent to customer", message: `Quote from ${qr.operative_name} sent to customer.` });
     setActionLoading(false);
   };
@@ -1435,6 +1463,7 @@ function WorkflowActions({
 
   if (status === "awaiting_quotes" || status === "quoted" || status === "quotes_received") {
     const hasQuotes = quotedResponses.length > 0;
+    const hasQuotesToSend = quotedResponses.some((q) => q.quote_response?.sent_to_customer_at == null);
     return (
       <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-5">
         <div className="flex items-center gap-2 text-blue-400">
@@ -1448,7 +1477,7 @@ function WorkflowActions({
             ? `${quotedResponses.length} quote(s). Send all to customer with 17.5% fee, or send individually from each quote below.`
             : "Add quotes from your contractors using the Add Quote button."}
         </p>
-        {hasQuotes && (
+        {hasQuotes && hasQuotesToSend && (
           <button
             onClick={onSendToCustomer}
             disabled={actionLoading}

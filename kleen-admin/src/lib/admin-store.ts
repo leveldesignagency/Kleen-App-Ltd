@@ -80,6 +80,8 @@ export interface QuoteResponse {
   arrival_time?: string;
   notes?: string;
   created_at: string;
+  /** When this quote was sent to customer. Null = not sent or edited after send (show "Send to customer" again). */
+  sent_to_customer_at?: string | null;
 }
 
 interface AdminStore {
