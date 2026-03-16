@@ -51,7 +51,11 @@ export default function DashboardSidebar() {
 
   const sidebarContent = (
     <>
-      <Link href="/" className="flex items-center px-4 py-5">
+      <Link
+        href="https://www.kleenapp.co.uk"
+        className="flex items-center px-4 py-5"
+        aria-label="KLEEN home"
+      >
         <Image
           src="/images/kleen-logo.svg"
           alt="KLEEN"
