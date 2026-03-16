@@ -65,8 +65,9 @@ export const usePaymentMethodStore = create<PaymentMethodStore>()((set, get) => 
       .single();
     if (error || !row) return null;
     const newMethod = rowToMethod(row);
+    const withDefault = { ...newMethod, isDefault: newMethod.isDefault ?? true };
     set((s) => ({
-      methods: s.methods.map((m) => ({ ...m, isDefault: false })).concat(newMethod),
+      methods: s.methods.map((m) => ({ ...m, isDefault: false })).concat(withDefault),
     }));
     return newMethod;
   },

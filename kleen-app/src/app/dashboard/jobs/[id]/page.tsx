@@ -215,8 +215,10 @@ export default function CustomerJobDetailPage() {
             acc[r.quote_request_id] = r;
             return acc;
           }, {} as Record<string, { id: string; quote_request_id: string; customer_price_pence: number; estimated_hours?: number; available_date?: string | null }>);
+          type QrRow = { id: string; operative_id: string; operatives?: { avg_rating?: number } | { avg_rating?: number }[] };
           const mapped: CustomerQuote[] = [];
-          qrData.forEach((qr: { id: string; operative_id: string; operatives?: { avg_rating?: number } }, i: number) => {
+          qrData.forEach((qr: QrRow, i: number) => {
+            const operative = Array.isArray(qr.operatives) ? qr.operatives[0] : qr.operatives;
             const resp = byRequestId[qr.id];
             if (resp?.customer_price_pence) {
               mapped.push({
@@ -225,7 +227,7 @@ export default function CustomerJobDetailPage() {
                 customer_price_pence: resp.customer_price_pence,
                 estimated_hours: resp.estimated_hours || 0,
                 available_date: resp.available_date || null,
-                contractor_rating: qr.operatives?.avg_rating || 0,
+                contractor_rating: operative?.avg_rating || 0,
                 contractor_label: `Contractor ${String.fromCharCode(65 + i)}`,
               });
             }

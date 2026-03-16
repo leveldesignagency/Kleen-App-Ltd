@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { usePaymentMethodStore } from "@/lib/payment-methods";
+import type { Notification } from "@/lib/notifications";
 import { FileText, ShieldCheck, CreditCard, Loader2, CheckCircle2, Check } from "lucide-react";
 
 const KLEEN_TERMS_VERSION = "1.0";
@@ -46,7 +47,7 @@ interface AcceptQuoteFlowModalProps {
   onClose: () => void;
   setPayLoading: (v: boolean) => void;
   payLoading?: boolean;
-  toast: (t: { type: string; title: string; message: string }) => void;
+  toast: (t: Omit<Notification, "id">) => void;
 }
 
 export function AcceptQuoteFlowModal({

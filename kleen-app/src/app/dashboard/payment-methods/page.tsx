@@ -69,6 +69,7 @@ export default function PaymentMethodsPage() {
       setLoading(false);
     };
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [adding, setAdding] = useState(false);
   const [connectingId, setConnectingId] = useState<string | null>(null);

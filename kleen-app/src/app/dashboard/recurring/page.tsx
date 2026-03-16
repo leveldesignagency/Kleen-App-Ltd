@@ -93,31 +93,34 @@ export default function RecurringCleansPage() {
         setLoading(false);
         return;
       }
+      type JobTemplate = {
+        service_id: string;
+        cleaning_type: string;
+        size: string;
+        quantity: number;
+        complexity: string;
+        address_line_1: string;
+        address_line_2?: string | null;
+        city?: string | null;
+        postcode: string;
+        preferred_time: string;
+      };
+      type Row = {
+        id: string;
+        template_id: string;
+        frequency: string;
+        preferred_day: number;
+        preferred_time: string;
+        status: string;
+        next_run_date: string;
+        total_runs: number;
+        job_templates: JobTemplate | JobTemplate[] | null;
+      };
       const list: RecurringSchedule[] = rows
-        .filter((r: { job_templates: unknown }) => r.job_templates)
-        .map((r: {
-          id: string;
-          template_id: string;
-          frequency: string;
-          preferred_day: number;
-          preferred_time: string;
-          status: string;
-          next_run_date: string;
-          total_runs: number;
-          job_templates: {
-            service_id: string;
-            cleaning_type: string;
-            size: string;
-            quantity: number;
-            complexity: string;
-            address_line_1: string;
-            address_line_2?: string | null;
-            city?: string | null;
-            postcode: string;
-            preferred_time: string;
-          };
-        }) => {
-          const t = r.job_templates;
+        .filter((r: Row) => r.job_templates != null)
+        .map((r: Row) => {
+          const t = Array.isArray(r.job_templates) ? r.job_templates[0] : r.job_templates;
+          if (!t) return null;
           const svc = getService(t.service_id);
           return {
             id: r.id,
@@ -137,7 +140,8 @@ export default function RecurringCleansPage() {
             nextRunDate: r.next_run_date,
             totalRuns: r.total_runs,
           };
-        });
+        })
+        .filter((row): row is RecurringSchedule => row != null);
       setSchedules(list);
       setLoading(false);
     };

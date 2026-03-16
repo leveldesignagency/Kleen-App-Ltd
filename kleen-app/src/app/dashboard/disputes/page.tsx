@@ -67,30 +67,34 @@ export default function DisputesPage() {
         setLoading(false);
         return;
       }
+      type Row = {
+        id: string;
+        job_id: string;
+        status: DisputeStatus;
+        reason: string;
+        resolution: string | null;
+        created_at: string;
+        jobs: { reference: string; service_id: string } | { reference: string; service_id: string }[] | null;
+      };
       const list: DisputeRow[] = rows
-        .filter((r: { jobs: unknown }) => r.jobs)
-        .map((r: {
-          id: string;
-          job_id: string;
-          status: DisputeStatus;
-          reason: string;
-          resolution: string | null;
-          created_at: string;
-          jobs: { reference: string; service_id: string };
-        }) => {
-          const svc = getService(r.jobs.service_id);
+        .filter((r: Row) => r.jobs != null)
+        .map((r: Row) => {
+          const job = Array.isArray(r.jobs) ? r.jobs[0] : r.jobs;
+          if (!job) return null;
+          const svc = getService(job.service_id);
           return {
             id: r.id,
             jobId: r.job_id,
-            jobReference: r.jobs.reference,
-            serviceId: r.jobs.service_id,
-            serviceName: svc?.name ?? r.jobs.service_id,
+            jobReference: job.reference,
+            serviceId: job.service_id,
+            serviceName: svc?.name ?? job.service_id,
             status: r.status,
             reason: r.reason,
             resolution: r.resolution,
             createdAt: r.created_at,
           };
-        });
+        })
+        .filter((row): row is DisputeRow => row != null);
       setDisputes(list);
       setLoading(false);
     };

@@ -12,7 +12,7 @@ interface SwipeButtonBaseProps {
 
 interface SwipeButtonAsButton
   extends SwipeButtonBaseProps,
-    Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "className"> {
+    Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "className" | "children"> {
   href?: undefined;
 }
 

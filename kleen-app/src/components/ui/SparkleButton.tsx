@@ -10,7 +10,7 @@ interface SparkleButtonBaseProps {
 
 interface SparkleButtonAsButton
   extends SparkleButtonBaseProps,
-    Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "className"> {
+    Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "className" | "children"> {
   href?: undefined;
 }
 
