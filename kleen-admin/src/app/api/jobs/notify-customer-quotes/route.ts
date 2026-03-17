@@ -4,8 +4,9 @@ import { createServerClient } from "@supabase/ssr";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { Resend } from "resend";
 
-// Use Resend's default so only RESEND_API_KEY is required; no domain verification needed
-const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "Kleen <onboarding@resend.dev>";
+// Use Resend's default unless a verified Resend domain is set (kleenapp.co.uk not verified on Wix → use onboarding)
+const fromEnv = process.env.RESEND_FROM_EMAIL || "";
+const FROM_EMAIL = fromEnv.includes("kleenapp.co.uk") ? "Kleen <onboarding@resend.dev>" : (fromEnv || "Kleen <onboarding@resend.dev>");
 const CUSTOMER_DASHBOARD_URL = process.env.CUSTOMER_DASHBOARD_URL || "https://dashboard.kleenapp.co.uk";
 
 export async function POST(request: NextRequest) {
