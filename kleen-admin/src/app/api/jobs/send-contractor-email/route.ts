@@ -1,12 +1,10 @@
+import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { Resend } from "resend";
-
-// Use Resend's default unless a verified Resend domain is set (kleenapp.co.uk not verified on Wix → use onboarding)
-const fromEnv = process.env.RESEND_FROM_EMAIL || "";
-const FROM_EMAIL = fromEnv.includes("kleenapp.co.uk") ? "Kleen <onboarding@resend.dev>" : (fromEnv || "Kleen <onboarding@resend.dev>");
+import { resolveResendFrom } from "@/lib/resend-config";
 
 export async function POST(request: NextRequest) {
   const apiKey = process.env.RESEND_API_KEY;
@@ -54,7 +52,9 @@ export async function POST(request: NextRequest) {
   const supabase = createServiceRoleClient();
   const { data: job, error: jobErr } = await supabase
     .from("jobs")
-    .select("id, reference, address_line_1, address_line_2, city, postcode, preferred_date, preferred_time, notes, accepted_quote_request_id, services(name)")
+    .select(
+      "id, reference, address_line_1, address_line_2, city, postcode, preferred_date, preferred_time, notes, accepted_quote_request_id, operative_portal_token, services(name)"
+    )
     .eq("id", jobId)
     .single();
 
@@ -112,6 +112,22 @@ export async function POST(request: NextRequest) {
   const preferredTime = (job as { preferred_time?: string }).preferred_time || "—";
   const notes = (job as { notes?: string }).notes || "None";
 
+  let portalToken = (job as { operative_portal_token?: string | null }).operative_portal_token;
+  if (!portalToken) {
+    portalToken = randomBytes(24).toString("hex");
+    const ts = new Date().toISOString();
+    await supabase
+      .from("jobs")
+      .update({ operative_portal_token: portalToken, operative_portal_token_created_at: ts })
+      .eq("id", jobId);
+  }
+  const portalBase =
+    process.env.CONTRACTOR_PORTAL_BASE_URL?.replace(/\/$/, "") ||
+    process.env.NEXT_PUBLIC_CUSTOMER_APP_URL?.replace(/\/$/, "") ||
+    process.env.CUSTOMER_DASHBOARD_URL?.replace(/\/$/, "") ||
+    "https://dashboard.kleenapp.co.uk";
+  const fieldPortalUrl = `${portalBase}/o/${portalToken}`;
+
   const html = `
 <!DOCTYPE html>
 <html>
@@ -130,14 +146,18 @@ export async function POST(request: NextRequest) {
     <tr><td style="padding: 8px 0; border-bottom: 1px solid #e2e8f0; font-weight: 600;">Your available date</td><td style="padding: 8px 0; border-bottom: 1px solid #e2e8f0;">${availableDate}</td></tr>
     <tr><td style="padding: 8px 0; border-bottom: 1px solid #e2e8f0; font-weight: 600;">Notes</td><td style="padding: 8px 0; border-bottom: 1px solid #e2e8f0;">${notes}</td></tr>
   </table>
-  <p style="margin-top: 24px; color: #64748b; font-size: 0.875rem;">If you have any questions, contact Kleen admin.</p>
+  <p style="margin-top: 24px; margin-bottom: 12px; font-weight: 600;">Field updates (on my way → arrived → complete)</p>
+  <p style="margin-bottom: 16px;">
+    <a href="${fieldPortalUrl}" style="display: inline-block; background: #0891b2; color: white; text-decoration: none; padding: 12px 20px; border-radius: 8px; font-weight: 600;">Open job status page</a>
+  </p>
+  <p style="color: #64748b; font-size: 0.875rem;">Use this link on the day of the job — no login required. If you have any questions, contact Kleen admin.</p>
 </body>
 </html>
 `.trim();
 
   try {
     const { error } = await resend.emails.send({
-      from: FROM_EMAIL,
+      from: resolveResendFrom(),
       to: operative.email,
       subject: `Job ${ref} — You've been assigned`,
       html,

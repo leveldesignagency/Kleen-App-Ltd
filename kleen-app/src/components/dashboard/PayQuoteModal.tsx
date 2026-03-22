@@ -54,11 +54,23 @@ export function PayModalForm({
         setPayLoading(false);
         return;
       }
-      const { error: confirmError } = await stripe.confirmCardPayment(data.clientSecret);
+      const { error: confirmError, paymentIntent } = await stripe.confirmCardPayment(data.clientSecret);
       if (confirmError) {
         toast({ type: "error", title: "Payment failed", message: confirmError.message || "Card declined." });
         setPayLoading(false);
         return;
+      }
+      if (paymentIntent?.id) {
+        await fetch("/api/jobs/confirm-accept", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jobId,
+            quoteRequestId: quote.quote_request_id,
+            customerPricePence: quote.customer_price_pence,
+            stripePaymentIntentId: paymentIntent.id,
+          }),
+        });
       }
       onSuccess();
     } catch (err) {

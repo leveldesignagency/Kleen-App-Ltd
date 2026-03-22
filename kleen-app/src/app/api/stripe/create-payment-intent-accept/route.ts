@@ -55,7 +55,11 @@ export async function POST(request: NextRequest) {
     }
 
     const amount = Math.round(customerPricePence);
-    const metadata = { job_id: jobId, quote_request_id: quoteRequestId };
+    const metadata = {
+      job_id: jobId,
+      quote_request_id: quoteRequestId,
+      escrow: "manual",
+    };
 
     if (paymentMethodType === "paypal" || paymentMethodType === "klarna") {
       const paymentIntent = await stripe.paymentIntents.create({
@@ -97,6 +101,7 @@ export async function POST(request: NextRequest) {
       payment_method_types: ["card"],
       payment_method: pmId,
       confirm: false,
+      capture_method: "manual",
       metadata,
     });
 

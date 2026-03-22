@@ -55,6 +55,9 @@ Add the domain: **admin.kleenapp.co.uk** (in Vercel → Settings → Domains).
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Stripe publishable key |
 | `STRIPE_SECRET_KEY` | Stripe secret key |
 | `STRIPE_WEBHOOK_SECRET` | From Stripe Dashboard → Webhooks → your **production** endpoint (see below) |
+| `RESEND_API_KEY` | Optional: same Resend key — used when Stripe webhook fires to email **admin** that a customer accepted a quote (`ADMIN_NOTIFY_EMAIL`, default `info@kleenapp.co.uk`) |
+| `ADMIN_NOTIFY_EMAIL` | Optional; who receives “quote accepted” admin emails |
+| `ADMIN_APP_URL` | Optional; default `https://admin.kleenapp.co.uk` (link in admin email) |
 
 ### kleen-admin (admin)
 

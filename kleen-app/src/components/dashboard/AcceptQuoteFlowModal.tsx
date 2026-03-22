@@ -270,11 +270,23 @@ export function AcceptQuoteFlowModal({
         setPayLoading(false);
         return;
       }
-      const { error: confirmError } = await stripe.confirmCardPayment(data.clientSecret);
+      const { error: confirmError, paymentIntent } = await stripe.confirmCardPayment(data.clientSecret);
       if (confirmError) {
         toast({ type: "error", title: "Payment failed", message: confirmError.message || "Card declined." });
         setPayLoading(false);
         return;
+      }
+      if (paymentIntent?.id) {
+        await fetch("/api/jobs/confirm-accept", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jobId,
+            quoteRequestId: quote.quote_request_id,
+            customerPricePence: quote.customer_price_pence,
+            stripePaymentIntentId: paymentIntent.id,
+          }),
+        });
       }
       setPayLoading(false);
       setPaymentSuccess(true);
@@ -328,11 +340,23 @@ export function AcceptQuoteFlowModal({
         setPayLoading(false);
         return;
       }
-      const { error: confirmError } = await stripe.confirmCardPayment(data.clientSecret);
+      const { error: confirmError, paymentIntent } = await stripe.confirmCardPayment(data.clientSecret);
       if (confirmError) {
         toast({ type: "error", title: "Payment failed", message: confirmError.message || "Card declined." });
         setPayLoading(false);
         return;
+      }
+      if (paymentIntent?.id) {
+        await fetch("/api/jobs/confirm-accept", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jobId,
+            quoteRequestId: quote.quote_request_id,
+            customerPricePence: quote.customer_price_pence,
+            stripePaymentIntentId: paymentIntent.id,
+          }),
+        });
       }
       // Save this card to Payment Methods so it appears next time (quote flow → payment methods)
       const last4 = paymentMethod.card?.last4 ?? "";

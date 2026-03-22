@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { User, Mail, Phone, Save, Loader2, CreditCard } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { useNotifications } from "@/lib/notifications";
 
 export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
@@ -15,6 +16,7 @@ export default function ProfilePage() {
   });
 
   const supabase = createClient();
+  const pushToast = useNotifications((s) => s.push);
 
   useEffect(() => {
     const load = async () => {
@@ -42,20 +44,39 @@ export default function ProfilePage() {
 
   const handleSave = async () => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    setSaving(true);
-    const { error } = await supabase
-      .from("profiles")
-      .update({
-        full_name: profile.fullName || null,
-        phone: profile.phone || null,
-      })
-      .eq("id", user.id);
-    setSaving(false);
-    if (error) {
-      console.error(error);
+    if (!user) {
+      pushToast({
+        type: "error",
+        title: "Not signed in",
+        message: "Sign in again to save your profile.",
+      });
       return;
     }
+    setSaving(true);
+    const email = user.email ?? profile.email ?? "";
+    const { error } = await supabase.from("profiles").upsert(
+      {
+        id: user.id,
+        email,
+        full_name: profile.fullName || null,
+        phone: profile.phone || null,
+      },
+      { onConflict: "id" },
+    );
+    setSaving(false);
+    if (error) {
+      pushToast({
+        type: "error",
+        title: "Couldn’t save profile",
+        message: error.message,
+      });
+      return;
+    }
+    pushToast({
+      type: "success",
+      title: "Profile saved",
+      message: "Your details have been updated.",
+    });
   };
 
   const updateField = (field: string, value: string) => {

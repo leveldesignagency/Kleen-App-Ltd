@@ -51,7 +51,9 @@ export async function POST(request: NextRequest) {
 
     const { data: job, error: jobErr } = await supabase
       .from("jobs")
-      .select("id, status, accepted_quote_request_id, payment_captured_at, funds_released_at")
+      .select(
+        "id, status, accepted_quote_request_id, payment_captured_at, funds_released_at, stripe_payment_intent_id, payment_authorized_at"
+      )
       .eq("id", jobId)
       .single();
 
@@ -64,8 +66,33 @@ export async function POST(request: NextRequest) {
     if (!job.accepted_quote_request_id) {
       return NextResponse.json({ error: "Job has no accepted quote" }, { status: 400 });
     }
-    if (!job.payment_captured_at) {
-      return NextResponse.json({ error: "Payment not yet captured for this job" }, { status: 400 });
+
+    const stripePiId = (job as { stripe_payment_intent_id?: string | null }).stripe_payment_intent_id;
+    let paymentCapturedAt = (job as { payment_captured_at?: string | null }).payment_captured_at;
+
+    if (!paymentCapturedAt && stripePiId) {
+      let pi = await stripe.paymentIntents.retrieve(stripePiId);
+      if (pi.status === "requires_capture") {
+        pi = await stripe.paymentIntents.capture(stripePiId);
+      }
+      if (pi.status === "succeeded") {
+        const nowCap = new Date().toISOString();
+        await supabase.from("jobs").update({ payment_captured_at: nowCap }).eq("id", jobId);
+        await supabase
+          .from("payments")
+          .update({ status: "succeeded", paid_at: nowCap })
+          .eq("job_id", jobId)
+          .eq("stripe_payment_intent_id", stripePiId)
+          .eq("status", "authorized");
+        paymentCapturedAt = nowCap;
+      }
+    }
+
+    if (!paymentCapturedAt) {
+      return NextResponse.json(
+        { error: "Payment not yet authorized or captured for this job" },
+        { status: 400 }
+      );
     }
 
     const { data: qr } = await supabase

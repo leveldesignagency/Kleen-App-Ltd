@@ -415,7 +415,7 @@ export default function CustomerQuotesView({
           <div>
             <p className="font-semibold text-emerald-900">Quote accepted</p>
             <p className="text-sm text-emerald-700">
-              Payment received. Your job is confirmed with {acceptedQuote.contractor_label} — {formatPrice(acceptedQuote.customer_price_pence)}.
+              Payment authorised (held securely until your clean is completed). Your job is confirmed with {acceptedQuote.contractor_label} — {formatPrice(acceptedQuote.customer_price_pence)}.
             </p>
           </div>
           <Link

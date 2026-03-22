@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { User, Building2, Check, Shield, Globe, Receipt, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import CustomDropdown from "@/components/ui/CustomDropdown";
+import { useNotifications } from "@/lib/notifications";
 
 type AccountType = "personal" | "business";
 
@@ -55,6 +56,7 @@ export default function AccountPage() {
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const pushToast = useNotifications((s) => s.push);
 
   const supabase = createClient();
 
@@ -104,18 +106,33 @@ export default function AccountPage() {
 
   const handleSave = async () => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) {
+      pushToast({
+        type: "error",
+        title: "Not signed in",
+        message: "Sign in again to save your account details.",
+      });
+      return;
+    }
     setSaving(true);
-    const { error: profileError } = await supabase
-      .from("profiles")
-      .update({
+    const email = user.email ?? personal.email ?? "";
+    const { error: profileError } = await supabase.from("profiles").upsert(
+      {
+        id: user.id,
+        email,
         full_name: personal.fullName || null,
         phone: personal.phone || null,
         account_type: accountType,
-      })
-      .eq("id", user.id);
+      },
+      { onConflict: "id" },
+    );
     if (profileError) {
       setSaving(false);
+      pushToast({
+        type: "error",
+        title: "Couldn’t save profile",
+        message: profileError.message,
+      });
       return;
     }
     if (accountType === "business") {
@@ -134,14 +151,26 @@ export default function AccountPage() {
         employee_count: business.employeeCount || null,
         website: business.website || null,
       };
-      if (existing) {
-        await supabase.from("business_profiles").update(payload).eq("id", existing.id);
-      } else {
-        await supabase.from("business_profiles").insert(payload);
+      const bizRes = existing
+        ? await supabase.from("business_profiles").update(payload).eq("id", existing.id)
+        : await supabase.from("business_profiles").insert(payload);
+      if (bizRes.error) {
+        setSaving(false);
+        pushToast({
+          type: "error",
+          title: "Couldn’t save business details",
+          message: bizRes.error.message,
+        });
+        return;
       }
     }
     setSaving(false);
     setSaved(true);
+    pushToast({
+      type: "success",
+      title: "Account updated",
+      message: "Your details have been saved.",
+    });
     setTimeout(() => setSaved(false), 2000);
   };
 

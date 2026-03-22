@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
+import {
+  applyLegacyImmediateCapture,
+  applyPaymentCaptured,
+  applyQuoteAcceptAuthorized,
+} from "@/lib/stripe-job-accept";
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
 
@@ -44,7 +49,30 @@ export async function POST(request: NextRequest) {
       ? session.payment_intent
       : session.payment_intent?.id ?? null;
     const amountPence = session.amount_total ?? 0;
-    const err = await applyAcceptPayment(supabase, jobId, quoteRequestId, amountPence, paymentIntentId);
+    const err = await applyLegacyImmediateCapture(supabase, jobId, quoteRequestId, amountPence, paymentIntentId);
+    if (err) return NextResponse.json({ error: err }, { status: 500 });
+    return NextResponse.json({ received: true });
+  }
+
+  /** Manual capture: card authorized — funds held until capture + release. */
+  if (event.type === "payment_intent.amount_capturable_updated") {
+    const pi = event.data.object as Stripe.PaymentIntent;
+    const jobId = pi.metadata?.job_id;
+    const quoteRequestId = pi.metadata?.quote_request_id;
+    if (!jobId || !quoteRequestId || pi.metadata?.escrow !== "manual") {
+      return NextResponse.json({ received: true });
+    }
+    if (pi.status !== "requires_capture" || (pi.amount_capturable ?? 0) <= 0) {
+      return NextResponse.json({ received: true });
+    }
+    const err = await applyQuoteAcceptAuthorized({
+      supabase,
+      jobId,
+      quoteRequestId,
+      amountPence: pi.amount,
+      stripePaymentIntentId: pi.id,
+      sendAdminEmail: true,
+    });
     if (err) return NextResponse.json({ error: err }, { status: 500 });
     return NextResponse.json({ received: true });
   }
@@ -54,58 +82,20 @@ export async function POST(request: NextRequest) {
     const jobId = pi.metadata?.job_id;
     const quoteRequestId = pi.metadata?.quote_request_id;
     if (!jobId || !quoteRequestId) return NextResponse.json({ received: true });
-    const err = await applyAcceptPayment(supabase, jobId, quoteRequestId, pi.amount, pi.id);
+
+    if (pi.metadata?.escrow === "manual") {
+      await applyPaymentCaptured({
+        supabase,
+        jobId,
+        stripePaymentIntentId: pi.id,
+      });
+      return NextResponse.json({ received: true });
+    }
+
+    const err = await applyLegacyImmediateCapture(supabase, jobId, quoteRequestId, pi.amount, pi.id);
     if (err) return NextResponse.json({ error: err }, { status: 500 });
     return NextResponse.json({ received: true });
   }
 
   return NextResponse.json({ received: true });
-}
-
-async function applyAcceptPayment(
-  supabase: Awaited<ReturnType<typeof createServiceRoleClient>>,
-  jobId: string,
-  quoteRequestId: string,
-  amountPence: number,
-  paymentIntentId: string | null
-): Promise<string | null> {
-  const now = new Date().toISOString();
-  const { error: jobUpdateErr } = await supabase
-    .from("jobs")
-    .update({
-      status: "customer_accepted",
-      accepted_quote_request_id: quoteRequestId,
-      customer_accepted_at: now,
-      payment_captured_at: now,
-      stripe_payment_intent_id: paymentIntentId,
-    })
-    .eq("id", jobId);
-  if (jobUpdateErr) {
-    console.error("Webhook job update failed:", jobUpdateErr);
-    return "Database update failed";
-  }
-  const { data: job } = await supabase.from("jobs").select("user_id").eq("id", jobId).single();
-  if (job?.user_id) {
-    await supabase.from("payments").insert({
-      job_id: jobId,
-      user_id: job.user_id,
-      amount_pence: amountPence,
-      currency: "gbp",
-      status: "succeeded",
-      stripe_payment_intent_id: paymentIntentId,
-      paid_at: now,
-    });
-  }
-  const { data: otherRequests } = await supabase
-    .from("quote_requests")
-    .select("id")
-    .eq("job_id", jobId)
-    .neq("id", quoteRequestId);
-  if (otherRequests?.length) {
-    await supabase
-      .from("quote_requests")
-      .update({ customer_declined_at: now })
-      .in("id", otherRequests.map((r) => r.id));
-  }
-  return null;
 }

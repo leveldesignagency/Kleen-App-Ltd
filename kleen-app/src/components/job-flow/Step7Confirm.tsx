@@ -118,6 +118,12 @@ export default function Step7Confirm() {
       addPaymentIfNew(supabase, paymentMethod);
     }
 
+    void fetch("/api/jobs/notify-admin-new-job", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jobId: job.id }),
+    }).catch(() => {});
+
     store.reset();
 
     pushNotification({

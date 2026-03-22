@@ -31,7 +31,11 @@ npx prisma db push   # Push schema to your database
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open **[http://localhost:3100](http://localhost:3100)** — customer app is pinned to port **3100** (include the colon — `localhost3100` without `:` will not work).
+
+**Admin app** (`kleen-admin`): **[http://localhost:3101](http://localhost:3101)**.
+
+**Port busy?** Run `npm run dev:auto` so Next.js picks the next free port and use the URL printed in the terminal.
 
 ### Environment Variables
 
@@ -41,7 +45,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon/public key |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key |
 | `DATABASE_URL` | PostgreSQL connection string |
-| `NEXT_PUBLIC_SITE_URL` | Site URL (e.g. http://localhost:3000) |
+| `NEXT_PUBLIC_SITE_URL` | Site URL (e.g. http://localhost:3100 locally) |
 
 ### Stripe (payments & escrow)
 
@@ -53,9 +57,9 @@ When a customer **accepts a quote**, they are sent to Stripe Checkout to pay the
 | `STRIPE_WEBHOOK_SECRET` | Webhook signing secret (see below) |
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Publishable key (optional; for future card-on-file) |
 
-**Webhook (kleen-app):** In Stripe Dashboard → Developers → Webhooks, add endpoint `https://your-domain.com/api/stripe/webhook` (or use `http://localhost:3000/api/stripe/webhook` with Stripe CLI for local). Events: `checkout.session.completed`. Copy the signing secret into `STRIPE_WEBHOOK_SECRET`.
+**Webhook (kleen-app):** In Stripe Dashboard → Developers → Webhooks, add endpoint `https://your-domain.com/api/stripe/webhook` (or use `http://localhost:3100/api/stripe/webhook` with Stripe CLI for local). Events: `checkout.session.completed`. Copy the signing secret into `STRIPE_WEBHOOK_SECRET`.
 
-**Local testing:** Run `stripe listen --forward-to localhost:3000/api/stripe/webhook` and use the printed `whsec_...` as `STRIPE_WEBHOOK_SECRET`.
+**Local testing:** Run `stripe listen --forward-to localhost:3100/api/stripe/webhook` and use the printed `whsec_...` as `STRIPE_WEBHOOK_SECRET`.
 
 **kleen-admin** needs `STRIPE_SECRET_KEY` and `SUPABASE_SERVICE_ROLE_KEY` for **Release funds**. Contractors with a **Stripe Connect** account ID receive the payout automatically; others are marked as released for manual payout.
 
