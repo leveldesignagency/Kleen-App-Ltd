@@ -118,11 +118,22 @@ export default function Step7Confirm() {
       addPaymentIfNew(supabase, paymentMethod);
     }
 
-    void fetch("/api/jobs/notify-admin-new-job", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jobId: job.id }),
-    }).catch(() => {});
+    // Must await before navigation: otherwise the browser may abort the request
+    // when the page unloads (router.push), and the admin email never sends.
+    try {
+      const res = await fetch("/api/jobs/notify-admin-new-job", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ jobId: job.id }),
+        keepalive: true,
+      });
+      if (!res.ok) {
+        console.warn("notify-admin-new-job:", res.status, await res.text().catch(() => ""));
+      }
+    } catch (e) {
+      console.warn("notify-admin-new-job failed:", e);
+    }
 
     store.reset();
 
@@ -133,6 +144,7 @@ export default function Step7Confirm() {
     });
 
     router.push("/dashboard");
+    setSubmitting(false);
   };
 
   return (
