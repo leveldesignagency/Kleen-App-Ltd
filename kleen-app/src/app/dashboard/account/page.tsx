@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { User, Building2, Check, Shield, Globe, Receipt, Users } from "lucide-react";
+import { User, Building2, Check, Shield, Globe, Receipt, Users, AlertTriangle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import CustomDropdown from "@/components/ui/CustomDropdown";
 import { useNotifications } from "@/lib/notifications";
@@ -56,6 +56,9 @@ export default function AccountPage() {
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [deletionScheduledAt, setDeletionScheduledAt] = useState<string | null>(null);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deletionBusy, setDeletionBusy] = useState(false);
   const pushToast = useNotifications((s) => s.push);
 
   const supabase = createClient();
@@ -69,7 +72,7 @@ export default function AccountPage() {
       }
       const { data: profile } = await supabase
         .from("profiles")
-        .select("full_name, email, phone, account_type")
+        .select("full_name, email, phone, account_type, account_deletion_scheduled_at")
         .eq("id", user.id)
         .single();
       if (profile) {
@@ -79,6 +82,7 @@ export default function AccountPage() {
           phone: profile.phone ?? "",
         });
         setAccountType((profile.account_type as AccountType) ?? "personal");
+        setDeletionScheduledAt(profile.account_deletion_scheduled_at ?? null);
       } else if (user.email) {
         setPersonal((p) => ({ ...p, email: user.email ?? "" }));
       }
@@ -174,6 +178,63 @@ export default function AccountPage() {
     setTimeout(() => setSaved(false), 2000);
   };
 
+  const formatDeletionDate = (iso: string) =>
+    new Date(iso).toLocaleDateString(undefined, {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+
+  const handleRequestDeletion = async () => {
+    setDeletionBusy(true);
+    const { error } = await supabase.rpc("request_account_deletion");
+    setDeletionBusy(false);
+    setDeleteModalOpen(false);
+    if (error) {
+      pushToast({
+        type: "error",
+        title: "Couldn’t schedule deletion",
+        message: error.message,
+      });
+      return;
+    }
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: p } = await supabase
+        .from("profiles")
+        .select("account_deletion_scheduled_at")
+        .eq("id", user.id)
+        .single();
+      setDeletionScheduledAt(p?.account_deletion_scheduled_at ?? null);
+    }
+    pushToast({
+      type: "success",
+      title: "Deletion scheduled",
+      message: "Your account will be permanently removed after the grace period unless you cancel.",
+    });
+  };
+
+  const handleCancelDeletion = async () => {
+    setDeletionBusy(true);
+    const { error } = await supabase.rpc("cancel_account_deletion");
+    setDeletionBusy(false);
+    if (error) {
+      pushToast({
+        type: "error",
+        title: "Couldn’t cancel",
+        message: error.message,
+      });
+      return;
+    }
+    setDeletionScheduledAt(null);
+    pushToast({
+      type: "success",
+      title: "Deletion cancelled",
+      message: "Your account will stay active.",
+    });
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -186,6 +247,30 @@ export default function AccountPage() {
     <div className="max-w-3xl">
       <h1 className="text-2xl font-bold text-slate-900">Account Settings</h1>
       <p className="mt-1 text-sm text-slate-500">Manage your profile and account type</p>
+
+      {deletionScheduledAt && (
+        <div className="mt-6 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50/80 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex gap-3">
+            <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600" />
+            <div>
+              <p className="text-sm font-semibold text-amber-900">Account deletion scheduled</p>
+              <p className="mt-0.5 text-xs text-amber-800/90">
+                Permanent removal on{" "}
+                <span className="font-medium">{formatDeletionDate(deletionScheduledAt)}</span>. You can
+                cancel anytime before then.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleCancelDeletion}
+            disabled={deletionBusy}
+            className="shrink-0 rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-900 shadow-sm hover:bg-amber-50 disabled:opacity-50"
+          >
+            {deletionBusy ? "Cancelling…" : "Cancel deletion"}
+          </button>
+        </div>
+      )}
 
       <div className="mt-8">
         <h2 className="text-sm font-semibold text-slate-900">Account Type</h2>
@@ -372,6 +457,61 @@ export default function AccountPage() {
           <span className="text-sm font-medium text-emerald-600">Changes saved</span>
         )}
       </div>
+
+      <div className="mt-12 rounded-2xl border border-red-200 bg-red-50/40 p-6">
+        <h2 className="text-sm font-semibold text-red-900">Delete account</h2>
+        <p className="mt-1 text-xs text-red-800/80">
+          {deletionScheduledAt
+            ? "You already have deletion scheduled. Use Cancel deletion above to keep your account."
+            : "We will permanently delete your login and data after 30 days. You can cancel before then."}
+        </p>
+        {!deletionScheduledAt && (
+          <button
+            type="button"
+            onClick={() => setDeleteModalOpen(true)}
+            className="mt-4 rounded-xl border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-800 shadow-sm hover:bg-red-50"
+          >
+            Delete my account…
+          </button>
+        )}
+      </div>
+
+      {deleteModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-account-title"
+        >
+          <div className="max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
+            <h3 id="delete-account-title" className="text-lg font-semibold text-slate-900">
+              Schedule account deletion?
+            </h3>
+            <p className="mt-2 text-sm text-slate-600">
+              After 30 days your account and associated data will be removed from our systems. Until
+              then you can sign in and cancel from this page.
+            </p>
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setDeleteModalOpen(false)}
+                disabled={deletionBusy}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Keep my account
+              </button>
+              <button
+                type="button"
+                onClick={handleRequestDeletion}
+                disabled={deletionBusy}
+                className="rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {deletionBusy ? "Scheduling…" : "Yes, schedule deletion"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

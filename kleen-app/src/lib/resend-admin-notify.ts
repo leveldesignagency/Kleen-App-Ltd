@@ -1,5 +1,5 @@
 import { Resend } from "resend";
-import { resolveResendFrom } from "@/lib/resend-config";
+import { resolveResendFrom, resolveResendReplyTo } from "@/lib/resend-config";
 
 /** Where admin notifications go (Resend test mode: often only your own verified inbox works until domain is verified) */
 const ADMIN_NOTIFY_EMAIL = process.env.ADMIN_NOTIFY_EMAIL || "info@kleenapp.co.uk";
@@ -47,14 +47,21 @@ export async function sendAdminNewJobEmail(params: {
 </html>
 `.trim();
 
+  const from = resolveResendFrom();
+  const replyTo = resolveResendReplyTo();
   try {
-    const { error } = await resend.emails.send({
-      from: resolveResendFrom(),
+    const { error, data } = await resend.emails.send({
+      from,
       to: ADMIN_NOTIFY_EMAIL,
       subject: `New job — ${params.jobReference}`,
       html,
+      ...(replyTo ? { replyTo } : {}),
     });
-    if (error) console.error("sendAdminNewJobEmail Resend error:", error);
+    if (error) {
+      console.error("sendAdminNewJobEmail Resend error:", JSON.stringify(error), { from, to: ADMIN_NOTIFY_EMAIL });
+    } else if (data?.id) {
+      console.log("sendAdminNewJobEmail sent id:", data.id, "from:", from);
+    }
   } catch (e) {
     console.error("sendAdminNewJobEmail failed:", e);
   }
@@ -100,15 +107,20 @@ export async function sendAdminQuoteAcceptedEmail(params: {
 </html>
 `.trim();
 
+  const from = resolveResendFrom();
+  const replyTo = resolveResendReplyTo();
   try {
-    const { error } = await resend.emails.send({
-      from: resolveResendFrom(),
+    const { error, data } = await resend.emails.send({
+      from,
       to: ADMIN_NOTIFY_EMAIL,
       subject: `Quote accepted — ${params.jobReference}`,
       html,
+      ...(replyTo ? { replyTo } : {}),
     });
     if (error) {
-      console.error("sendAdminQuoteAcceptedEmail Resend error:", error);
+      console.error("sendAdminQuoteAcceptedEmail Resend error:", JSON.stringify(error), { from, to: ADMIN_NOTIFY_EMAIL });
+    } else if (data?.id) {
+      console.log("sendAdminQuoteAcceptedEmail sent id:", data.id, "from:", from);
     }
   } catch (e) {
     console.error("sendAdminQuoteAcceptedEmail failed:", e);

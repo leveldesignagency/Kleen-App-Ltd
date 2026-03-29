@@ -20,6 +20,17 @@ import {
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
+/** After logout, avoid `/${origin}` on the dashboard subdomain — middleware redirects `/` → `/dashboard`. */
+function getMarketingHomeUrl(): string {
+  if (typeof window === "undefined") return "/";
+  const fromEnv = process.env.NEXT_PUBLIC_MARKETING_URL?.replace(/\/$/, "");
+  if (fromEnv) return fromEnv;
+  if (window.location.hostname === "dashboard.kleenapp.co.uk") {
+    return "https://www.kleenapp.co.uk";
+  }
+  return `${window.location.origin}/`;
+}
+
 const SIDEBAR_ITEMS = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/dashboard/jobs", label: "My Jobs", icon: Briefcase },
@@ -38,10 +49,14 @@ export default function DashboardSidebar() {
 
   const handleSignOut = async () => {
     const supabase = createClient();
-    await supabase.auth.signOut();
     setMobileOpen(false);
-    router.push("/");
+    try {
+      await supabase.auth.signOut({ scope: "global" });
+    } catch (e) {
+      console.error("signOut:", e);
+    }
     router.refresh();
+    window.location.assign(getMarketingHomeUrl());
   };
 
   const isActive = (href: string) => {

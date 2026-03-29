@@ -1,30 +1,53 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { NextResponse } from "next/server";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { NextResponse, type NextRequest } from "next/server";
 
-export async function GET(request: Request) {
+/**
+ * OAuth PKCE exchange — must use getAll/setAll so cookies attach to the redirect response.
+ * @see https://supabase.com/docs/guides/auth/server-side/nextjs
+ */
+export async function GET(request: NextRequest) {
   const url = new URL(request.url);
-  const { searchParams } = url;
-  const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/dashboard";
+  const code = url.searchParams.get("code");
+  const next = url.searchParams.get("next") ?? "/dashboard";
 
-  // After login: send to dashboard. Never redirect to localhost (Vercel must set NEXT_PUBLIC_SITE_URL).
-  const requestHost = `${url.protocol}//${url.host}`;
-  let dashboardBase =
+  const dashboardBase =
     process.env.NEXT_PUBLIC_SITE_URL && !process.env.NEXT_PUBLIC_SITE_URL.includes("localhost")
-      ? process.env.NEXT_PUBLIC_SITE_URL
-      : requestHost.includes("localhost")
+      ? process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "")
+      : url.host.includes("localhost")
         ? "https://dashboard.kleenapp.co.uk"
-        : requestHost;
-  dashboardBase = dashboardBase.replace(/\/$/, "");
-  const nextPath = next.startsWith("/") ? next : `/${next}`;
+        : `${url.protocol}//${url.host}`;
 
-  if (code) {
-    const supabase = createServerSupabaseClient();
-    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error && data?.user) {
-      return NextResponse.redirect(`${dashboardBase}${nextPath}`);
-    }
+  if (!code) {
+    return NextResponse.redirect(new URL("/sign-in", dashboardBase));
   }
 
-  return NextResponse.redirect(`${url.protocol}//${url.host}/sign-in`);
+  const nextPath = next.startsWith("/") ? next : `/${next}`;
+  const redirectTarget = new URL(`${dashboardBase}${nextPath}`);
+
+  const response = NextResponse.redirect(redirectTarget);
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            response.cookies.set(name, value, options);
+          });
+        },
+      },
+    }
+  );
+
+  const { error } = await supabase.auth.exchangeCodeForSession(code);
+  if (error) {
+    console.error("auth callback exchangeCodeForSession:", error.message);
+    return NextResponse.redirect(new URL("/sign-in?error=auth", dashboardBase));
+  }
+
+  return response;
 }

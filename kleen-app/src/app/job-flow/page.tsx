@@ -25,17 +25,44 @@ export default function JobFlowPage() {
 
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        setProfile({
-          email: user.email || "",
-          fullName: user.user_metadata?.full_name || user.user_metadata?.name || "",
-        });
-        if (step === 1) setStep(2);
+    let cancelled = false;
+
+    const applyUser = (user: {
+      email?: string | null;
+      user_metadata?: Record<string, unknown>;
+    }) => {
+      setProfile({
+        email: user.email || "",
+        fullName:
+          (user.user_metadata?.full_name as string) ||
+          (user.user_metadata?.name as string) ||
+          "",
+      });
+      if (useJobFlowStore.getState().step === 1) {
+        setStep(2);
       }
+    };
+
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (cancelled) return;
+      if (user) applyUser(user);
       setAuthChecked(true);
     });
-  }, [step, setStep, setProfile]);
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (cancelled) return;
+      if (event === "SIGNED_IN" && session?.user) {
+        applyUser(session.user);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, [setStep, setProfile]);
 
   if (!authChecked) return null;
 

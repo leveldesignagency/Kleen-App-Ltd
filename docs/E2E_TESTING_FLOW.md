@@ -46,21 +46,27 @@ Use this checklist to test the flow up to payment and notifications. Adjust URLs
 
 ---
 
-## 5. Webhook → admin email (“quote accepted”)
+## 5. After pay → admin email & job state
 
-1. After successful payment, Stripe sends **`payment_intent.succeeded`** (and/or checkout completed) to **kleen-app** `/api/stripe/webhook`.
-2. **Expected:** `RESEND_API_KEY` on **kleen-app** sends an email to **`ADMIN_NOTIFY_EMAIL`** (default `info@kleenapp.co.uk`) with job ref, customer name, amount, link to admin job.
+1. The client calls **`POST /api/jobs/confirm-accept`** right after `confirmCardPayment` (so the UI updates quickly).
+2. Stripe also sends webhooks to **kleen-app** `/api/stripe/webhook`. For **manual capture (escrow)**, subscribe at least to:
+   - **`payment_intent.amount_capturable_updated`** (authorisation held)
+   - **`payment_intent.succeeded`** (after **Release funds** runs capture, or legacy automatic capture)
+   - **`checkout.session.completed`** if you use Checkout
+3. **Expected:** `RESEND_API_KEY` on **kleen-app** emails **`ADMIN_NOTIFY_EMAIL`** (quote accepted / payment authorised). Job → `customer_accepted`; **`payment_authorized_at`** set; **`payment_captured_at`** after admin **Release funds** (capture + transfer).
 
-**Local:** Run `stripe listen --forward-to localhost:3100/api/stripe/webhook` and use the printed `whsec_` in `STRIPE_WEBHOOK_SECRET`.
+**Local:** `stripe listen --forward-to <your-app-url>/api/stripe/webhook` and set `STRIPE_WEBHOOK_SECRET` to the printed `whsec_`.
 
-**Production:** Stripe Dashboard → Webhooks → endpoint `https://dashboard.kleenapp.co.uk/api/stripe/webhook` with `payment_intent.succeeded` (and any other events you use).
+**Production:** Stripe → Webhooks → `https://dashboard.kleenapp.co.uk/api/stripe/webhook` with the events above.
 
 ---
 
-## 6. Next: payment & escrow (study)
+## 6. Admin: contractor email & field portal
 
-- **Held funds:** Job should show `payment_captured_at` after accept.
-- **Admin:** “Forward to contractor”, completion confirmations, **Release funds** (Stripe Connect) — see `docs/FLOW_AFTER_QUOTE_ACCEPTED.md` and `kleen-app/docs/FULL_JOB_FLOW_SPEC.md`.
+- **Forward / send contractor email** (kleen-admin) — email includes **`/o/<token>`** on the customer app if `CONTRACTOR_PORTAL_BASE_URL` / `CUSTOMER_DASHBOARD_URL` is set.
+- **Release funds** captures the PaymentIntent if needed, then Connect transfer.
+
+See **`kleen-app/docs/FULL_JOB_FLOW_IMPLEMENTED.md`** for detail.
 
 ---
 

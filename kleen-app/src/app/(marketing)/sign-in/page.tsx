@@ -1,14 +1,20 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import Image from "next/image";
 import { Mail, Lock, ArrowRight, Loader2 } from "lucide-react";
 
-export default function SignInPage() {
+const EMAIL_AUTH_ENABLED = process.env.NEXT_PUBLIC_ENABLE_EMAIL_AUTH === "true";
+
+function SignInContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const nextPath = searchParams.get("next") || "/dashboard";
+  const safeNext = nextPath.startsWith("/") ? nextPath : "/dashboard";
+
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -23,17 +29,16 @@ export default function SignInPage() {
     const supabase = createClient();
     const origin =
       typeof window !== "undefined" ? window.location.origin : "";
-    // Never use localhost – redirect must go to live site (Supabase will send user here after OAuth)
     if (!origin || origin.includes("localhost")) {
       setError("Please sign in from the live site (www.kleenapp.co.uk or dashboard.kleenapp.co.uk).");
       setOauthLoading(false);
       return;
     }
-    // Use dashboard subdomain for callback so the session cookie is set there (same domain they'll land on)
     const dashboardBase = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "";
     const callbackOrigin =
       dashboardBase && !dashboardBase.includes("localhost") ? dashboardBase : origin;
-    const redirectTo = `${callbackOrigin}/auth/callback?next=/dashboard`;
+    const next = encodeURIComponent(safeNext);
+    const redirectTo = `${callbackOrigin}/auth/callback?next=${next}`;
     const { error: err } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo },
@@ -79,7 +84,7 @@ export default function SignInPage() {
     }
 
     setLoading(false);
-    router.push("/dashboard");
+    router.push(safeNext);
     router.refresh();
   };
 
@@ -107,7 +112,7 @@ export default function SignInPage() {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-8 space-y-4">
+        <div className="mt-8 space-y-4">
           <button
             type="button"
             onClick={handleGoogleSignIn}
@@ -129,103 +134,128 @@ export default function SignInPage() {
             )}
           </button>
 
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t border-slate-200" />
-            </div>
-            <div className="relative flex justify-center text-xs">
-              <span className="bg-white px-2 text-slate-500">or</span>
-            </div>
-          </div>
+          {EMAIL_AUTH_ENABLED && (
+            <>
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t border-slate-200" />
+                </div>
+                <div className="relative flex justify-center text-xs">
+                  <span className="bg-white px-2 text-slate-500">or</span>
+                </div>
+              </div>
 
-          {mode === "signup" && (
-            <div>
-              <label className="block text-sm font-medium text-slate-700">
-                Full Name
-              </label>
-              <input
-                type="text"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                className="input-field mt-1"
-                placeholder="John Doe"
-                required
-              />
-            </div>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                {mode === "signup" && (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700">
+                      Full Name
+                    </label>
+                    <input
+                      type="text"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      className="input-field mt-1"
+                      placeholder="John Doe"
+                      required
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">
+                    Email
+                  </label>
+                  <div className="relative mt-1">
+                    <Mail className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="input-field pl-10"
+                      placeholder="you@example.com"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">
+                    Password
+                  </label>
+                  <div className="relative mt-1">
+                    <Lock className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="input-field pl-10"
+                      placeholder="••••••••"
+                      required
+                      minLength={6}
+                    />
+                  </div>
+                </div>
+
+                {error && (
+                  <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">
+                    {error}
+                  </p>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="btn-primary w-full gap-2 py-3.5"
+                >
+                  {loading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      {mode === "signin" ? "Sign In" : "Create Account"}
+                      <ArrowRight className="h-4 w-4" />
+                    </>
+                  )}
+                </button>
+              </form>
+
+              <p className="text-center text-sm text-slate-500">
+                {mode === "signin"
+                  ? "Don't have an account? "
+                  : "Already have an account? "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode(mode === "signin" ? "signup" : "signin");
+                    setError("");
+                  }}
+                  className="font-medium text-brand-600 hover:text-brand-700"
+                >
+                  {mode === "signin" ? "Sign up" : "Sign in"}
+                </button>
+              </p>
+            </>
           )}
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700">
-              Email
-            </label>
-            <div className="relative mt-1">
-              <Mail className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="input-field pl-10"
-                placeholder="you@example.com"
-                required
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700">
-              Password
-            </label>
-            <div className="relative mt-1">
-              <Lock className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="input-field pl-10"
-                placeholder="••••••••"
-                required
-                minLength={6}
-              />
-            </div>
-          </div>
-
-          {error && (
-            <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">
-              {error}
-            </p>
+          {!EMAIL_AUTH_ENABLED && error && (
+            <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</p>
           )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="btn-primary w-full gap-2 py-3.5"
-          >
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <>
-                {mode === "signin" ? "Sign In" : "Create Account"}
-                <ArrowRight className="h-4 w-4" />
-              </>
-            )}
-          </button>
-        </form>
-
-        <p className="mt-6 text-center text-sm text-slate-500">
-          {mode === "signin"
-            ? "Don\u2019t have an account? "
-            : "Already have an account? "}
-          <button
-            onClick={() => {
-              setMode(mode === "signin" ? "signup" : "signin");
-              setError("");
-            }}
-            className="font-medium text-brand-600 hover:text-brand-700"
-          >
-            {mode === "signin" ? "Sign up" : "Sign in"}
-          </button>
-        </p>
+        </div>
       </div>
     </div>
+  );
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[calc(100vh-10rem)] items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
+        </div>
+      }
+    >
+      <SignInContent />
+    </Suspense>
   );
 }
