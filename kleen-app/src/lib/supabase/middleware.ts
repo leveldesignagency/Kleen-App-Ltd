@@ -1,5 +1,6 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { getSupabaseAuthCookieOptions } from "@/lib/supabase/auth-cookie-options";
 
 export async function updateSession(request: NextRequest) {
   const response = NextResponse.next({ request: { headers: request.headers } });
@@ -11,7 +12,10 @@ export async function updateSession(request: NextRequest) {
     return response;
   }
 
+  const cookieOptions = getSupabaseAuthCookieOptions();
+
   const supabase = createServerClient(supabaseUrl, supabaseKey, {
+    ...(cookieOptions ? { cookieOptions } : {}),
     cookies: {
       getAll() {
         return request.cookies.getAll();

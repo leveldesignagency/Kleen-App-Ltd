@@ -1,10 +1,13 @@
 import Link from "next/link";
 import Image from "next/image";
+import { customerAppHref } from "@/lib/customer-app-url";
+
+const jobFlowHref = customerAppHref("/job-flow");
 
 const FOOTER_LINKS = {
   Services: [
     { href: "/services", label: "All Services" },
-    { href: "/job-flow", label: "Get a Quote" },
+    { href: jobFlowHref, label: "Get a Quote" },
     { href: "/faq", label: "FAQ" },
   ],
   Company: [

@@ -1,5 +1,8 @@
 import Link from "next/link";
 import { Metadata } from "next";
+import { customerAppHref } from "@/lib/customer-app-url";
+
+const jobFlowHref = customerAppHref("/job-flow");
 import { Shield, Heart, Leaf, Award, Sparkles, ArrowRight } from "lucide-react";
 
 export const metadata: Metadata = {
@@ -129,7 +132,7 @@ export default function AboutPage() {
               hidden fees, no surprises.
             </p>
             <Link
-              href="/job-flow"
+              href={jobFlowHref}
               className="btn-primary mt-6 gap-2"
             >
               Get Started

@@ -34,11 +34,10 @@ function SignInContent() {
       setOauthLoading(false);
       return;
     }
-    const dashboardBase = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "";
-    const callbackOrigin =
-      dashboardBase && !dashboardBase.includes("localhost") ? dashboardBase : origin;
+    // Callback must use this page's origin so PKCE + session cookies stay on the same host
+    // (e.g. dashboard vs www). NEXT_PUBLIC_SITE_URL alone breaks Google sign-in on the other domain.
     const next = encodeURIComponent(safeNext);
-    const redirectTo = `${callbackOrigin}/auth/callback?next=${next}`;
+    const redirectTo = `${origin}/auth/callback?next=${next}`;
     const { error: err } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo },

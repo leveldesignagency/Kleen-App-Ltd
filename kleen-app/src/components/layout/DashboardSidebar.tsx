@@ -19,11 +19,12 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { normalizeSiteOrigin } from "@/lib/customer-app-url";
 
 /** After logout, avoid `/${origin}` on the dashboard subdomain — middleware redirects `/` → `/dashboard`. */
 function getMarketingHomeUrl(): string {
   if (typeof window === "undefined") return "/";
-  const fromEnv = process.env.NEXT_PUBLIC_MARKETING_URL?.replace(/\/$/, "");
+  const fromEnv = normalizeSiteOrigin(process.env.NEXT_PUBLIC_MARKETING_URL || "");
   if (fromEnv) return fromEnv;
   if (window.location.hostname === "dashboard.kleenapp.co.uk") {
     return "https://www.kleenapp.co.uk";

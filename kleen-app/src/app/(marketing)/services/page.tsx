@@ -17,6 +17,9 @@ import {
   X,
 } from "lucide-react";
 import { SERVICE_CATEGORIES } from "@/lib/services";
+import { customerAppHref } from "@/lib/customer-app-url";
+
+const jobFlowHref = customerAppHref("/job-flow");
 
 const ICON_MAP: Record<string, React.ElementType> = {
   Home,
@@ -151,7 +154,7 @@ export default function ServicesPage() {
                             From £{service.basePrice}
                           </span>
                           <Link
-                            href="/job-flow"
+                            href={jobFlowHref}
                             className="flex items-center gap-1.5 text-sm font-semibold text-brand-600 transition-colors group-hover:text-brand-700"
                           >
                             Book Now

@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import Stripe from "stripe";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
+import { getSupabaseAuthCookieOptions } from "@/lib/supabase/auth-cookie-options";
 
 /**
  * Starts or resumes Stripe Connect Express onboarding for the signed-in operative.
@@ -15,10 +16,12 @@ export async function POST() {
   }
 
   const cookieStore = cookies();
+  const cookieOpts = getSupabaseAuthCookieOptions();
   const supabaseAuth = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      ...(cookieOpts ? { cookieOptions: cookieOpts } : {}),
       cookies: {
         get(name: string) {
           return cookieStore.get(name)?.value;

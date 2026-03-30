@@ -22,12 +22,9 @@ export default function Step1Auth() {
       setOauthLoading(false);
       return;
     }
-    const dashboardBase = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "";
-    const callbackOrigin =
-      dashboardBase && !dashboardBase.includes("localhost") ? dashboardBase : origin;
-    // Return to booking flow after OAuth — not /dashboard
+    // Same origin as the tab so OAuth cookies match the host (dashboard vs www).
     const next = encodeURIComponent("/job-flow");
-    const redirectTo = `${callbackOrigin}/auth/callback?next=${next}`;
+    const redirectTo = `${origin}/auth/callback?next=${next}`;
     const { error: err } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo },

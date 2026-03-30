@@ -6,6 +6,7 @@ import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { Menu, X, ArrowRight } from "lucide-react";
 import SparkleButton from "@/components/ui/SparkleButton";
+import { customerAppHref } from "@/lib/customer-app-url";
 
 interface NavbarProps {
   user?: { email: string } | null;
@@ -38,6 +39,10 @@ export default function Navbar({ user }: NavbarProps) {
     pathname === "/faq";
 
   const transparent = isMarketingPage && !scrolled && !mobileOpen;
+
+  const jobFlowHref = customerAppHref("/job-flow");
+  const signInHref = customerAppHref("/sign-in");
+  const dashboardHref = customerAppHref("/dashboard");
 
   useEffect(() => {
     const handleScroll = () => {
@@ -95,11 +100,11 @@ export default function Navbar({ user }: NavbarProps) {
 
             <div className="flex items-center gap-3">
               {user ? (
-                <SparkleButton href="/dashboard">Dashboard</SparkleButton>
+                <SparkleButton href={dashboardHref}>Dashboard</SparkleButton>
               ) : (
                 <>
                   <Link
-                    href="/job-flow"
+                    href={jobFlowHref}
                     className={`gap-2 px-5 py-2.5 text-sm transition-all duration-300 ${
                       transparent
                         ? "btn-secondary border-white/20 bg-white/10 text-white backdrop-blur-sm hover:bg-white/20"
@@ -110,7 +115,7 @@ export default function Navbar({ user }: NavbarProps) {
                     <ArrowRight className="h-3.5 w-3.5" />
                   </Link>
                   <Link
-                    href="/sign-in"
+                    href={signInHref}
                     className={`text-sm font-medium transition-all duration-300 ${
                       transparent
                         ? "text-white/90 hover:text-white"
@@ -161,7 +166,7 @@ export default function Navbar({ user }: NavbarProps) {
           <div className="mt-4 space-y-2 border-t border-slate-100 pt-4">
             {user ? (
               <SparkleButton
-                href="/dashboard"
+                href={dashboardHref}
                 onClick={() => setMobileOpen(false)}
               >
                 Dashboard
@@ -169,7 +174,7 @@ export default function Navbar({ user }: NavbarProps) {
             ) : (
               <>
                 <Link
-                  href="/job-flow"
+                  href={jobFlowHref}
                   className="btn-primary flex w-full items-center justify-center gap-2 py-3 text-sm"
                   onClick={() => setMobileOpen(false)}
                 >
@@ -177,7 +182,7 @@ export default function Navbar({ user }: NavbarProps) {
                   <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
                 <Link
-                  href="/sign-in"
+                  href={signInHref}
                   className="block rounded-xl border border-slate-200 bg-white px-4 py-3 text-center text-sm font-medium text-slate-700 hover:bg-slate-50"
                   onClick={() => setMobileOpen(false)}
                 >

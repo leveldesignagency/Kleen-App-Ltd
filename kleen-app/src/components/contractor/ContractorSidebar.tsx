@@ -12,10 +12,11 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useContractorPortal } from "@/components/contractor/contractor-portal-context";
+import { normalizeSiteOrigin } from "@/lib/customer-app-url";
 
 function getMarketingHomeUrl(): string {
   if (typeof window === "undefined") return "/";
-  const fromEnv = process.env.NEXT_PUBLIC_MARKETING_URL?.replace(/\/$/, "");
+  const fromEnv = normalizeSiteOrigin(process.env.NEXT_PUBLIC_MARKETING_URL || "");
   if (fromEnv) return fromEnv;
   if (window.location.hostname === "dashboard.kleenapp.co.uk") {
     return "https://www.kleenapp.co.uk";

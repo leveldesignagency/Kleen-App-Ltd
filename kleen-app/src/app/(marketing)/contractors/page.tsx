@@ -1,5 +1,11 @@
 import Link from "next/link";
 import { ArrowRight, Briefcase, ShieldCheck, UserPlus } from "lucide-react";
+import { customerAppHref } from "@/lib/customer-app-url";
+
+const jobFlowHref = customerAppHref("/job-flow");
+const customerSignInHref = customerAppHref("/sign-in");
+const contractorJoinHref = customerAppHref("/contractor/join");
+const contractorSignInHref = customerAppHref("/contractor/sign-in");
 
 export const metadata = {
   title: "Contractors & cleaners | KLEEN",
@@ -37,18 +43,18 @@ export default function ContractorsMarketingPage() {
           <p className="mt-4 text-lg text-slate-600">
             This page is for <strong>cleaning businesses and trades</strong> who want to work with Kleen — not for
             customers booking a clean. If you need a quote for your home or business, use{" "}
-            <Link href="/job-flow" className="font-medium text-brand-600 underline-offset-2 hover:underline">
+            <Link href={jobFlowHref} className="font-medium text-brand-600 underline-offset-2 hover:underline">
               Get a quote
             </Link>{" "}
             from the main site.
           </p>
           <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
-            <Link href="/contractor/join" className="btn-primary inline-flex gap-2 px-8 py-3.5 text-base">
+            <Link href={contractorJoinHref} className="btn-primary inline-flex gap-2 px-8 py-3.5 text-base">
               Apply as a contractor
               <ArrowRight className="h-4 w-4" />
             </Link>
             <Link
-              href="/contractor/sign-in"
+              href={contractorSignInHref}
               className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-8 py-3.5 text-base font-medium text-slate-800 shadow-sm hover:bg-slate-50"
             >
               Contractor sign in
@@ -76,7 +82,7 @@ export default function ContractorsMarketingPage() {
             the homepage
           </Link>{" "}
           or{" "}
-          <Link href="/sign-in" className="font-medium text-brand-600 hover:underline">
+          <Link href={customerSignInHref} className="font-medium text-brand-600 hover:underline">
             customer sign in
           </Link>
           .

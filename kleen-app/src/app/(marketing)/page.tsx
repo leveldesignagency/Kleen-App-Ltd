@@ -1,5 +1,6 @@
 import Link from "next/link";
 import HeroImages from "@/components/ui/HeroImages";
+import { customerAppHref } from "@/lib/customer-app-url";
 import HeroBubbles from "@/components/ui/HeroBubbles";
 import {
   ArrowRight,
@@ -43,6 +44,8 @@ const STEPS = [
   { num: "03", title: "Confirm & Relax", desc: "We handle the rest — track everything from your dashboard" },
 ];
 
+const jobFlowHref = customerAppHref("/job-flow");
+
 export default function HomePage() {
   return (
     <>
@@ -68,7 +71,7 @@ export default function HomePage() {
               Get an instant quote, book online, and manage everything from one place.
             </p>
             <div className="mt-10 flex flex-col gap-4 sm:flex-row">
-              <Link href="/job-flow" className="btn-primary gap-2 px-8 py-4 text-base">
+              <Link href={jobFlowHref} className="btn-primary gap-2 px-8 py-4 text-base">
                 Get Started
                 <ArrowRight className="h-4 w-4" />
               </Link>
@@ -191,7 +194,7 @@ export default function HomePage() {
           </p>
           <div className="mt-8">
             <Link
-              href="/job-flow"
+              href={jobFlowHref}
               className="btn-secondary gap-2 border-white/20 bg-white px-8 py-4 text-base text-brand-700 shadow-lg hover:bg-brand-50"
             >
               Get Your Free Quote
