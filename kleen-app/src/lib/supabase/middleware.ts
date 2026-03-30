@@ -28,7 +28,20 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const pathname = request.nextUrl.pathname;
+  const needsCustomerSession =
+    pathname === "/dashboard" ||
+    pathname.startsWith("/dashboard/");
+
+  if (needsCustomerSession && !user) {
+    const signIn = new URL("/sign-in", request.url);
+    signIn.searchParams.set("next", `${pathname}${request.nextUrl.search || ""}`);
+    return NextResponse.redirect(signIn);
+  }
 
   return response;
 }
