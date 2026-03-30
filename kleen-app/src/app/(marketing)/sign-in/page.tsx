@@ -237,6 +237,14 @@ function SignInContent() {
             </>
           )}
 
+          <p className="text-center text-xs text-slate-500">
+            Contractor or cleaner? Use the{" "}
+            <Link href="/contractor/sign-in" className="font-medium text-brand-600 hover:text-brand-700">
+              contractor portal sign in
+            </Link>{" "}
+            — not this customer page.
+          </p>
+
           {!EMAIL_AUTH_ENABLED && error && (
             <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</p>
           )}

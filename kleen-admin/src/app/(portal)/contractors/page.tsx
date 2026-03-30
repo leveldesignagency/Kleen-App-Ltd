@@ -3,7 +3,35 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAdminStore, Contractor, ContractorType } from "@/lib/admin-store";
-import { useAdminNotifications } from "@/lib/admin-notifications";
+
+function mapOperativeRowToContractor(c: Record<string, unknown>): Contractor {
+  return {
+    id: String(c.id),
+    user_id: c.user_id ? String(c.user_id) : undefined,
+    full_name: String(c.full_name || ""),
+    email: String(c.email || ""),
+    phone: String(c.phone || ""),
+    contractor_type: (c.contractor_type as ContractorType) || "sole_trader",
+    company_name: String(c.company_name || ""),
+    specialisations: Array.isArray(c.specialisations) ? (c.specialisations as string[]) : [],
+    service_areas: Array.isArray(c.service_areas) ? (c.service_areas as string[]) : [],
+    rating: Number(c.avg_rating ?? 0),
+    total_jobs: Number(c.total_jobs ?? 0),
+    hourly_rate: c.hourly_rate != null ? Number(c.hourly_rate) : undefined,
+    is_active: Boolean(c.is_active ?? true),
+    is_verified: Boolean(c.is_verified ?? false),
+    notes: String(c.notes || ""),
+    bank_account_name: String(c.bank_account_name || ""),
+    bank_sort_code: String(c.bank_sort_code || ""),
+    bank_account_number: String(c.bank_account_number || ""),
+    company_number: String(c.company_number || ""),
+    vat_number: String(c.vat_number || ""),
+    utr_number: String(c.utr_number || ""),
+    stripe_account_id: String(c.stripe_account_id || ""),
+    created_at: String(c.created_at || new Date().toISOString()),
+  };
+}
+import { useAdminNotifications, type AdminToast } from "@/lib/admin-notifications";
 import {
   Users,
   Plus,
@@ -72,6 +100,7 @@ const emptyContractor: Omit<Contractor, "id" | "created_at"> & { operative_servi
   company_number: "",
   vat_number: "",
   utr_number: "",
+  stripe_account_id: "",
   operative_services: [],
 };
 
@@ -178,111 +207,57 @@ export default function AdminContractorsPage() {
 
   const handleSave = async () => {
     if (!modal) return;
-    const supabase = createClient();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { id, operative_services: osList, ...data } = modal.data as any;
 
-    const payload = {
-      full_name: data.full_name,
-      email: data.email,
-      phone: data.phone || null,
-      contractor_type: data.contractor_type || "sole_trader",
-      company_name: data.company_name || null,
-      specialisations: data.specialisations || [],
-      service_areas: data.service_areas || [],
-      hourly_rate: data.hourly_rate || null,
-      is_active: data.is_active ?? true,
-      is_verified: data.is_verified ?? false,
-      notes: data.notes || null,
-      bank_account_name: data.bank_account_name || null,
-      bank_sort_code: data.bank_sort_code || null,
-      bank_account_number: data.bank_account_number || null,
-      company_number: data.company_number || null,
-      vat_number: data.vat_number || null,
-      utr_number: data.utr_number || null,
-    };
+    const res = await fetch("/api/contractors/save", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: modal.mode,
+        id: modal.mode === "edit" ? id : undefined,
+        operative: {
+          full_name: data.full_name,
+          email: data.email,
+          phone: data.phone || null,
+          contractor_type: data.contractor_type || "sole_trader",
+          company_name: data.company_name || null,
+          specialisations: data.specialisations || [],
+          service_areas: data.service_areas || [],
+          hourly_rate: data.hourly_rate ?? null,
+          is_active: data.is_active ?? true,
+          is_verified: data.is_verified ?? false,
+          notes: data.notes || null,
+          bank_account_name: data.bank_account_name || null,
+          bank_sort_code: data.bank_sort_code || null,
+          bank_account_number: data.bank_account_number || null,
+          company_number: data.company_number || null,
+          vat_number: data.vat_number || null,
+          utr_number: data.utr_number || null,
+        },
+        operative_services: Array.isArray(osList) ? osList : [],
+      }),
+    });
+
+    const json = (await res.json().catch(() => ({}))) as { error?: string; operative?: Record<string, unknown> };
+    if (!res.ok || !json.operative) {
+      toast({
+        type: "error",
+        title: "Save Failed",
+        message: json.error || res.statusText || "Request failed",
+      });
+      return;
+    }
+
+    const mapped = mapOperativeRowToContractor(json.operative);
 
     if (modal.mode === "add") {
-      const { data: inserted, error } = await supabase
-        .from("operatives")
-        .insert(payload)
-        .select()
-        .single();
-
-      if (error) {
-        console.error("Insert error:", error);
-        toast({ type: "error", title: "Save Failed", message: error.message });
-        return;
-      }
-
-      if (inserted) {
-        const osList = Array.isArray((modal.data as { operative_services?: OperativeServiceRow[] }).operative_services)
-          ? (modal.data as { operative_services: OperativeServiceRow[] }).operative_services
-          : [];
-        for (const row of osList) {
-          await supabase.from("operative_services").insert({
-            operative_id: inserted.id,
-            service_id: row.service_id,
-            contract_title: row.contract_title || null,
-            contract_content: row.contract_content || null,
-            contract_content_preview: row.contract_content_preview?.trim() || null,
-            contract_file_url: row.contract_file_url || null,
-            is_active: true,
-          });
-        }
-        addContractor({
-          ...data,
-          ...payload,
-          id: inserted.id,
-          rating: 0,
-          total_jobs: 0,
-          created_at: inserted.created_at,
-        });
-        toast({ type: "success", title: "Contractor Added", message: `${data.full_name} has been added` });
-      }
+      addContractor(mapped);
+      toast({ type: "success", title: "Contractor Added", message: `${data.full_name} has been added` });
     } else {
-      const { error } = await supabase
-        .from("operatives")
-        .update(payload)
-        .eq("id", id);
-
-      if (error) {
-        console.error("Update error:", error);
-        toast({ type: "error", title: "Save Failed", message: error.message });
-        return;
-      }
-
-      updateContractor(id, { ...data, ...payload });
+      updateContractor(id, mapped);
       toast({ type: "success", title: "Contractor Updated", message: `${data.full_name} has been updated` });
-
-      // Sync operative_services: insert new, update existing, delete removed
-      const currentList: OperativeServiceRow[] = Array.isArray(osList) ? osList : [];
-      const existingIds = currentList.filter((r: OperativeServiceRow) => r.id).map((r: OperativeServiceRow) => r.id as string);
-      const { data: existingRows } = await supabase
-        .from("operative_services")
-        .select("id")
-        .eq("operative_id", id);
-      const existingDbIds = (existingRows || []).map((r: { id: string }) => r.id);
-      const toDelete = existingDbIds.filter((dbId) => !existingIds.includes(dbId));
-      for (const rowId of toDelete) {
-        await supabase.from("operative_services").delete().eq("id", rowId);
-      }
-      for (const row of currentList) {
-        const rowPayload = {
-          operative_id: id,
-          service_id: row.service_id,
-          contract_title: row.contract_title || null,
-          contract_content: row.contract_content || null,
-          contract_content_preview: row.contract_content_preview?.trim() || null,
-          contract_file_url: row.contract_file_url || null,
-          is_active: true,
-        };
-        if (row.id) {
-          await supabase.from("operative_services").update(rowPayload).eq("id", row.id);
-        } else {
-          await supabase.from("operative_services").insert(rowPayload);
-        }
-      }
     }
 
     setModal(null);
@@ -507,7 +482,11 @@ export default function AdminContractorsPage() {
                               ? "text-amber-400 hover:bg-amber-500/20"
                               : "text-emerald-400 hover:bg-emerald-500/20"
                           }`}
-                          title={c.is_active ? "Deactivate" : "Activate"}
+                          title={
+                            c.is_active
+                              ? "Deactivate — blocks contractor portal and new quote invites"
+                              : "Activate — restores portal access and quote invites"
+                          }
                         >
                           {c.is_active ? (
                             <ShieldOff className="h-4 w-4" />
@@ -550,6 +529,7 @@ export default function AdminContractorsPage() {
           data={modal.data}
           availableServices={availableServices}
           servicesCatalog={servicesCatalog}
+          toast={toast}
           onChange={(updates) =>
             setModal((m) => (m ? { ...m, data: { ...m.data, ...updates } } : null))
           }
@@ -598,6 +578,7 @@ function ContractorModal({
   data,
   availableServices,
   servicesCatalog,
+  toast,
   onChange,
   onSave,
   onClose,
@@ -607,6 +588,7 @@ function ContractorModal({
   data: any;
   availableServices: string[];
   servicesCatalog: { id: string; name: string }[];
+  toast: (t: Omit<AdminToast, "id">) => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onChange: (updates: any) => void;
   onSave: () => void;
@@ -614,6 +596,7 @@ function ContractorModal({
 }) {
   const showServicesStep = true; // Services & contracts tab for both add and edit
   const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [syncingStripe, setSyncingStripe] = useState(false);
   const [areaInput, setAreaInput] = useState("");
   const [addServiceId, setAddServiceId] = useState("");
   const [addServiceSearch, setAddServiceSearch] = useState("");
@@ -624,6 +607,15 @@ function ContractorModal({
   const [addContractPreview, setAddContractPreview] = useState("");
   const operativeServices: OperativeServiceRow[] = Array.isArray(data.operative_services) ? data.operative_services : [];
   const availableToAdd = servicesCatalog.filter((s) => !operativeServices.some((os) => os.service_id === s.id));
+
+  const patchOperativeServiceRow = (row: OperativeServiceRow, patch: Partial<OperativeServiceRow>) => {
+    const k = row.id || row.service_id;
+    onChange({
+      operative_services: operativeServices.map((x) =>
+        (x.id || x.service_id) === k ? { ...x, ...patch } : x
+      ),
+    });
+  };
   const filteredServices = addServiceSearch.trim()
     ? availableToAdd.filter((s) => s.name.toLowerCase().includes(addServiceSearch.toLowerCase()))
     : availableToAdd;
@@ -656,7 +648,7 @@ function ContractorModal({
       onClick={onClose}
     >
       <div
-        className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 bg-slate-900 p-6"
+        className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-white/10 bg-slate-900 p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <button onClick={onClose} className="absolute right-4 top-4 text-slate-500 hover:text-white">
@@ -843,7 +835,8 @@ function ContractorModal({
                 Bank Details
               </div>
               <p className="mt-1 text-xs text-slate-500">
-                Used for automated Stripe payouts after job completion
+                Saved in Kleen first, then registered with Stripe Connect for escrow payouts (see below). Use an 8-digit
+                account number (include leading zeros).
               </p>
               <div className="mt-4 space-y-3">
                 <InputField
@@ -878,6 +871,61 @@ function ContractorModal({
                   />
                 </div>
               </div>
+              {mode === "edit" && data.id ? (
+                <button
+                  type="button"
+                  disabled={syncingStripe}
+                  onClick={async () => {
+                    setSyncingStripe(true);
+                    try {
+                      const res = await fetch("/api/stripe/sync-operative-bank", {
+                        method: "POST",
+                        credentials: "include",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          operativeId: data.id,
+                          bank_account_name: data.bank_account_name || null,
+                          bank_sort_code: data.bank_sort_code || null,
+                          bank_account_number: data.bank_account_number || null,
+                        }),
+                      });
+                      const j = (await res.json()) as {
+                        error?: string;
+                        stripe_account_id?: string;
+                        message?: string;
+                      };
+                      if (!res.ok) {
+                        toast({ type: "error", title: "Stripe", message: j.error || "Sync failed" });
+                        return;
+                      }
+                      if (j.stripe_account_id) {
+                        onChange({ stripe_account_id: j.stripe_account_id });
+                      }
+                      toast({
+                        type: "success",
+                        title: "Stripe payouts",
+                        message: j.message || "Registered with Stripe.",
+                      });
+                    } catch (e) {
+                      toast({
+                        type: "error",
+                        title: "Stripe",
+                        message: e instanceof Error ? e.message : "Request failed",
+                      });
+                    } finally {
+                      setSyncingStripe(false);
+                    }
+                  }}
+                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-brand-500/40 bg-brand-500/10 px-4 py-2.5 text-sm font-medium text-brand-300 hover:bg-brand-500/20 disabled:opacity-50"
+                >
+                  {syncingStripe ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  {syncingStripe ? "Registering with Stripe…" : "Register bank with Stripe (escrow payouts)"}
+                </button>
+              ) : (
+                <p className="mt-3 text-xs text-slate-500">
+                  Save the contractor once, then reopen them to register the bank account with Stripe.
+                </p>
+              )}
             </div>
 
             <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
@@ -935,42 +983,85 @@ function ContractorModal({
                 Services &amp; contracts
               </div>
               <p className="mt-1 text-xs text-slate-500">
-                Full contract is emailed to the customer after payment is held in escrow. Before that, they see a preview
-                (optional field below) or an auto-redacted version without emails/phones/URLs.
+                Customers always see Kleen&apos;s short <strong>service agreement</strong> before payment. Use{" "}
+                <strong>full contract</strong> for the long text emailed after escrow. Use <strong>preview</strong> only
+                for a brief contractor addendum (optional) shown under the standard agreement — not the full legal text.
               </p>
               {operativeServices.length > 0 && (
-                <ul className="mt-4 space-y-3">
+                <ul className="mt-4 space-y-4">
                   {operativeServices.map((os) => (
                     <li
                       key={os.id || os.service_id}
-                      className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/5 p-3"
+                      className="rounded-xl border border-white/10 bg-white/[0.04] p-4"
                     >
-                      <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
                         <p className="font-medium text-white">{os.service_name || os.service_id}</p>
-                        {os.contract_title && (
-                          <p className="text-xs text-slate-400">{os.contract_title}</p>
-                        )}
-                        {os.contract_content && (
-                          <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">
-                            {os.contract_content.slice(0, 120)}
-                            {os.contract_content.length > 120 ? "…" : ""}
-                          </p>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onChange({
+                              operative_services: operativeServices.filter(
+                                (x) => (x.id || x.service_id) !== (os.id || os.service_id)
+                              ),
+                            });
+                          }}
+                          className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-red-500/20 hover:text-red-400"
+                          title="Remove service"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onChange({
-                            operative_services: operativeServices.filter(
-                              (x) => (x.id || x.service_id) !== (os.id || os.service_id)
-                            ),
-                          });
-                        }}
-                        className="rounded-lg p-1.5 text-slate-400 hover:bg-red-500/20 hover:text-red-400"
-                        title="Remove service"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      <p className="mt-2 text-xs text-slate-500">
+                        Edit the contract copy below, then save the contractor with <strong>Save Changes</strong>.
+                      </p>
+                      <label className="mt-3 block">
+                        <span className="text-xs font-medium text-slate-400">Contract title</span>
+                        <input
+                          type="text"
+                          value={os.contract_title || ""}
+                          onChange={(e) => patchOperativeServiceRow(os, { contract_title: e.target.value })}
+                          className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-slate-500 outline-none focus:border-brand-500"
+                          placeholder="e.g. Driveway cleaning agreement"
+                        />
+                      </label>
+                      <label className="mt-3 block">
+                        <span className="text-xs font-medium text-slate-400">Full contract (emailed after payment)</span>
+                        <textarea
+                          value={os.contract_content || ""}
+                          onChange={(e) => patchOperativeServiceRow(os, { contract_content: e.target.value })}
+                          rows={6}
+                          className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 p-3 text-sm text-white placeholder-slate-500 outline-none focus:border-brand-500"
+                          placeholder="Long-form terms…"
+                        />
+                      </label>
+                      <label className="mt-3 block">
+                        <span className="text-xs font-medium text-slate-400">Preview / short addendum (optional)</span>
+                        <textarea
+                          value={os.contract_content_preview ?? ""}
+                          onChange={(e) =>
+                            patchOperativeServiceRow(os, {
+                              contract_content_preview: e.target.value.trim() || null,
+                            })
+                          }
+                          rows={3}
+                          className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 p-3 text-sm text-white placeholder-slate-500 outline-none focus:border-brand-500"
+                          placeholder="Brief text shown under Kleen’s standard agreement…"
+                        />
+                      </label>
+                      <label className="mt-3 block">
+                        <span className="text-xs font-medium text-slate-400">Contract PDF URL (optional)</span>
+                        <input
+                          type="url"
+                          value={os.contract_file_url ?? ""}
+                          onChange={(e) =>
+                            patchOperativeServiceRow(os, {
+                              contract_file_url: e.target.value.trim() || null,
+                            })
+                          }
+                          className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-slate-500 outline-none focus:border-brand-500"
+                          placeholder="https://…"
+                        />
+                      </label>
                     </li>
                   ))}
                 </ul>
@@ -1044,14 +1135,14 @@ function ContractorModal({
                   <textarea
                     value={addContractContent}
                     onChange={(e) => setAddContractContent(e.target.value)}
-                    placeholder="Full contract (terms, scope, contractor name, etc.) — emailed after payment"
+                    placeholder="Full contract / terms — emailed after payment only (not shown in full before payment)"
                     rows={4}
                     className="w-full rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-white placeholder-slate-500 outline-none focus:border-brand-500"
                   />
                   <textarea
                     value={addContractPreview}
                     onChange={(e) => setAddContractPreview(e.target.value)}
-                    placeholder="Optional: customer preview before payment (no personal contact details)"
+                    placeholder="Optional: short addendum under Kleen's standard agreement (no full legal text here)"
                     rows={3}
                     className="w-full rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-white placeholder-slate-500 outline-none focus:border-brand-500"
                   />

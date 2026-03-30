@@ -77,6 +77,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ received: true });
   }
 
+  /** Connect: keep operatives.stripe_account_id aligned when Stripe updates the account. */
+  if (event.type === "account.updated") {
+    const account = event.data.object as Stripe.Account;
+    const operativeId = account.metadata?.operative_id;
+    if (operativeId && account.id) {
+      await supabase
+        .from("operatives")
+        .update({ stripe_account_id: account.id })
+        .eq("id", operativeId);
+    }
+    return NextResponse.json({ received: true });
+  }
+
   if (event.type === "payment_intent.succeeded") {
     const pi = event.data.object as Stripe.PaymentIntent;
     const jobId = pi.metadata?.job_id;

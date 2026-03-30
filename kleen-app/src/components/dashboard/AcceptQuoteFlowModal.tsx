@@ -8,11 +8,13 @@ import { usePaymentMethodStore } from "@/lib/payment-methods";
 import type { Notification } from "@/lib/notifications";
 import { FileText, ShieldCheck, CreditCard, Loader2, CheckCircle2, Check, Receipt } from "lucide-react";
 import { quoteBreakdownPence, CUSTOMER_SERVICE_FEE_RATE } from "@/lib/customer-quote-price";
-import { buildCustomerContractPreview } from "@/lib/contract-preview";
+import { getContractorAddendumPreview } from "@/lib/contract-preview";
+import { buildPlatformServiceAgreementText } from "@/lib/platform-service-agreement";
 
-const KLEEN_TERMS_VERSION = "1.0";
+const KLEEN_TERMS_VERSION = "1.1";
 
-const KLEEN_TERMS = `
+/** Canonical text for version 1.1 (stored acceptance); shown in full inside a disclosure on step 3. */
+const KLEEN_TERMS_FULL = `
 Kleen Platform Terms & Conditions
 
 By accepting, you agree that:
@@ -26,7 +28,15 @@ By accepting, you agree that:
 4. You use the platform and engage contractors at your own risk. You must resolve any disputes regarding the service directly with the contractor, subject to any dispute resolution process we make available.
 
 5. Our role is limited to facilitating the connection, processing payments as agreed, and (where applicable) releasing funds to the contractor after completion. We disclaim all liability to the fullest extent permitted by law for anything arising from the contractor's acts or omissions.
+
+6. Theft, violence, or other criminal matters must be reported to the police. Kleen will cooperate with law enforcement when required by law.
 `.trim();
+
+const KLEEN_TERMS_SUMMARY = [
+  "Kleen is a marketplace only — your service contract is with the contractor.",
+  "Service disputes follow our published process and applicable law between you and the contractor.",
+  "Theft, violence, or other crimes: report to the police; Kleen cooperates with law enforcement when the law requires.",
+].join(" ");
 
 export interface CustomerQuoteForAccept {
   quote_request_id: string;
@@ -436,7 +446,7 @@ export function AcceptQuoteFlowModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <div
-        className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-xl"
+        className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="border-b border-slate-200 px-4 py-3">
@@ -447,7 +457,7 @@ export function AcceptQuoteFlowModal({
             </span>
             <span aria-hidden>→</span>
             <span className={step >= 2 ? "font-medium text-brand-600" : ""}>
-              {contractSigned ? <CheckCircle2 className="mr-0.5 inline h-3.5 w-3.5" /> : null}2 Contract
+              {contractSigned ? <CheckCircle2 className="mr-0.5 inline h-3.5 w-3.5" /> : null}2 Service agreement
             </span>
             <span aria-hidden>→</span>
             <span className={step >= 3 ? "font-medium text-brand-600" : ""}>
@@ -531,25 +541,35 @@ export function AcceptQuoteFlowModal({
               ) : contract ? (
                 <>
                   <p className="text-xs text-slate-600">
-                    Below is what you&apos;re agreeing to before payment. The <strong>full</strong> agreement (same terms,
-                    with contractor details and any PDF) is emailed to you once your payment is authorised and held in
-                    escrow.
+                    You&apos;re agreeing to the standard Kleen service understanding below (and any short contractor
+                    addendum). Any <strong>long-form</strong> or PDF terms the contractor keeps on file are emailed to
+                    you after your payment is authorised and held in escrow — we don&apos;t show that full text here.
                   </p>
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-                    {contract.contract_title && (
-                      <h3 className="mb-2 font-semibold text-slate-900">{contract.contract_title}</h3>
-                    )}
                     <div className="whitespace-pre-wrap">
-                      {buildCustomerContractPreview(contract.contract_content, contract.contract_content_preview) ||
-                        "No content on file."}
+                      {buildPlatformServiceAgreementText({
+                        jobReference,
+                        totalFormatted: fmt(breakdown.totalPence),
+                        contractorLabel: quote.contractor_label,
+                      })}
                     </div>
-                    {contract.contract_file_url ? (
-                      <p className="mt-3 border-t border-slate-200 pt-3 text-xs text-slate-600">
-                        A PDF copy is attached to your confirmation email after payment — we don&apos;t link it here
-                        before then.
-                      </p>
-                    ) : null}
                   </div>
+                  {getContractorAddendumPreview(contract.contract_content_preview) ? (
+                    <div className="mt-3 rounded-xl border border-brand-100 bg-brand-50/50 p-4 text-sm text-slate-700">
+                      <h3 className="mb-2 font-semibold text-slate-900">
+                        {contract.contract_title?.trim() || "Contractor addendum"}
+                      </h3>
+                      <div className="whitespace-pre-wrap">
+                        {getContractorAddendumPreview(contract.contract_content_preview)}
+                      </div>
+                    </div>
+                  ) : null}
+                  {contract.contract_file_url ? (
+                    <p className="mt-3 text-xs text-slate-600">
+                      A PDF copy of the contractor&apos;s full terms (if provided) is linked in your confirmation email
+                      after payment — not shown here before escrow.
+                    </p>
+                  ) : null}
                   <form onSubmit={handleSignContract} className="mt-4 space-y-3">
                     <div>
                       <label className="block text-xs font-medium text-slate-500">Your full name (e-signature)</label>
@@ -563,8 +583,8 @@ export function AcceptQuoteFlowModal({
                       />
                     </div>
                     <p className="text-xs text-slate-500">
-                      By signing you agree to the service terms shown above; the complete agreement is supplied after
-                      payment is secured.
+                      By signing you agree to the service agreement (and addendum, if any) shown above. Long-form terms
+                      may follow by email after payment is secured.
                     </p>
                     <div className="flex gap-2">
                       <button
@@ -587,7 +607,10 @@ export function AcceptQuoteFlowModal({
                 </>
               ) : (
                 <div>
-                  <p className="text-sm text-slate-600">No contract on file for this quote. You can proceed to platform terms and payment.</p>
+                  <p className="text-sm text-slate-600">
+                    No contractor service record is linked to this quote. Continue to Kleen platform terms and payment —
+                    the standard service agreement still applies where we connect you with a contractor.
+                  </p>
                   <div className="mt-4 flex gap-2">
                     <button
                       type="button"
@@ -616,7 +639,18 @@ export function AcceptQuoteFlowModal({
                   <ShieldCheck className="h-4 w-4 text-amber-600" />
                   Kleen platform terms
                 </div>
-                <pre className="mt-2 whitespace-pre-wrap font-sans text-xs leading-relaxed">{KLEEN_TERMS}</pre>
+                <p className="mt-2 text-xs leading-relaxed text-slate-700">{KLEEN_TERMS_SUMMARY}</p>
+                <p className="mt-2 text-xs text-slate-500">
+                  By continuing you accept the full Kleen platform terms (version {KLEEN_TERMS_VERSION}) below.
+                </p>
+                <details className="mt-3 rounded-lg border border-amber-200/80 bg-white/60 px-3 py-2">
+                  <summary className="cursor-pointer text-xs font-medium text-slate-800">
+                    Read full platform terms (version {KLEEN_TERMS_VERSION})
+                  </summary>
+                  <pre className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap font-sans text-[11px] leading-relaxed text-slate-700">
+                    {KLEEN_TERMS_FULL}
+                  </pre>
+                </details>
               </div>
               <form onSubmit={handleAcceptTerms} className="mt-4 space-y-3">
                 <button

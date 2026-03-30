@@ -1,45 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
+import { requireAdminApi } from "@/lib/require-admin-api";
 
 const PLATFORM_FEE_RATE = 0.175; // 17.5% — Kleen keeps this; rest goes to contractor
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAdminApi();
+    if (!auth.ok) return auth.response;
+
     const stripeKey = process.env.STRIPE_SECRET_KEY;
     if (!stripeKey) {
       return NextResponse.json({ error: "Stripe not configured" }, { status: 503 });
     }
     const stripe = new Stripe(stripeKey);
-
-    const cookieStore = cookies();
-    const supabaseAuth = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value;
-          },
-          set() {},
-          remove() {},
-        },
-      }
-    );
-    const { data: { user } } = await supabaseAuth.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    const { data: profile } = await supabaseAuth
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-    if (!profile || profile.role !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
 
     const body = await request.json().catch(() => ({}));
     const { jobId } = body as { jobId?: string };

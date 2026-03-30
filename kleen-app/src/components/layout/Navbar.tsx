@@ -13,6 +13,7 @@ interface NavbarProps {
 
 const NAV_LINKS = [
   { href: "/services", label: "Services" },
+  { href: "/contractors", label: "Contractors" },
   { href: "/about", label: "About" },
   { href: "/contact", label: "Contact" },
   { href: "/faq", label: "FAQ" },
@@ -31,6 +32,7 @@ export default function Navbar({ user }: NavbarProps) {
   const isMarketingPage =
     pathname === "/" ||
     pathname === "/services" ||
+    pathname === "/contractors" ||
     pathname === "/about" ||
     pathname === "/contact" ||
     pathname === "/faq";

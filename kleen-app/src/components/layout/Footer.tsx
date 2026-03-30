@@ -10,6 +10,7 @@ const FOOTER_LINKS = {
   Company: [
     { href: "/about", label: "About Us" },
     { href: "/contact", label: "Contact" },
+    { href: "/contractors", label: "Contractors & cleaners" },
   ],
   Legal: [
     { href: "/terms", label: "Terms of Service" },
