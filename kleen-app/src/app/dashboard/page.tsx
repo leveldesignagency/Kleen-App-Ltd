@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import BookAgainSection from "@/components/dashboard/BookAgainSection";
+import { fetchQuotePricesByJobId } from "@/lib/dashboard-jobs-fetch";
 
 interface DashboardJob {
   id: string;
@@ -64,24 +65,37 @@ export default function DashboardOverview() {
       if (!user) { setLoading(false); return; }
 
       const fetchJobs = async () => {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from("jobs")
-          .select("id, reference, service_id, status, preferred_date, created_at, services(name), quotes(min_price_pence, max_price_pence)")
+          .select("id, reference, service_id, status, preferred_date, created_at, services(name)")
           .eq("user_id", user.id)
           .order("created_at", { ascending: false })
           .limit(30);
-        if (data) {
+        if (error) {
+          console.error("dashboard jobs:", error);
+          return;
+        }
+        if (data?.length) {
+          const priceMap = await fetchQuotePricesByJobId(
+            supabase,
+            data.map((j) => j.id as string)
+          );
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          setJobs(data.map((j: any) => ({
-            id: j.id,
-            reference: j.reference,
-            service_name: j.services?.name || "Cleaning",
-            status: j.status,
-            preferred_date: j.preferred_date,
-            min_price: j.quotes?.[0]?.min_price_pence || 0,
-            max_price: j.quotes?.[0]?.max_price_pence || 0,
-            created_at: j.created_at,
-          })));
+          setJobs(data.map((j: any) => {
+            const p = priceMap.get(j.id);
+            return {
+              id: j.id,
+              reference: j.reference,
+              service_name: j.services?.name || "Cleaning",
+              status: j.status,
+              preferred_date: j.preferred_date,
+              min_price: p?.min ?? 0,
+              max_price: p?.max ?? 0,
+              created_at: j.created_at,
+            };
+          }));
+        } else {
+          setJobs([]);
         }
       };
 

@@ -147,19 +147,30 @@ export default function CustomerJobDetailPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { if (isInitial) setLoading(false); return; }
 
-      const { data: j } = await supabase
+      const jobId = id as string;
+      const { data: j, error: jobErr } = await supabase
         .from("jobs")
-        .select(`
-          *,
-          job_details(quantity, complexity),
-          services(name),
-          quotes(min_price_pence, max_price_pence, operatives_required)
-        `)
-        .eq("id", id as string)
+        .select("*, services(name)")
+        .eq("id", jobId)
         .eq("user_id", user.id)
         .single();
 
-      if (!j) { if (isInitial) setLoading(false); return; }
+      if (jobErr || !j) {
+        if (jobErr) console.error("job detail load:", jobErr);
+        if (isInitial) setLoading(false);
+        return;
+      }
+
+      const [{ data: jdRow }, { data: qRow }] = await Promise.all([
+        supabase.from("job_details").select("quantity, complexity").eq("job_id", jobId).limit(1).maybeSingle(),
+        supabase
+          .from("quotes")
+          .select("min_price_pence, max_price_pence, operatives_required")
+          .eq("job_id", jobId)
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle(),
+      ]);
 
       setJob({
         id: j.id,
@@ -176,16 +187,11 @@ export default function CustomerJobDetailPage() {
         preferred_time: j.preferred_time || "",
         notes: j.notes || "",
         created_at: j.created_at,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        min_price: (j as any).quotes?.[0]?.min_price_pence || 0,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        max_price: (j as any).quotes?.[0]?.max_price_pence || 0,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        operatives_required: (j as any).quotes?.[0]?.operatives_required || 1,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        rooms: (j as any).job_details?.[0]?.quantity || 0,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        complexity: (j as any).job_details?.[0]?.complexity || "standard",
+        min_price: qRow?.min_price_pence ?? 0,
+        max_price: qRow?.max_price_pence ?? 0,
+        operatives_required: qRow?.operatives_required ?? 1,
+        rooms: jdRow?.quantity ?? 0,
+        complexity: jdRow?.complexity ?? "standard",
         accepted_quote_request_id: j.accepted_quote_request_id || null,
         contractor_confirmed_complete_at: j.contractor_confirmed_complete_at || null,
         customer_confirmed_complete_at: j.customer_confirmed_complete_at || null,
