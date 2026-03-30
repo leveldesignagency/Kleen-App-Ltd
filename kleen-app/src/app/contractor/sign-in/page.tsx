@@ -6,6 +6,8 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Loader2, ArrowRight } from "lucide-react";
+import GoogleOAuthButton from "@/components/auth/GoogleOAuthButton";
+import { getContractorGoogleRedirectTo } from "@/lib/contractor-oauth";
 
 const EMAIL_AUTH_ENABLED = process.env.NEXT_PUBLIC_ENABLE_EMAIL_AUTH === "true";
 
@@ -14,13 +16,35 @@ export default function ContractorSignInPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [oauthLoading, setOauthLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const handleGoogle = async () => {
+    setError("");
+    setOauthLoading(true);
+    const supabase = createClient();
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    if (!origin || origin.includes("localhost")) {
+      setError("Please use the live site (www.kleenapp.co.uk or dashboard.kleenapp.co.uk) to sign in.");
+      setOauthLoading(false);
+      return;
+    }
+    const redirectTo = getContractorGoogleRedirectTo();
+    const { error: err } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo },
+    });
+    if (err) {
+      setError(err.message);
+      setOauthLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     if (!EMAIL_AUTH_ENABLED) {
-      setError("Email sign-in is not enabled on this environment.");
+      setError("Email sign-in is not enabled. Use Google above.");
       return;
     }
     setLoading(true);
@@ -54,48 +78,73 @@ export default function ContractorSignInPage() {
         <h1 className="text-center text-2xl font-bold text-slate-900">Contractor sign in</h1>
         <p className="mt-2 text-center text-sm text-slate-600">For Kleen cleaning contractors only.</p>
 
-        {!EMAIL_AUTH_ENABLED ? (
-          <p className="mt-8 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            Email sign-in is disabled. Enable <code className="text-xs">NEXT_PUBLIC_ENABLE_EMAIL_AUTH</code> or contact Kleen.
+        <div className="mt-8 space-y-4">
+          <GoogleOAuthButton onClick={handleGoogle} loading={oauthLoading} disabled={loading}>
+            Continue with Google
+          </GoogleOAuthButton>
+          {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+
+          {EMAIL_AUTH_ENABLED && (
+            <>
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t border-slate-200" />
+                </div>
+                <div className="relative flex justify-center text-xs">
+                  <span className="bg-slate-50 px-2 text-slate-500">or email &amp; password</span>
+                </div>
+              </div>
+
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Email</label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-brand-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Password</label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-brand-500"
+                    required
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={loading || oauthLoading}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 py-3 text-sm font-semibold text-white hover:bg-brand-500 disabled:opacity-50"
+                >
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+                  Sign in
+                </button>
+              </form>
+            </>
+          )}
+        </div>
+
+        {!EMAIL_AUTH_ENABLED && (
+          <p className="mt-4 text-center text-xs text-slate-500">
+            Password sign-in is off in production — use Google to avoid password resets.
           </p>
-        ) : (
-          <form onSubmit={handleSubmit} className="mt-8 space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-brand-500"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700">Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-brand-500"
-                required
-              />
-            </div>
-            {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</p>}
-            <button
-              type="submit"
-              disabled={loading}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 py-3 text-sm font-semibold text-white hover:bg-brand-500 disabled:opacity-50"
-            >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-              Sign in
-            </button>
-          </form>
         )}
 
         <p className="mt-6 text-center text-sm text-slate-500">
           New contractor?{" "}
           <Link href="/contractor/join" className="font-medium text-brand-600 hover:text-brand-700">
             Create an account
+          </Link>
+        </p>
+        <p className="mt-2 text-center text-sm text-slate-500">
+          Customer?{" "}
+          <Link href="/sign-in" className="font-medium text-brand-600 hover:text-brand-700">
+            Customer sign in
           </Link>
         </p>
       </div>

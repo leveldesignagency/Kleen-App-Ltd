@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAdminStore, AdminJob } from "@/lib/admin-store";
+import { fetchAdminJobsList } from "@/lib/admin-jobs-fetch";
 import {
   AlertCircle,
   Briefcase,
@@ -67,41 +68,14 @@ export default function AdminJobsPage() {
 
     const load = async () => {
       setLoadError(null);
-      const { data, error } = await supabase
-        .from("jobs")
-        .select("*, job_details(*), profiles!user_id(full_name, email, is_blocked), services(name), quotes(min_price_pence, max_price_pence, operatives_required)")
-        .order("created_at", { ascending: false });
+      const { data, error } = await fetchAdminJobsList(supabase);
 
       if (error) {
         setLoadError(error.message || "Failed to load jobs");
         setLoading(false);
         return;
       }
-      if (data) {
-        setJobs(
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          data.map((j: any) => ({
-            id: j.id,
-            reference: j.reference || j.id.slice(0, 8).toUpperCase(),
-            service: j.services?.name || "Cleaning",
-            cleaning_type: j.cleaning_type || "domestic",
-            status: j.status,
-            customer_name: j.profiles?.full_name || "Unknown",
-            customer_email: j.profiles?.email || "",
-            address: [j.address_line_1, j.address_line_2, j.city].filter(Boolean).join(", "),
-            postcode: j.postcode || "",
-            date: j.preferred_date || j.created_at,
-            time: j.preferred_time || "",
-            price_estimate: j.quotes?.[0] ? Math.round((j.quotes[0].min_price_pence + j.quotes[0].max_price_pence) / 2) : 0,
-            rooms: j.job_details?.[0]?.quantity || 0,
-            operatives: j.quotes?.[0]?.operatives_required || 1,
-            complexity: j.job_details?.[0]?.complexity || "standard",
-            notes: j.notes || "",
-            created_at: j.created_at,
-            is_blocked: j.profiles?.is_blocked || false,
-          }))
-        );
-      }
+      setJobs(data);
       setLoading(false);
     };
 
@@ -148,34 +122,9 @@ export default function AdminJobsPage() {
     const supabase = createClient();
     let cancelled = false;
     const load = async () => {
-      const { data } = await supabase
-        .from("jobs")
-        .select("*, job_details(*), profiles!user_id(full_name, email, is_blocked), services(name), quotes(min_price_pence, max_price_pence, operatives_required)")
-        .order("created_at", { ascending: false });
-      if (cancelled || !data) return;
-      setJobs(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        data.map((j: any) => ({
-          id: j.id,
-          reference: j.reference || j.id.slice(0, 8).toUpperCase(),
-          service: j.services?.name || "Cleaning",
-          cleaning_type: j.cleaning_type || "domestic",
-          status: j.status,
-          customer_name: j.profiles?.full_name || "Unknown",
-          customer_email: j.profiles?.email || "",
-          address: [j.address_line_1, j.address_line_2, j.city].filter(Boolean).join(", "),
-          postcode: j.postcode || "",
-          date: j.preferred_date || j.created_at,
-          time: j.preferred_time || "",
-          price_estimate: j.quotes?.[0] ? Math.round((j.quotes[0].min_price_pence + j.quotes[0].max_price_pence) / 2) : 0,
-          rooms: j.job_details?.[0]?.quantity || 0,
-          operatives: j.quotes?.[0]?.operatives_required || 1,
-          complexity: j.job_details?.[0]?.complexity || "standard",
-          notes: j.notes || "",
-          created_at: j.created_at,
-          is_blocked: j.profiles?.is_blocked || false,
-        }))
-      );
+      const { data } = await fetchAdminJobsList(supabase);
+      if (cancelled) return;
+      setJobs(data);
     };
     load();
     return () => { cancelled = true; };

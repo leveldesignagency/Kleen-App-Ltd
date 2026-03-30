@@ -103,13 +103,18 @@ export default function JobQuotesPage() {
   const loadJobAndQuotes = useCallback(async () => {
     if (!jobId) return;
     const supabase = createClient();
-    const { data: j } = await supabase
+    const { data: j, error: jobErr } = await supabase
       .from("jobs")
-      .select("id, reference, status, cancelled_reason, address_line_1, address_line_2, city, postcode, preferred_date, preferred_time, notes, job_details(*), profiles!user_id(full_name, email), services(name)")
+      .select("id, reference, status, cancelled_reason, address_line_1, address_line_2, city, postcode, preferred_date, preferred_time, notes, user_id, services(name)")
       .eq("id", jobId)
       .single();
 
-    if (j) {
+    if (jobErr || !j) {
+      if (jobErr) console.error("admin quotes job load:", jobErr);
+      setJob(null);
+    } else {
+      const uid = j.user_id as string;
+      const { data: prof } = await supabase.from("profiles").select("full_name, email").eq("id", uid).maybeSingle();
       const jj = j as {
         id: string;
         reference?: string;
@@ -121,8 +126,6 @@ export default function JobQuotesPage() {
         preferred_date?: string;
         preferred_time?: string;
         notes?: string;
-        job_details?: Array<{ quantity?: number; complexity?: string }>;
-        profiles?: { full_name?: string; email?: string };
         services?: { name?: string };
       };
       setJob({
@@ -131,16 +134,14 @@ export default function JobQuotesPage() {
         service: jj.services?.name || "Cleaning",
         status: jj.status || "pending",
         cancelled_reason: (jj as { cancelled_reason?: string }).cancelled_reason,
-        customer_name: jj.profiles?.full_name || "Unknown",
-        customer_email: jj.profiles?.email || "",
+        customer_name: prof?.full_name || "Unknown",
+        customer_email: prof?.email || "",
         address: [jj.address_line_1, jj.address_line_2, jj.city].filter(Boolean).join(", ") || "—",
         postcode: jj.postcode || "—",
         date: jj.preferred_date ? String(jj.preferred_date).slice(0, 10) : "—",
         time: jj.preferred_time || "—",
         notes: jj.notes || undefined,
       });
-    } else {
-      setJob(null);
     }
 
     const { data: qrData, error: qrError } = await supabase

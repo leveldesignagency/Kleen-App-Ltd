@@ -38,7 +38,10 @@ export default function Navbar({ user }: NavbarProps) {
     pathname === "/contact" ||
     pathname === "/faq";
 
-  const transparent = isMarketingPage && !scrolled && !mobileOpen;
+  // Transparent nav uses white text + inverted logo — only works over dark heroes.
+  // /contractors opens with a light gradient (slate-50 → white), so keep the solid bar.
+  const transparent =
+    isMarketingPage && pathname !== "/contractors" && !scrolled && !mobileOpen;
 
   const jobFlowHref = customerAppHref("/job-flow");
   const signInHref = customerAppHref("/sign-in");

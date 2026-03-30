@@ -6,6 +6,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useAdminStore, Contractor, QuoteRequest, QuoteResponse } from "@/lib/admin-store";
 import { useAdminNotifications } from "@/lib/admin-notifications";
+import { fetchAdminJobById, fetchAdminJobsList } from "@/lib/admin-jobs-fetch";
 import {
   ArrowLeft,
   Loader2,
@@ -205,40 +206,8 @@ export default function AdminJobDetailPage() {
       const supabase = createClient();
 
       if (jobs.length === 0) {
-        const { data: jobsData } = await supabase
-          .from("jobs")
-          .select("*, job_details(*), profiles!user_id(full_name, email, is_blocked), services(name), quotes(min_price_pence, max_price_pence, operatives_required)")
-          .order("created_at", { ascending: false });
-
-        if (jobsData) {
-          setJobs(
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            jobsData.map((j: any) => ({
-              id: j.id,
-              reference: j.reference || j.id.slice(0, 8).toUpperCase(),
-              service: j.services?.name || "Cleaning",
-              cleaning_type: j.cleaning_type || "domestic",
-              status: j.status,
-              user_id: j.user_id,
-              customer_name: j.profiles?.full_name || "Unknown",
-              customer_email: j.profiles?.email || "",
-              address: [j.address_line_1, j.address_line_2, j.city].filter(Boolean).join(", "),
-              postcode: j.postcode || "",
-              date: j.preferred_date || j.created_at,
-              time: j.preferred_time || "",
-              price_estimate: j.quotes?.[0] ? Math.round((j.quotes[0].min_price_pence + j.quotes[0].max_price_pence) / 2) : 0,
-              rooms: j.job_details?.[0]?.quantity || 0,
-              operatives: j.quotes?.[0]?.operatives_required || 1,
-              complexity: j.job_details?.[0]?.complexity || "standard",
-              notes: j.notes || "",
-              created_at: j.created_at,
-              is_blocked: j.profiles?.is_blocked || false,
-              payment_captured_at: j.payment_captured_at ?? null,
-              funds_released_at: j.funds_released_at ?? null,
-              accepted_quote_request_id: j.accepted_quote_request_id ?? null,
-            }))
-          );
-        }
+        const { data: jobsData } = await fetchAdminJobsList(supabase);
+        if (jobsData?.length) setJobs(jobsData);
       }
 
       if (contractors.length === 0) {
@@ -318,50 +287,17 @@ export default function AdminJobDetailPage() {
       .eq("job_id", id as string)
       .order("created_at", { ascending: false });
 
-    const { data: j } = await supabase
-      .from("jobs")
-      .select("*, job_details(*), profiles!user_id(full_name, email, is_blocked), services(name), quotes(min_price_pence, max_price_pence, operatives_required)")
-      .eq("id", id as string)
-      .single();
+    const { data: jobRow } = await fetchAdminJobById(supabase, id as string);
 
-    if (j) {
+    if (jobRow) {
       const quotedPrices = (qrData || [])
         .map((qr: { quote_responses?: Array<{ price_pence: number }> }) => qr.quote_responses?.[0]?.price_pence)
         .filter((p: number | undefined): p is number => p != null && p > 0);
-      const fromQuotes = (j as { quotes?: Array<{ min_price_pence: number; max_price_pence: number }> }).quotes?.[0];
       const price_estimate =
         quotedPrices.length > 0
           ? Math.round(quotedPrices.reduce((a, b) => a + b, 0) / quotedPrices.length)
-          : fromQuotes
-            ? Math.round((fromQuotes.min_price_pence + fromQuotes.max_price_pence) / 2)
-            : 0;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const mapped: any = {
-        id: j.id,
-        reference: j.reference || j.id.slice(0, 8).toUpperCase(),
-        service: (j as any).services?.name || "Cleaning",
-        cleaning_type: j.cleaning_type || "domestic",
-        status: j.status,
-        cancelled_reason: (j as any).cancelled_reason,
-        user_id: (j as any).user_id,
-        customer_name: (j as any).profiles?.full_name || "Unknown",
-        customer_email: (j as any).profiles?.email || "",
-        address: [j.address_line_1, j.address_line_2, j.city].filter(Boolean).join(", "),
-        postcode: j.postcode || "",
-        date: j.preferred_date || j.created_at,
-        time: j.preferred_time || "",
-        price_estimate,
-        rooms: (j as any).job_details?.[0]?.quantity || 0,
-        operatives: (j as any).quotes?.[0]?.operatives_required || 1,
-        complexity: (j as any).job_details?.[0]?.complexity || "standard",
-        notes: j.notes || "",
-        created_at: j.created_at,
-        is_blocked: (j as any).profiles?.is_blocked || false,
-        payment_captured_at: (j as any).payment_captured_at ?? null,
-        funds_released_at: (j as any).funds_released_at ?? null,
-        accepted_quote_request_id: (j as any).accepted_quote_request_id ?? null,
-      };
-      updateJob(j.id, mapped);
+          : jobRow.price_estimate;
+      updateJob(jobRow.id, { ...jobRow, price_estimate });
     }
 
     if (qrData) {

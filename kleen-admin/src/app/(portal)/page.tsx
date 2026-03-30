@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useAdminStore, AdminJob } from "@/lib/admin-store";
+import { useAdminStore } from "@/lib/admin-store";
+import { fetchAdminJobsList } from "@/lib/admin-jobs-fetch";
 import {
   AlertCircle,
   Briefcase,
@@ -45,7 +46,7 @@ export default function AdminDashboardPage() {
       const supabase = createClient();
 
       const [jobsRes, contractorsRes] = await Promise.all([
-        supabase.from("jobs").select("*, job_details(*), profiles!user_id(full_name, email, is_blocked), services(name), quotes(min_price_pence, max_price_pence, operatives_required)").order("created_at", { ascending: false }),
+        fetchAdminJobsList(supabase),
         supabase.from("operatives").select("*").order("created_at", { ascending: false }),
       ]);
 
@@ -55,30 +56,7 @@ export default function AdminDashboardPage() {
         setLoading(false);
         return;
       }
-      if (jobsRes.data) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const mapped: AdminJob[] = jobsRes.data.map((j: any) => ({
-          id: j.id,
-          reference: j.reference || j.id.slice(0, 8).toUpperCase(),
-          service: j.services?.name || "Cleaning",
-          cleaning_type: j.cleaning_type || "domestic",
-          status: j.status,
-          customer_name: j.profiles?.full_name || "Unknown",
-          customer_email: j.profiles?.email || "",
-          address: [j.address_line_1, j.address_line_2, j.city].filter(Boolean).join(", "),
-          postcode: j.postcode || "",
-          date: j.preferred_date || j.created_at,
-          time: j.preferred_time || "",
-          price_estimate: j.quotes?.[0] ? Math.round((j.quotes[0].min_price_pence + j.quotes[0].max_price_pence) / 2) : 0,
-          rooms: j.job_details?.[0]?.quantity || 0,
-          operatives: j.quotes?.[0]?.operatives_required || 1,
-          complexity: j.job_details?.[0]?.complexity || "standard",
-          notes: j.notes || "",
-          created_at: j.created_at,
-          is_blocked: j.profiles?.is_blocked || false,
-        }));
-        setJobs(mapped);
-      }
+      setJobs(jobsRes.data);
 
       if (contractorsRes.data) {
         setContractors(
