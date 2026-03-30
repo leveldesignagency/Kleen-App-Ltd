@@ -70,11 +70,28 @@ export default function AccountPage() {
         setLoading(false);
         return;
       }
-      const { data: profile } = await supabase
+      type ProfileRow = {
+        full_name: string | null;
+        email: string | null;
+        phone: string | null;
+        account_type: string | null;
+        account_deletion_scheduled_at?: string | null;
+      };
+      const full = await supabase
         .from("profiles")
         .select("full_name, email, phone, account_type, account_deletion_scheduled_at")
         .eq("id", user.id)
         .single();
+      let profile: ProfileRow | null = full.data as ProfileRow | null;
+      // If migration 029 is not applied yet, unknown columns cause 400 — retry without them.
+      if (full.error) {
+        const fb = await supabase
+          .from("profiles")
+          .select("full_name, email, phone, account_type")
+          .eq("id", user.id)
+          .single();
+        profile = fb.data as ProfileRow | null;
+      }
       if (profile) {
         setPersonal({
           fullName: profile.full_name ?? "",
