@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { customerDisplayPricePence } from "@/lib/customer-quote-price";
 import { useNotifications } from "@/lib/notifications";
 import { usePaymentMethodStore } from "@/lib/payment-methods";
 import { loadStripe } from "@stripe/stripe-js";
@@ -116,22 +117,31 @@ export default function CustomerQuotesView({
         const qrIds = (qrData as { id: string }[]).map((r) => r.id);
         const { data: respData } = await supabase
           .from("quote_responses")
-          .select("id, quote_request_id, customer_price_pence, estimated_hours, available_date, operative_service_id")
+          .select("id, quote_request_id, price_pence, customer_price_pence, estimated_hours, available_date, operative_service_id")
           .in("quote_request_id", qrIds);
         const byRequestId = (respData || []).reduce((acc, r) => {
           acc[r.quote_request_id] = r;
           return acc;
-        }, {} as Record<string, { id: string; quote_request_id: string; customer_price_pence: number; estimated_hours?: number; available_date?: string | null; operative_service_id?: string | null }>);
+        }, {} as Record<string, {
+          id: string;
+          quote_request_id: string;
+          price_pence?: number | null;
+          customer_price_pence?: number | null;
+          estimated_hours?: number;
+          available_date?: string | null;
+          operative_service_id?: string | null;
+        }>);
         type QrRow = { id: string; operative_id: string; customer_declined_at?: string | null; operatives?: { avg_rating?: number } | { avg_rating?: number }[] };
         const mapped: CustomerQuote[] = [];
         qrData.forEach((qr: QrRow, i: number) => {
           const operative = Array.isArray(qr.operatives) ? qr.operatives[0] : qr.operatives;
           const resp = byRequestId[qr.id];
-          if (resp?.customer_price_pence) {
+          const displayPence = resp ? customerDisplayPricePence(resp) : 0;
+          if (displayPence > 0) {
             mapped.push({
-              id: resp.id,
+              id: resp!.id,
               quote_request_id: qr.id,
-              customer_price_pence: resp.customer_price_pence,
+              customer_price_pence: displayPence,
               estimated_hours: resp.estimated_hours || 0,
               available_date: resp.available_date || null,
               contractor_rating: operative?.avg_rating || 0,
