@@ -18,14 +18,8 @@ export default function ContractorHomePage() {
     if (!operativeId) return;
     const supabase = createClient();
     (async () => {
-      const { data: op } = await supabase
-        .from("operatives")
-        .select(
-          "stripe_account_id, phone, service_areas, trading_name, registered_address, company_name"
-        )
-        .eq("id", operativeId)
-        .single();
-      setStripeId(op?.stripe_account_id || null);
+      const { data: op } = await supabase.from("operatives").select("*").eq("id", operativeId).single();
+      setStripeId((op as { stripe_account_id?: string } | null)?.stripe_account_id || null);
 
       const { count } = await supabase
         .from("operative_services")
@@ -34,13 +28,21 @@ export default function ContractorHomePage() {
       const n = count ?? 0;
       setServiceCount(n);
 
-      const areas = Array.isArray(op?.service_areas) ? op!.service_areas.length : 0;
-      const phoneOk = !!(op?.phone && String(op.phone).trim());
+      const o = op as Record<string, unknown> | null;
+      const areas = Array.isArray(o?.service_areas) ? (o.service_areas as string[]).length : 0;
+      const phoneOk = !!(o?.phone && String(o.phone).trim());
       const ukOk = !!(
-        (op?.company_name && String(op.company_name).trim()) ||
-        (op?.trading_name && String(op.trading_name).trim()) ||
-        (op?.registered_address && String(op.registered_address).trim())
+        (o?.company_name && String(o.company_name).trim()) ||
+        (o?.trading_name && String(o.trading_name).trim()) ||
+        (o?.registered_address && String(o.registered_address).trim())
       );
+      const sortDigits = String(o?.bank_sort_code ?? "").replace(/\D/g, "");
+      const acctDigits = String(o?.bank_account_number ?? "").replace(/\D/g, "");
+      const bankDetailsOk =
+        !!(o?.bank_account_name && String(o.bank_account_name).trim()) &&
+        sortDigits.length >= 6 &&
+        acctDigits.length >= 8;
+      const bankPaymentsOk = bankDetailsOk || !!o?.stripe_account_id;
       setOnboardingSteps([
         { label: "Add a UK phone number", done: phoneOk, href: "/contractor/profile" },
         {
@@ -51,8 +53,8 @@ export default function ContractorHomePage() {
         { label: "At least one service area", done: areas > 0, href: "/contractor/profile" },
         { label: "At least one service with contract text", done: n >= 1, href: "/contractor/services" },
         {
-          label: "Bank & Stripe (optional until verified — add before first paid job)",
-          done: !!op?.stripe_account_id,
+          label: "Bank details & Stripe (save bank anytime; Stripe after Kleen verifies you)",
+          done: bankPaymentsOk,
           href: "/contractor/payouts",
         },
       ]);
@@ -153,28 +155,22 @@ export default function ContractorHomePage() {
             </p>
           </div>
         </Link>
-        {isVerified ? (
-          <Link
-            href="/contractor/payouts"
-            className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
-          >
-            <Landmark className="h-8 w-8 text-brand-600" />
-            <div>
-              <p className="font-semibold text-slate-900">Payouts</p>
-              <p className="mt-1 text-sm text-slate-600">
-                {stripeId ? "Stripe Connect linked — open Stripe to update bank details." : "Connect Stripe for escrow payouts."}
-              </p>
-            </div>
-          </Link>
-        ) : (
-          <div className="flex items-start gap-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-5 opacity-90">
-            <Landmark className="h-8 w-8 text-slate-400" />
-            <div>
-              <p className="font-semibold text-slate-600">Payouts</p>
-              <p className="mt-1 text-sm text-slate-500">Available after Kleen verifies your contractor account.</p>
-            </div>
+        <Link
+          href="/contractor/payouts"
+          className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
+        >
+          <Landmark className="h-8 w-8 text-brand-600" />
+          <div>
+            <p className="font-semibold text-slate-900">Bank &amp; payments</p>
+            <p className="mt-1 text-sm text-slate-600">
+              {isVerified
+                ? stripeId
+                  ? "Stripe linked — open Stripe to update bank details."
+                  : "Save UK bank details; connect Stripe for payouts."
+                : "Save UK bank details here. Stripe Connect after Kleen verifies you."}
+            </p>
           </div>
-        )}
+        </Link>
         {isVerified ? (
           <Link
             href="/contractor/jobs"

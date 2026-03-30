@@ -8,6 +8,7 @@ import {
   FileText,
   Landmark,
   Briefcase,
+  Scale,
   LogOut,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -28,10 +29,11 @@ const NAV_BASE = [
   { href: "/contractor", label: "Overview", icon: LayoutDashboard },
   { href: "/contractor/profile", label: "Company & profile", icon: UserRound },
   { href: "/contractor/services", label: "Services & contracts", icon: FileText },
+  { href: "/contractor/payouts", label: "Bank & payments", icon: Landmark },
 ];
 const NAV_VERIFIED = [
-  { href: "/contractor/payouts", label: "Payouts (Stripe)", icon: Landmark },
   { href: "/contractor/jobs", label: "Jobs & quotes", icon: Briefcase },
+  { href: "/contractor/disputes", label: "Disputes", icon: Scale },
 ];
 
 export default function ContractorSidebar() {

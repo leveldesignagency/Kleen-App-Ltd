@@ -49,11 +49,8 @@ export default function ContractorPortalShell({ children }: { children: React.Re
       return;
     }
 
-    let { data: op } = await supabase
-      .from("operatives")
-      .select("id, is_active, is_verified, rejected_at, rejection_message")
-      .eq("user_id", user.id)
-      .maybeSingle();
+    // Use * so the app works before migration 034 adds rejected_* / verification columns.
+    let { data: op } = await supabase.from("operatives").select("*").eq("user_id", user.id).maybeSingle();
 
     if (op && op.is_active === false) {
       setDeactivated(true);
@@ -75,7 +72,7 @@ export default function ContractorPortalShell({ children }: { children: React.Re
           is_active: true,
           is_verified: false,
         })
-        .select("id, is_active, is_verified, rejected_at, rejection_message")
+        .select("*")
         .single();
 
       if (insErr) {
@@ -91,10 +88,11 @@ export default function ContractorPortalShell({ children }: { children: React.Re
       op = inserted;
     }
 
-    setOperativeId(op!.id);
-    setIsVerified(!!op!.is_verified);
-    setRejectedAt(op!.rejected_at ? String(op.rejected_at) : null);
-    setRejectionMessage(op!.rejection_message ? String(op.rejection_message) : null);
+    const row = op as Record<string, unknown>;
+    setOperativeId(String(row.id));
+    setIsVerified(!!row.is_verified);
+    setRejectedAt(row.rejected_at ? String(row.rejected_at) : null);
+    setRejectionMessage(row.rejection_message ? String(row.rejection_message) : null);
     setLoading(false);
   }, [router]);
 

@@ -1,14 +1,17 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useContractorPortal } from "@/components/contractor/contractor-portal-context";
+import { useNotifications } from "@/lib/notifications";
 import { Loader2 } from "lucide-react";
 
 type ContractorType = "sole_trader" | "business";
 
 export default function ContractorProfilePage() {
   const { operativeId, refresh } = useContractorPortal();
+  const pushToast = useNotifications((s) => s.push);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [fullName, setFullName] = useState("");
@@ -81,18 +84,34 @@ export default function ContractorProfilePage() {
       service_areas: serviceAreas,
     };
 
-    const { error } = await supabase.from("operatives").update(payload).eq("id", operativeId);
+    let { error } = await supabase.from("operatives").update(payload).eq("id", operativeId);
+    // Until migration 034 is applied, UK columns may be missing — retry without them.
+    if (error?.message && /trading_name|registered_address|does not exist|schema cache/i.test(error.message)) {
+      const rest = { ...payload } as Record<string, unknown>;
+      delete rest.trading_name;
+      delete rest.registered_address;
+      const second = await supabase.from("operatives").update(rest).eq("id", operativeId);
+      error = second.error;
+    }
     if (user && fullName.trim()) {
       await supabase.from("profiles").update({ full_name: fullName.trim() }).eq("id", user.id);
     }
 
     setSaving(false);
     if (error) {
-      alert(error.message);
+      pushToast({
+        type: "error",
+        title: "Couldn’t save",
+        message: error.message,
+      });
       return;
     }
     await refresh();
-    alert("Saved.");
+    pushToast({
+      type: "success",
+      title: "Profile saved",
+      message: "Your company details have been updated.",
+    });
   };
 
   if (loading) {
@@ -107,8 +126,11 @@ export default function ContractorProfilePage() {
     <div>
         <h1 className="text-2xl font-bold text-slate-900">Company &amp; profile</h1>
         <p className="mt-1 text-sm text-slate-600">
-          UK-focused business details for Kleen&apos;s verification. Add bank details later under Payouts (optional until
-          you are approved and have a paid job).
+          UK-focused business details for Kleen&apos;s verification. Add bank details under{" "}
+          <Link href="/contractor/payouts" className="font-medium text-brand-600 hover:underline">
+            Bank &amp; payments
+          </Link>
+          .
         </p>
 
       <form onSubmit={handleSave} className="mt-8 space-y-6">
