@@ -35,6 +35,8 @@ export interface OperativeServiceRow {
   service_name?: string;
   contract_title: string;
   contract_content: string;
+  /** Optional: safe text shown to customers before payment; full contract emailed after escrow */
+  contract_content_preview?: string | null;
   contract_file_url?: string | null;
   is_active?: boolean;
 }
@@ -223,6 +225,7 @@ export default function AdminContractorsPage() {
             service_id: row.service_id,
             contract_title: row.contract_title || null,
             contract_content: row.contract_content || null,
+            contract_content_preview: row.contract_content_preview?.trim() || null,
             contract_file_url: row.contract_file_url || null,
             is_active: true,
           });
@@ -270,6 +273,7 @@ export default function AdminContractorsPage() {
           service_id: row.service_id,
           contract_title: row.contract_title || null,
           contract_content: row.contract_content || null,
+          contract_content_preview: row.contract_content_preview?.trim() || null,
           contract_file_url: row.contract_file_url || null,
           is_active: true,
         };
@@ -461,9 +465,17 @@ export default function AdminContractorsPage() {
                             const supabase = createClient();
                             const { data: osData } = await supabase
                               .from("operative_services")
-                              .select("id, operative_id, service_id, contract_title, contract_content, contract_file_url, is_active, services(name)")
+                              .select("id, operative_id, service_id, contract_title, contract_content, contract_content_preview, contract_file_url, is_active, services(name)")
                               .eq("operative_id", c.id);
-                            type OsRow = { id: string; service_id: string; contract_title?: string; contract_content?: string; contract_file_url?: string | null; services: { name: string } | { name: string }[] | null };
+                            type OsRow = {
+                              id: string;
+                              service_id: string;
+                              contract_title?: string;
+                              contract_content?: string;
+                              contract_content_preview?: string | null;
+                              contract_file_url?: string | null;
+                              services: { name: string } | { name: string }[] | null;
+                            };
                             const operative_services: OperativeServiceRow[] = (osData || []).map(
                               (row: OsRow) => {
                                 const svc = Array.isArray(row.services) ? row.services[0] : row.services;
@@ -473,6 +485,7 @@ export default function AdminContractorsPage() {
                                   service_name: svc?.name ?? undefined,
                                   contract_title: row.contract_title || "",
                                   contract_content: row.contract_content || "",
+                                  contract_content_preview: row.contract_content_preview ?? null,
                                   contract_file_url: row.contract_file_url ?? null,
                                 };
                               }
@@ -608,6 +621,7 @@ function ContractorModal({
   const addServiceRef = useRef<HTMLDivElement>(null);
   const [addContractTitle, setAddContractTitle] = useState("");
   const [addContractContent, setAddContractContent] = useState("");
+  const [addContractPreview, setAddContractPreview] = useState("");
   const operativeServices: OperativeServiceRow[] = Array.isArray(data.operative_services) ? data.operative_services : [];
   const availableToAdd = servicesCatalog.filter((s) => !operativeServices.some((os) => os.service_id === s.id));
   const filteredServices = addServiceSearch.trim()
@@ -921,7 +935,8 @@ function ContractorModal({
                 Services &amp; contracts
               </div>
               <p className="mt-1 text-xs text-slate-500">
-                One contract per service. This contract is shown to the customer when they view the contractor&apos;s quote.
+                Full contract is emailed to the customer after payment is held in escrow. Before that, they see a preview
+                (optional field below) or an auto-redacted version without emails/phones/URLs.
               </p>
               {operativeServices.length > 0 && (
                 <ul className="mt-4 space-y-3">
@@ -1029,8 +1044,15 @@ function ContractorModal({
                   <textarea
                     value={addContractContent}
                     onChange={(e) => setAddContractContent(e.target.value)}
-                    placeholder="Contract content (terms, scope of work, etc.)"
+                    placeholder="Full contract (terms, scope, contractor name, etc.) — emailed after payment"
                     rows={4}
+                    className="w-full rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-white placeholder-slate-500 outline-none focus:border-brand-500"
+                  />
+                  <textarea
+                    value={addContractPreview}
+                    onChange={(e) => setAddContractPreview(e.target.value)}
+                    placeholder="Optional: customer preview before payment (no personal contact details)"
+                    rows={3}
                     className="w-full rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-white placeholder-slate-500 outline-none focus:border-brand-500"
                   />
                   <button
@@ -1046,6 +1068,7 @@ function ContractorModal({
                             service_name: service?.name,
                             contract_title: addContractTitle.trim(),
                             contract_content: addContractContent.trim(),
+                            contract_content_preview: addContractPreview.trim() || null,
                           },
                         ],
                       });
@@ -1054,6 +1077,7 @@ function ContractorModal({
                       setAddServiceOpen(false);
                       setAddContractTitle("");
                       setAddContractContent("");
+                      setAddContractPreview("");
                     }}
                     disabled={!addServiceId || !addContractContent.trim()}
                     className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"

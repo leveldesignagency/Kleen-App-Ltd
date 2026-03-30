@@ -1,8 +1,59 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendAdminQuoteAcceptedEmail } from "@/lib/resend-admin-notify";
+import { sendCustomerFullContractEmail } from "@/lib/resend-customer-contract";
 import { generateOperativePortalToken } from "@/lib/operative-portal-token";
 
 type ServiceSupabase = SupabaseClient;
+
+/** After payment is secured: email full contractor agreement (once). */
+async function sendFullContractToCustomerIfNeeded(
+  supabase: ServiceSupabase,
+  jobId: string,
+  quoteRequestId: string,
+  now: string,
+): Promise<void> {
+  const { data: jobRow } = await supabase
+    .from("jobs")
+    .select("reference, user_id, full_contract_emailed_at")
+    .eq("id", jobId)
+    .single();
+  const uid = jobRow?.user_id;
+  if (!uid) return;
+  if ((jobRow as { full_contract_emailed_at?: string | null }).full_contract_emailed_at) return;
+
+  const { data: prof } = await supabase.from("profiles").select("full_name, email").eq("id", uid).single();
+  const customerEmail = prof?.email?.trim();
+  if (!customerEmail) return;
+  const customerName = prof?.full_name?.trim() || "Customer";
+  const ref = jobRow?.reference || jobId.slice(0, 8).toUpperCase();
+
+  const { data: qresp } = await supabase
+    .from("quote_responses")
+    .select("operative_service_id")
+    .eq("quote_request_id", quoteRequestId)
+    .maybeSingle();
+  const osId = qresp?.operative_service_id as string | undefined;
+  if (!osId) return;
+
+  const { data: os } = await supabase
+    .from("operative_services")
+    .select("contract_title, contract_content, contract_file_url")
+    .eq("id", osId)
+    .maybeSingle();
+  if (!os || (!os.contract_content?.trim() && !os.contract_file_url)) return;
+
+  const sent = await sendCustomerFullContractEmail({
+    toEmail: customerEmail,
+    customerName,
+    jobReference: ref,
+    contractTitle: os.contract_title ?? null,
+    contractContent: os.contract_content ?? null,
+    contractFileUrl: os.contract_file_url ?? null,
+  });
+  if (sent.ok) {
+    await supabase.from("jobs").update({ full_contract_emailed_at: now }).eq("id", jobId);
+  }
+}
 
 /**
  * Customer authorized card (manual capture) — funds held until admin captures/releases.
@@ -98,6 +149,8 @@ export async function applyQuoteAcceptAuthorized(params: {
       amountPence,
     });
   }
+
+  await sendFullContractToCustomerIfNeeded(supabase, jobId, quoteRequestId, now);
 
   return null;
 }
@@ -207,6 +260,8 @@ export async function applyLegacyImmediateCapture(
     customerEmail,
     amountPence,
   });
+
+  await sendFullContractToCustomerIfNeeded(supabase, jobId, quoteRequestId, now);
 
   return null;
 }

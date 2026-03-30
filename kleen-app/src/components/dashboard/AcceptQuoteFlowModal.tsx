@@ -8,6 +8,7 @@ import { usePaymentMethodStore } from "@/lib/payment-methods";
 import type { Notification } from "@/lib/notifications";
 import { FileText, ShieldCheck, CreditCard, Loader2, CheckCircle2, Check, Receipt } from "lucide-react";
 import { quoteBreakdownPence, CUSTOMER_SERVICE_FEE_RATE } from "@/lib/customer-quote-price";
+import { buildCustomerContractPreview } from "@/lib/contract-preview";
 
 const KLEEN_TERMS_VERSION = "1.0";
 
@@ -42,6 +43,7 @@ interface ContractInfo {
   id: string;
   contract_title: string | null;
   contract_content: string | null;
+  contract_content_preview: string | null;
   contract_file_url: string | null;
 }
 
@@ -104,7 +106,7 @@ export function AcceptQuoteFlowModal({
       if (quote.operative_service_id) {
         const { data: os } = await supabase
           .from("operative_services")
-          .select("id, contract_title, contract_content, contract_file_url")
+          .select("id, contract_title, contract_content, contract_content_preview, contract_file_url")
           .eq("id", quote.operative_service_id)
           .single();
         if (os) setContract(os as ContractInfo);
@@ -528,21 +530,25 @@ export function AcceptQuoteFlowModal({
                 </div>
               ) : contract ? (
                 <>
+                  <p className="text-xs text-slate-600">
+                    Below is what you&apos;re agreeing to before payment. The <strong>full</strong> agreement (same terms,
+                    with contractor details and any PDF) is emailed to you once your payment is authorised and held in
+                    escrow.
+                  </p>
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
                     {contract.contract_title && (
                       <h3 className="mb-2 font-semibold text-slate-900">{contract.contract_title}</h3>
                     )}
-                    <div className="whitespace-pre-wrap">{contract.contract_content || "No content."}</div>
-                    {contract.contract_file_url && (
-                      <a
-                        href={contract.contract_file_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-2 inline-block text-brand-600 hover:underline"
-                      >
-                        View contract document →
-                      </a>
-                    )}
+                    <div className="whitespace-pre-wrap">
+                      {buildCustomerContractPreview(contract.contract_content, contract.contract_content_preview) ||
+                        "No content on file."}
+                    </div>
+                    {contract.contract_file_url ? (
+                      <p className="mt-3 border-t border-slate-200 pt-3 text-xs text-slate-600">
+                        A PDF copy is attached to your confirmation email after payment — we don&apos;t link it here
+                        before then.
+                      </p>
+                    ) : null}
                   </div>
                   <form onSubmit={handleSignContract} className="mt-4 space-y-3">
                     <div>
@@ -557,7 +563,8 @@ export function AcceptQuoteFlowModal({
                       />
                     </div>
                     <p className="text-xs text-slate-500">
-                      By signing you agree to the contractor&apos;s service contract above.
+                      By signing you agree to the service terms shown above; the complete agreement is supplied after
+                      payment is secured.
                     </p>
                     <div className="flex gap-2">
                       <button
