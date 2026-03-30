@@ -20,6 +20,8 @@ export default function ContractorProfilePage() {
   const [companyNumber, setCompanyNumber] = useState("");
   const [vatNumber, setVatNumber] = useState("");
   const [utrNumber, setUtrNumber] = useState("");
+  const [tradingName, setTradingName] = useState("");
+  const [registeredAddress, setRegisteredAddress] = useState("");
   const [areaInput, setAreaInput] = useState("");
   const [serviceAreas, setServiceAreas] = useState<string[]>([]);
   const [authEmail, setAuthEmail] = useState("");
@@ -42,6 +44,8 @@ export default function ContractorProfilePage() {
         setCompanyNumber(op.company_number || "");
         setVatNumber(op.vat_number || "");
         setUtrNumber(op.utr_number || "");
+        setTradingName((op as { trading_name?: string }).trading_name || "");
+        setRegisteredAddress((op as { registered_address?: string }).registered_address || "");
         setServiceAreas(Array.isArray(op.service_areas) ? op.service_areas : []);
       }
       setLoading(false);
@@ -72,6 +76,8 @@ export default function ContractorProfilePage() {
       company_number: companyNumber.trim() || null,
       vat_number: vatNumber.trim() || null,
       utr_number: utrNumber.replace(/\D/g, "").slice(0, 10) || null,
+      trading_name: tradingName.trim() || null,
+      registered_address: registeredAddress.trim() || null,
       service_areas: serviceAreas,
     };
 
@@ -99,11 +105,11 @@ export default function ContractorProfilePage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-slate-900">Company &amp; profile</h1>
-      <p className="mt-1 text-sm text-slate-600">
-        This information is used by Kleen when sending you jobs. Payout bank details are handled only in Stripe (see
-        Payouts).
-      </p>
+        <h1 className="text-2xl font-bold text-slate-900">Company &amp; profile</h1>
+        <p className="mt-1 text-sm text-slate-600">
+          UK-focused business details for Kleen&apos;s verification. Add bank details later under Payouts (optional until
+          you are approved and have a paid job).
+        </p>
 
       <form onSubmit={handleSave} className="mt-8 space-y-6">
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -165,6 +171,25 @@ export default function ContractorProfilePage() {
                 onChange={(e) => setCompanyName(e.target.value)}
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                 placeholder={contractorType === "business" ? "Registered name" : "Optional"}
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-slate-500">Trading name (UK)</span>
+              <input
+                value={tradingName}
+                onChange={(e) => setTradingName(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                placeholder="If different from company name"
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-slate-500">Registered or trading address (UK)</span>
+              <textarea
+                value={registeredAddress}
+                onChange={(e) => setRegisteredAddress(e.target.value)}
+                rows={3}
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                placeholder="Street, town, postcode"
               />
             </label>
             <label className="block">

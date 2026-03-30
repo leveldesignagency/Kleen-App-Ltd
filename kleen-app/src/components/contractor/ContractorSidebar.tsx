@@ -37,7 +37,7 @@ const NAV_VERIFIED = [
 export default function ContractorSidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { isVerified } = useContractorPortal();
+  const { isVerified, rejectionMessage } = useContractorPortal();
   const NAV = [...NAV_BASE, ...(isVerified ? NAV_VERIFIED : [])];
 
   const signOut = async () => {
@@ -56,7 +56,12 @@ export default function ContractorSidebar() {
       <div className="border-b border-slate-100 px-4 py-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Kleen</p>
         <p className="text-sm font-bold text-slate-900">Contractor portal</p>
-        {!isVerified && (
+        {rejectionMessage && (
+          <p className="mt-2 rounded-lg bg-red-50 px-2 py-1.5 text-[11px] leading-snug text-red-900">
+            Application needs changes — see the banner on Overview. Update your profile, then Kleen can review again.
+          </p>
+        )}
+        {!isVerified && !rejectionMessage && (
           <p className="mt-2 rounded-lg bg-amber-50 px-2 py-1.5 text-[11px] leading-snug text-amber-900">
             Awaiting Kleen approval — complete profile &amp; services; jobs and payouts unlock after verification.
           </p>

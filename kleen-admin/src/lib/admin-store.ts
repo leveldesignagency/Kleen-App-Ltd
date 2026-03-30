@@ -45,6 +45,12 @@ export interface Contractor {
   hourly_rate?: number;
   is_active: boolean;
   is_verified: boolean;
+  /** Set when application was declined (see rejection_message). */
+  rejected_at?: string | null;
+  rejection_message?: string | null;
+  verified_at?: string | null;
+  trading_name?: string;
+  registered_address?: string;
   notes?: string;
   bank_account_name?: string;
   bank_sort_code?: string;

@@ -29,6 +29,11 @@ function mapOperativeRowToContractor(c: Record<string, unknown>): Contractor {
     utr_number: String(c.utr_number || ""),
     stripe_account_id: String(c.stripe_account_id || ""),
     created_at: String(c.created_at || new Date().toISOString()),
+    rejected_at: c.rejected_at ? String(c.rejected_at) : null,
+    rejection_message: c.rejection_message ? String(c.rejection_message) : null,
+    verified_at: c.verified_at ? String(c.verified_at) : null,
+    trading_name: String(c.trading_name || ""),
+    registered_address: String(c.registered_address || ""),
   };
 }
 import { useAdminNotifications, type AdminToast } from "@/lib/admin-notifications";
@@ -40,7 +45,6 @@ import {
   Loader2,
   Pencil,
   Trash2,
-  ShieldCheck,
   ShieldOff,
   Star,
   X,
@@ -51,8 +55,10 @@ import {
   ChevronRight,
   ChevronLeft,
   FileText,
+  ClipboardList,
 } from "lucide-react";
 import CustomDropdown from "@/components/ui/CustomDropdown";
+import ReviewContractorModal from "@/components/contractors/ReviewContractorModal";
 
 const SORT_CODE_LENGTH = 6;
 
@@ -101,6 +107,11 @@ const emptyContractor: Omit<Contractor, "id" | "created_at"> & { operative_servi
   vat_number: "",
   utr_number: "",
   stripe_account_id: "",
+  rejected_at: null,
+  rejection_message: null,
+  verified_at: null,
+  trading_name: "",
+  registered_address: "",
   operative_services: [],
 };
 
@@ -118,6 +129,7 @@ export default function AdminContractorsPage() {
   };
 } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Contractor | null>(null);
+  const [reviewTarget, setReviewTarget] = useState<Contractor | null>(null);
   const [availableServices, setAvailableServices] = useState<string[]>([]);
   const [servicesCatalog, setServicesCatalog] = useState<{ id: string; name: string }[]>([]);
   const toast = useAdminNotifications((s) => s.push);
@@ -177,6 +189,11 @@ export default function AdminContractorsPage() {
             utr_number: c.utr_number || "",
             stripe_account_id: c.stripe_account_id || "",
             created_at: c.created_at,
+            rejected_at: c.rejected_at ?? null,
+            rejection_message: c.rejection_message ?? null,
+            verified_at: c.verified_at ?? null,
+            trading_name: c.trading_name || "",
+            registered_address: c.registered_address || "",
           }))
         );
       }
@@ -190,6 +207,9 @@ export default function AdminContractorsPage() {
     if (statusFilter === "active") list = list.filter((c) => c.is_active);
     else if (statusFilter === "inactive") list = list.filter((c) => !c.is_active);
     else if (statusFilter === "verified") list = list.filter((c) => c.is_verified);
+    else if (statusFilter === "pending_review")
+      list = list.filter((c) => !c.is_verified && !c.rejected_at);
+    else if (statusFilter === "rejected") list = list.filter((c) => !!c.rejected_at);
     else if (statusFilter === "sole_trader") list = list.filter((c) => c.contractor_type === "sole_trader");
     else if (statusFilter === "business") list = list.filter((c) => c.contractor_type === "business");
 
@@ -235,6 +255,8 @@ export default function AdminContractorsPage() {
           company_number: data.company_number || null,
           vat_number: data.vat_number || null,
           utr_number: data.utr_number || null,
+          trading_name: data.trading_name || null,
+          registered_address: data.registered_address || null,
         },
         operative_services: Array.isArray(osList) ? osList : [],
       }),
@@ -277,12 +299,6 @@ export default function AdminContractorsPage() {
     const supabase = createClient();
     await supabase.from("operatives").update({ is_active: !c.is_active }).eq("id", c.id);
     updateContractor(c.id, { is_active: !c.is_active });
-  };
-
-  const toggleVerified = async (c: Contractor) => {
-    const supabase = createClient();
-    await supabase.from("operatives").update({ is_verified: !c.is_verified }).eq("id", c.id);
-    updateContractor(c.id, { is_verified: !c.is_verified });
   };
 
   if (loading) {
@@ -332,6 +348,8 @@ export default function AdminContractorsPage() {
             { value: "active", label: "Active" },
             { value: "inactive", label: "Inactive" },
             { value: "verified", label: "Verified" },
+            { value: "pending_review", label: "Pending review" },
+            { value: "rejected", label: "Rejected" },
             { value: "sole_trader", label: "Sole Traders" },
             { value: "business", label: "Businesses" },
           ]}
@@ -418,9 +436,9 @@ export default function AdminContractorsPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex flex-col gap-1">
                         <span
-                          className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                          className={`inline-flex w-fit rounded-full px-2 py-0.5 text-[11px] font-medium ${
                             c.is_active
                               ? "bg-emerald-500/20 text-emerald-400"
                               : "bg-slate-500/20 text-slate-400"
@@ -428,9 +446,17 @@ export default function AdminContractorsPage() {
                         >
                           {c.is_active ? "Active" : "Inactive"}
                         </span>
-                        {c.is_verified && (
-                          <ShieldCheck className="h-3.5 w-3.5 text-brand-400" />
-                        )}
+                        <span
+                          className={`inline-flex w-fit rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                            c.is_verified
+                              ? "bg-emerald-500/15 text-emerald-300"
+                              : c.rejected_at
+                                ? "bg-red-500/15 text-red-300"
+                                : "bg-amber-500/15 text-amber-200"
+                          }`}
+                        >
+                          {c.is_verified ? "Verified" : c.rejected_at ? "Declined" : "Pending review"}
+                        </span>
                       </div>
                     </td>
                     <td className="px-4 py-3">
@@ -476,6 +502,13 @@ export default function AdminContractorsPage() {
                           <Pencil className="h-4 w-4" />
                         </button>
                         <button
+                          onClick={() => setReviewTarget(c)}
+                          className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-white/10 hover:text-brand-400"
+                          title="Review — approve or decline with email"
+                        >
+                          <ClipboardList className="h-4 w-4" />
+                        </button>
+                        <button
                           onClick={() => toggleActive(c)}
                           className={`rounded-lg p-1.5 transition-colors ${
                             c.is_active
@@ -495,17 +528,6 @@ export default function AdminContractorsPage() {
                           )}
                         </button>
                         <button
-                          onClick={() => toggleVerified(c)}
-                          className={`rounded-lg p-1.5 transition-colors ${
-                            c.is_verified
-                              ? "text-brand-400 hover:bg-brand-500/20"
-                              : "text-slate-400 hover:bg-white/10"
-                          }`}
-                          title={c.is_verified ? "Unverify" : "Verify"}
-                        >
-                          <ShieldCheck className="h-4 w-4" />
-                        </button>
-                        <button
                           onClick={() => setDeleteTarget(c)}
                           className="rounded-lg p-1.5 text-red-400 transition-colors hover:bg-red-500/20"
                           title="Delete"
@@ -521,6 +543,15 @@ export default function AdminContractorsPage() {
           </table>
         </div>
       </div>
+
+      {reviewTarget && (
+        <ReviewContractorModal
+          contractor={reviewTarget}
+          onClose={() => setReviewTarget(null)}
+          onUpdated={(updated) => updateContractor(updated.id, updated)}
+          toast={toast}
+        />
+      )}
 
       {/* Add / Edit Modal */}
       {modal && (
@@ -762,6 +793,22 @@ function ContractorModal({
                 value={data.company_name}
                 onChange={(v) => onChange({ company_name: v })}
                 placeholder={data.contractor_type === "business" ? "Required for businesses" : "Optional"}
+              />
+            </div>
+            <InputField
+              label="Trading name (UK)"
+              value={data.trading_name || ""}
+              onChange={(v) => onChange({ trading_name: v })}
+              placeholder="If different from company name"
+            />
+            <div>
+              <label className="block text-xs font-medium text-slate-400">Registered / trading address (UK)</label>
+              <textarea
+                value={data.registered_address || ""}
+                onChange={(e) => onChange({ registered_address: e.target.value })}
+                rows={3}
+                className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-white placeholder-slate-500 outline-none focus:border-brand-500"
+                placeholder="Street, town, postcode"
               />
             </div>
             <InputField

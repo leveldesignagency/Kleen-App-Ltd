@@ -29,6 +29,8 @@ type OperativePayload = {
   company_number?: string | null;
   vat_number?: string | null;
   utr_number?: string | null;
+  trading_name?: string | null;
+  registered_address?: string | null;
 };
 
 function buildOperativeUpdatePayload(data: OperativePayload) {
@@ -50,6 +52,8 @@ function buildOperativeUpdatePayload(data: OperativePayload) {
     company_number: data.company_number?.trim() || null,
     vat_number: data.vat_number?.trim() || null,
     utr_number: data.utr_number?.replace(/\D/g, "").slice(0, 10) || null,
+    trading_name: data.trading_name?.trim() || null,
+    registered_address: data.registered_address?.trim() || null,
   };
 }
 

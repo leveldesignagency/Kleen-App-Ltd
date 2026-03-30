@@ -1,0 +1,14 @@
+-- ============================================================================
+-- Remove a test contractor user (example: leveldesignagency@gmail.com)
+-- ============================================================================
+-- Recommended: Supabase Dashboard → Authentication → Users → find email → Delete user.
+-- That removes auth.users; if FK errors, delete public.profiles / public.operatives rows
+-- for that user_id first (Dashboard → Table Editor).
+--
+-- If you must use SQL, order depends on your FKs. Example pattern:
+--
+-- select id from auth.users where email = 'leveldesignagency@gmail.com';
+-- then delete dependent rows in public.operatives, operative_services, etc. for that user_id,
+-- then profiles, then delete from auth.users (may require Supabase SQL privileges for auth schema).
+--
+-- Do not run blindly in production without checking FK constraints.

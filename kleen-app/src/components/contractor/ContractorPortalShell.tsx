@@ -12,6 +12,8 @@ export default function ContractorPortalShell({ children }: { children: React.Re
   const router = useRouter();
   const [operativeId, setOperativeId] = useState<string | null>(null);
   const [isVerified, setIsVerified] = useState(false);
+  const [rejectedAt, setRejectedAt] = useState<string | null>(null);
+  const [rejectionMessage, setRejectionMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deactivated, setDeactivated] = useState(false);
@@ -49,7 +51,7 @@ export default function ContractorPortalShell({ children }: { children: React.Re
 
     let { data: op } = await supabase
       .from("operatives")
-      .select("id, is_active, is_verified")
+      .select("id, is_active, is_verified, rejected_at, rejection_message")
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -73,7 +75,7 @@ export default function ContractorPortalShell({ children }: { children: React.Re
           is_active: true,
           is_verified: false,
         })
-        .select("id, is_active, is_verified")
+        .select("id, is_active, is_verified, rejected_at, rejection_message")
         .single();
 
       if (insErr) {
@@ -91,6 +93,8 @@ export default function ContractorPortalShell({ children }: { children: React.Re
 
     setOperativeId(op!.id);
     setIsVerified(!!op!.is_verified);
+    setRejectedAt(op!.rejected_at ? String(op.rejected_at) : null);
+    setRejectionMessage(op!.rejection_message ? String(op.rejection_message) : null);
     setLoading(false);
   }, [router]);
 
@@ -155,7 +159,14 @@ export default function ContractorPortalShell({ children }: { children: React.Re
 
   return (
     <ContractorPortalContext.Provider
-      value={{ operativeId, loading: false, isVerified, refresh: bootstrap }}
+      value={{
+        operativeId,
+        loading: false,
+        isVerified,
+        rejectedAt,
+        rejectionMessage,
+        refresh: bootstrap,
+      }}
     >
       <div className="flex h-screen bg-slate-50">
         <ContractorSidebar />
