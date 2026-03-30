@@ -33,6 +33,8 @@ interface CustomerQuote {
   id: string;
   quote_request_id: string;
   customer_price_pence: number;
+  /** Contractor base price from DB — used for fee breakdown in accept modal */
+  price_pence?: number | null;
   estimated_hours: number;
   available_date: string | null;
   contractor_rating: number;
@@ -142,6 +144,7 @@ export default function CustomerQuotesView({
               id: resp!.id,
               quote_request_id: qr.id,
               customer_price_pence: displayPence,
+              price_pence: resp.price_pence ?? null,
               estimated_hours: resp.estimated_hours || 0,
               available_date: resp.available_date || null,
               contractor_rating: operative?.avg_rating || 0,
@@ -521,6 +524,10 @@ export default function CustomerQuotesView({
             quote={{
               quote_request_id: payModalQuote.quote_request_id,
               customer_price_pence: payModalQuote.customer_price_pence,
+              contractor_price_pence: payModalQuote.price_pence ?? null,
+              estimated_hours: payModalQuote.estimated_hours,
+              available_date: payModalQuote.available_date,
+              contractor_label: payModalQuote.contractor_label,
               operative_service_id: payModalQuote.operative_service_id ?? undefined,
             }}
             onSuccess={handlePaySuccess}

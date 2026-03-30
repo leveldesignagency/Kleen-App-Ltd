@@ -14,3 +14,19 @@ export function customerDisplayPricePence(resp: {
   if (p != null && p > 0) return Math.round(p * (1 + CUSTOMER_SERVICE_FEE_RATE));
   return 0;
 }
+
+/** Line items for the accept-quote modal (totals align with payment amount). */
+export function quoteBreakdownPence(resp: {
+  customer_price_pence?: number | null;
+  price_pence?: number | null;
+}): { contractorPence: number; platformFeePence: number; totalPence: number } {
+  const totalPence = customerDisplayPricePence(resp);
+  let contractorPence: number;
+  if (resp.price_pence != null && resp.price_pence > 0) {
+    contractorPence = resp.price_pence;
+  } else {
+    contractorPence = Math.round(totalPence / (1 + CUSTOMER_SERVICE_FEE_RATE));
+  }
+  const platformFeePence = Math.max(0, totalPence - contractorPence);
+  return { contractorPence, platformFeePence, totalPence };
+}

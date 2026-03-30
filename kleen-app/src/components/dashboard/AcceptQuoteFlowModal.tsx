@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { usePaymentMethodStore } from "@/lib/payment-methods";
 import type { Notification } from "@/lib/notifications";
-import { FileText, ShieldCheck, CreditCard, Loader2, CheckCircle2, Check } from "lucide-react";
+import { FileText, ShieldCheck, CreditCard, Loader2, CheckCircle2, Check, Receipt } from "lucide-react";
+import { quoteBreakdownPence, CUSTOMER_SERVICE_FEE_RATE } from "@/lib/customer-quote-price";
 
 const KLEEN_TERMS_VERSION = "1.0";
 
@@ -29,6 +30,11 @@ By accepting, you agree that:
 export interface CustomerQuoteForAccept {
   quote_request_id: string;
   customer_price_pence: number;
+  /** Contractor base price (DB `price_pence`) — for breakdown line */
+  contractor_price_pence?: number | null;
+  estimated_hours?: number;
+  available_date?: string | null;
+  contractor_label?: string;
   operative_service_id?: string | null;
 }
 
@@ -65,7 +71,7 @@ export function AcceptQuoteFlowModal({
   const pmMethods = usePaymentMethodStore((s) => s.methods);
   const syncPaymentMethods = usePaymentMethodStore((s) => s.syncFromSupabase);
   const addPaymentMethodIfNew = usePaymentMethodStore((s) => s.addIfNew);
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [contract, setContract] = useState<ContractInfo | null>(null);
   const [contractLoaded, setContractLoaded] = useState(false);
   const [contractSigned, setContractSigned] = useState(false);
@@ -81,7 +87,7 @@ export function AcceptQuoteFlowModal({
   const savedCards = pmMethods.filter((m) => m.type === "card" && m.stripePaymentMethodId);
 
   useEffect(() => {
-    if (step !== 3) {
+    if (step !== 4) {
       setStripeTimedOut(false);
       return;
     }
@@ -126,29 +132,29 @@ export function AcceptQuoteFlowModal({
 
   useEffect(() => {
     if (!contractLoaded) return;
-    if (!contractSigned && (contract || !quote.operative_service_id)) {
-      setStep(1);
+    if (termsAccepted) {
+      setStep(4);
       return;
     }
-    if (!termsAccepted) {
-      setStep(2);
+    if (contractSigned) {
+      setStep(3);
       return;
     }
-    setStep(3);
+    setStep(1);
   }, [contractLoaded, contractSigned, termsAccepted, contract, quote.operative_service_id]);
 
   useEffect(() => {
-    if (step === 3) {
+    if (step === 4) {
       syncPaymentMethods(createClient());
     }
   }, [step, syncPaymentMethods]);
 
   useEffect(() => {
-    if (step === 3 && savedCards.length > 0 && !selectedSavedPmId) {
+    if (step === 4 && savedCards.length > 0 && !selectedSavedPmId) {
       const defaultCard = savedCards.find((m) => m.isDefault) || savedCards[0];
       setSelectedSavedPmId(defaultCard.id);
       setPayOption("saved");
-    } else if (step === 3 && savedCards.length === 0) {
+    } else if (step === 4 && savedCards.length === 0) {
       setPayOption("new");
     }
   }, [step, savedCards, selectedSavedPmId]);
@@ -178,12 +184,22 @@ export function AcceptQuoteFlowModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [payLoading, toast]);
 
+  const breakdown = useMemo(
+    () =>
+      quoteBreakdownPence({
+        customer_price_pence: quote.customer_price_pence,
+        price_pence: quote.contractor_price_pence ?? null,
+      }),
+    [quote.customer_price_pence, quote.contractor_price_pence],
+  );
+  const fmt = (pence: number) => `£${(pence / 100).toFixed(2)}`;
+
   const handleSignContract = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!signerName.trim() || !quote.operative_service_id) {
       if (!quote.operative_service_id) {
         setContractSigned(true);
-        setStep(2);
+        setStep(3);
         return;
       }
       toast({ type: "error", title: "Required", message: "Please enter your full name to sign." });
@@ -211,7 +227,7 @@ export function AcceptQuoteFlowModal({
       return;
     }
     setContractSigned(true);
-    setStep(2);
+    setStep(3);
     setSigning(false);
   };
 
@@ -239,7 +255,7 @@ export function AcceptQuoteFlowModal({
       return;
     }
     setTermsAccepted(true);
-    setStep(3);
+    setStep(4);
     setAcceptingTerms(false);
   };
 
@@ -423,21 +439,88 @@ export function AcceptQuoteFlowModal({
       >
         <div className="border-b border-slate-200 px-4 py-3">
           <h2 className="text-lg font-semibold text-slate-900">Accept quote — {jobReference}</h2>
-          <div className="mt-1 flex items-center gap-2 text-sm text-slate-500">
-            <span className={step >= 1 ? "text-brand-600" : ""}>
-              {contractSigned ? <CheckCircle2 className="inline h-4 w-4" /> : "1"} Contract
+          <div className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-slate-500 sm:text-sm">
+            <span className={step >= 1 ? "font-medium text-brand-600" : ""}>
+              {step > 1 ? <CheckCircle2 className="mr-0.5 inline h-3.5 w-3.5" /> : null}1 Quote
             </span>
-            <span>→</span>
-            <span className={step >= 2 ? "text-brand-600" : ""}>
-              {termsAccepted ? <CheckCircle2 className="inline h-4 w-4" /> : "2"} Terms
+            <span aria-hidden>→</span>
+            <span className={step >= 2 ? "font-medium text-brand-600" : ""}>
+              {contractSigned ? <CheckCircle2 className="mr-0.5 inline h-3.5 w-3.5" /> : null}2 Contract
             </span>
-            <span>→</span>
-            <span className={step >= 3 ? "text-brand-600" : ""}>3 Pay</span>
+            <span aria-hidden>→</span>
+            <span className={step >= 3 ? "font-medium text-brand-600" : ""}>
+              {termsAccepted ? <CheckCircle2 className="mr-0.5 inline h-3.5 w-3.5" /> : null}3 Terms
+            </span>
+            <span aria-hidden>→</span>
+            <span className={step >= 4 ? "font-medium text-brand-600" : ""}>4 Pay</span>
           </div>
         </div>
 
         <div className="max-h-[60vh] overflow-y-auto p-4">
           {step === 1 && (
+            <div className="space-y-4">
+              <div className="flex items-start gap-3 rounded-xl border border-brand-100 bg-brand-50/60 p-4">
+                <Receipt className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900">Quote breakdown</h3>
+                  <p className="mt-1 text-xs text-slate-600">
+                    {quote.contractor_label
+                      ? `${quote.contractor_label} — review costs before you sign and pay.`
+                      : "Review costs before you sign and pay."}
+                  </p>
+                </div>
+              </div>
+              <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                <table className="w-full text-sm">
+                  <tbody>
+                    <tr className="border-b border-slate-100">
+                      <td className="px-4 py-3 text-slate-600">Contractor quote</td>
+                      <td className="px-4 py-3 text-right font-medium text-slate-900">{fmt(breakdown.contractorPence)}</td>
+                    </tr>
+                    <tr className="border-b border-slate-100">
+                      <td className="px-4 py-3 text-slate-600">
+                        Kleen platform fee ({Math.round(CUSTOMER_SERVICE_FEE_RATE * 100)}%)
+                      </td>
+                      <td className="px-4 py-3 text-right text-slate-800">{fmt(breakdown.platformFeePence)}</td>
+                    </tr>
+                    <tr className="bg-slate-50">
+                      <td className="px-4 py-3 font-semibold text-slate-900">Total you pay</td>
+                      <td className="px-4 py-3 text-right text-lg font-bold text-slate-900">{fmt(breakdown.totalPence)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              {(quote.estimated_hours != null && quote.estimated_hours > 0) || quote.available_date ? (
+                <ul className="space-y-1 text-xs text-slate-600">
+                  {quote.estimated_hours != null && quote.estimated_hours > 0 && (
+                    <li>
+                      <span className="font-medium text-slate-700">Est. duration:</span> {quote.estimated_hours}h
+                    </li>
+                  )}
+                  {quote.available_date && (
+                    <li>
+                      <span className="font-medium text-slate-700">Earliest availability:</span>{" "}
+                      {new Date(quote.available_date).toLocaleDateString("en-GB", {
+                        weekday: "short",
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })}
+                    </li>
+                  )}
+                </ul>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setStep(2)}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-500"
+              >
+                Continue
+              </button>
+            </div>
+          )}
+
+          {step === 2 && (
             <div>
               {!contractLoaded ? (
                 <div className="flex items-center justify-center py-8">
@@ -476,32 +559,50 @@ export function AcceptQuoteFlowModal({
                     <p className="text-xs text-slate-500">
                       By signing you agree to the contractor&apos;s service contract above.
                     </p>
-                    <button
-                      type="submit"
-                      disabled={signing}
-                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 py-2.5 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
-                    >
-                      {signing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-                      Sign & continue
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setStep(1)}
+                        className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                      >
+                        Back
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={signing}
+                        className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-brand-600 py-2.5 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
+                      >
+                        {signing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                        Sign & continue
+                      </button>
+                    </div>
                   </form>
                 </>
               ) : (
                 <div>
                   <p className="text-sm text-slate-600">No contract on file for this quote. You can proceed to platform terms and payment.</p>
-                  <button
-                    type="button"
-                    onClick={() => { setContractSigned(true); setStep(2); }}
-                    className="mt-4 w-full rounded-xl bg-slate-200 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-300"
-                  >
-                    Continue to terms
-                  </button>
+                  <div className="mt-4 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setStep(1)}
+                      className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setContractSigned(true); setStep(3); }}
+                      className="flex-1 rounded-xl bg-slate-200 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-300"
+                    >
+                      Continue to terms
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
           )}
 
-          {step === 2 && (
+          {step === 3 && (
             <div>
               <div className="rounded-xl border border-slate-200 bg-amber-50 p-4 text-sm text-slate-700">
                 <div className="flex items-center gap-2 font-semibold text-slate-900">
@@ -510,7 +611,7 @@ export function AcceptQuoteFlowModal({
                 </div>
                 <pre className="mt-2 whitespace-pre-wrap font-sans text-xs leading-relaxed">{KLEEN_TERMS}</pre>
               </div>
-              <form onSubmit={handleAcceptTerms} className="mt-4">
+              <form onSubmit={handleAcceptTerms} className="mt-4 space-y-3">
                 <button
                   type="submit"
                   disabled={acceptingTerms}
@@ -519,11 +620,18 @@ export function AcceptQuoteFlowModal({
                   {acceptingTerms ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
                   I accept the platform terms & continue
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setStep(2)}
+                  className="w-full rounded-xl border border-slate-300 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Back
+                </button>
               </form>
             </div>
           )}
 
-          {step === 3 && (
+          {step === 4 && (
             <div className="space-y-5">
               {paymentSuccess ? (
                 <div className="flex flex-col items-center justify-center py-10 text-center">
@@ -650,7 +758,7 @@ export function AcceptQuoteFlowModal({
                   <div className="flex gap-3 border-t border-slate-200 pt-4">
                     <button
                       type="button"
-                      onClick={() => setStep(2)}
+                      onClick={() => setStep(3)}
                       className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
                     >
                       Back
@@ -711,7 +819,7 @@ export function AcceptQuoteFlowModal({
                   </p>
                   <button
                     type="button"
-                    onClick={() => setStep(2)}
+                    onClick={() => setStep(3)}
                     className="mt-3 rounded-xl border border-slate-300 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                   >
                     Back
