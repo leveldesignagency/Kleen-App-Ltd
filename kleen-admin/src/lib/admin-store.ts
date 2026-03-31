@@ -25,6 +25,8 @@ export interface AdminJob {
   payment_captured_at?: string | null;
   /** Set when admin has released funds to the contractor (17.5% kept) */
   funds_released_at?: string | null;
+  /** Earliest time funds may be released (3-day dispute window after both parties confirmed). */
+  escrow_release_date?: string | null;
   accepted_quote_request_id?: string | null;
 }
 

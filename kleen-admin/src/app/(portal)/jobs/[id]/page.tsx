@@ -696,12 +696,16 @@ export default function AdminJobDetailPage() {
 
     if (bothConfirmed) {
       updates.status = "completed";
+      updates.escrow_release_date = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
     } else {
       updates.status = "pending_confirmation";
     }
 
     await supabase.from("jobs").update(updates).eq("id", job.id);
-    updateJob(job.id, { status: updates.status });
+    updateJob(job.id, {
+      status: updates.status,
+      ...(bothConfirmed ? { escrow_release_date: updates.escrow_release_date } : {}),
+    });
     toast({
       type: bothConfirmed ? "success" : "info",
       title: bothConfirmed ? "Job Completed" : "Confirmation Received",
@@ -731,7 +735,7 @@ export default function AdminJobDetailPage() {
         return;
       }
 
-      updateJob(job.id, { status: "funds_released" });
+      updateJob(job.id, { status: "funds_released", funds_released_at: new Date().toISOString() });
       toast({
         type: "success",
         title: "Funds Released",
@@ -1329,7 +1333,7 @@ function WorkflowActions({
   onReleaseFunds,
   onReinstateJob,
 }: {
-  job: { status: string; reference: string; cancelled_reason?: string };
+  job: { status: string; reference: string; cancelled_reason?: string; escrow_release_date?: string | null };
   quotedResponses: QuoteRequest[];
   actionLoading: boolean;
   onSendForQuotes: () => void;
@@ -1599,6 +1603,11 @@ function WorkflowActions({
   }
 
   if (status === "completed") {
+    const escrow = job.escrow_release_date;
+    const escrowEnd = escrow ? new Date(escrow).getTime() : null;
+    const disputeWindowActive =
+      escrowEnd != null && Number.isFinite(escrowEnd) && Date.now() < escrowEnd;
+
     return (
       <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5">
         <div className="flex items-center gap-2 text-emerald-400">
@@ -1606,16 +1615,45 @@ function WorkflowActions({
           <h2 className="text-sm font-semibold">Job Complete — Release Funds</h2>
         </div>
         <p className="mt-2 text-sm text-slate-400">
-          Both the customer and contractor have confirmed completion. Release payment to the contractor.
+          Both the customer and contractor have confirmed completion. Release payment to the contractor (82.5% after
+          Kleen&apos;s 17.5% commission).
         </p>
+        {escrow && (
+          <div
+            className={`mt-3 rounded-xl border px-3 py-2 text-xs ${
+              disputeWindowActive
+                ? "border-amber-500/40 bg-amber-500/10 text-amber-200"
+                : "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+            }`}
+          >
+            <p className="font-medium">3-day dispute window</p>
+            <p className="mt-1 text-slate-400">
+              {disputeWindowActive
+                ? `Funds can be released after ${new Date(escrow).toLocaleString("en-GB")}.`
+                : `Window ended ${new Date(escrow).toLocaleString("en-GB")}. You can release now (if no open dispute).`}
+            </p>
+          </div>
+        )}
+        {!escrow && (
+          <p className="mt-3 rounded-xl border border-slate-500/30 bg-white/[0.03] px-3 py-2 text-xs text-slate-400">
+            No escrow release date on this job (older flow). You can release when payment is captured and there is no
+            open dispute.
+          </p>
+        )}
         <button
           onClick={onReleaseFunds}
-          disabled={actionLoading}
-          className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-green-600 py-2.5 text-sm font-medium text-white hover:bg-green-500 disabled:opacity-50"
+          disabled={actionLoading || disputeWindowActive}
+          title={disputeWindowActive ? "Wait until the dispute window ends" : undefined}
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-green-600 py-2.5 text-sm font-medium text-white hover:bg-green-500 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Banknote className="h-4 w-4" />}
-          Release Funds to Contractor
+          {disputeWindowActive ? "Release locked until dispute window ends" : "Release Funds to Contractor"}
         </button>
+        {disputeWindowActive && escrow && (
+          <p className="mt-2 text-center text-[11px] text-slate-500">
+            Or schedule <span className="font-mono">GET /api/cron/release-due-funds</span> with <span className="font-mono">CRON_SECRET</span>.
+          </p>
+        )}
       </div>
     );
   }
