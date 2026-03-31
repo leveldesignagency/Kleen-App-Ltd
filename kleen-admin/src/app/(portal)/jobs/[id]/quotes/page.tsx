@@ -227,6 +227,7 @@ export default function JobQuotesPage() {
         .from("operatives")
         .select("id, full_name, email")
         .eq("is_active", true)
+        .eq("is_verified", true)
         .order("full_name")
         .then(({ data }) => {
           setContractors((data || []).map((c: { id: string; full_name?: string; email?: string }) => ({

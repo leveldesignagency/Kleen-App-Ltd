@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useContractorPortal } from "@/components/contractor/contractor-portal-context";
 import { Loader2 } from "lucide-react";
@@ -47,34 +48,59 @@ type QrRow = {
     | null;
 };
 
+type AssignmentRow = {
+  id: string;
+  assigned_at: string;
+  completed_at: string | null;
+  jobs: JobNested | JobNested[] | null;
+};
+
 export default function ContractorJobsPage() {
   const router = useRouter();
   const { operativeId, isVerified } = useContractorPortal();
   const [rows, setRows] = useState<QrRow[]>([]);
+  const [assignedRows, setAssignedRows] = useState<AssignmentRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     if (!operativeId || !isVerified) return;
     const supabase = createClient();
-    const { data, error } = await supabase
-      .from("quote_requests")
-      .select(
-        `
-          id, status, deadline, message, sent_at, viewed_at, responded_at,
-          jobs (
-            id, reference, status, postcode, preferred_date, address_line_1, city, service_id,
-            services ( name )
-          ),
-          quote_responses (
-            id, price_pence, customer_price_pence, estimated_hours, sent_to_customer_at, available_date, notes
-          )
-        `
-      )
-      .eq("operative_id", operativeId)
-      .order("sent_at", { ascending: false });
+    const [{ data, error }, { data: assignments, error: assignErr }] = await Promise.all([
+      supabase
+        .from("quote_requests")
+        .select(
+          `
+            id, status, deadline, message, sent_at, viewed_at, responded_at,
+            jobs (
+              id, reference, status, postcode, preferred_date, address_line_1, city, service_id,
+              services ( name )
+            ),
+            quote_responses (
+              id, price_pence, customer_price_pence, estimated_hours, sent_to_customer_at, available_date, notes
+            )
+          `
+        )
+        .eq("operative_id", operativeId)
+        .order("sent_at", { ascending: false }),
+      supabase
+        .from("job_assignments")
+        .select(
+          `
+            id, assigned_at, completed_at,
+            jobs (
+              id, reference, status, postcode, preferred_date, address_line_1, city, service_id,
+              services ( name )
+            )
+          `
+        )
+        .eq("operative_id", operativeId)
+        .order("assigned_at", { ascending: false }),
+    ]);
 
     if (error) console.error(error);
+    if (assignErr) console.error(assignErr);
     setRows((data as unknown as QrRow[]) || []);
+    setAssignedRows((assignments as unknown as AssignmentRow[]) || []);
     setLoading(false);
   }, [operativeId, isVerified]);
 
@@ -113,7 +139,45 @@ export default function ContractorJobsPage() {
         Quote invitations from Kleen and the status of each job on the platform.
       </p>
 
-      <ul className="mt-8 space-y-4">
+      <h2 className="mt-8 text-lg font-semibold text-slate-900">Assigned jobs</h2>
+      <p className="mt-1 text-sm text-slate-600">
+        Jobs accepted and assigned to you. Open a job to complete pre-job inspection, evidence, and completion reports.
+      </p>
+      <ul className="mt-4 space-y-4">
+        {assignedRows.map((a) => {
+          const job = Array.isArray(a.jobs) ? a.jobs[0] : a.jobs;
+          const svcRel = job?.services;
+          const svcName = Array.isArray(svcRel) ? svcRel[0]?.name : svcRel?.name;
+          return (
+            <li key={a.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-semibold text-slate-900">{job?.reference || "Assigned job"}</p>
+                  <p className="text-sm text-slate-600">
+                    {svcName || "Service"} · {job?.postcode || "—"}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Assigned {new Date(a.assigned_at).toLocaleString("en-GB")}
+                    {a.completed_at ? ` · Completed ${new Date(a.completed_at).toLocaleString("en-GB")}` : ""}
+                  </p>
+                </div>
+                {job?.id && (
+                  <Link
+                    href={`/contractor/jobs/${job.id}`}
+                    className="rounded-lg bg-brand-600 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-500"
+                  >
+                    Open job layout
+                  </Link>
+                )}
+              </div>
+            </li>
+          );
+        })}
+        {assignedRows.length === 0 && <li className="text-sm text-slate-500">No accepted jobs assigned yet.</li>}
+      </ul>
+
+      <h2 className="mt-10 text-lg font-semibold text-slate-900">Quote invitations</h2>
+      <ul className="mt-4 space-y-4">
         {rows.map((qr) => {
           const job = Array.isArray(qr.jobs) ? qr.jobs[0] : qr.jobs;
           const svcRel = job?.services;

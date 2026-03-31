@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useContractorPortal } from "@/components/contractor/contractor-portal-context";
 import { getService } from "@/lib/services";
@@ -29,6 +30,7 @@ type DisputeRow = {
 type MsgRow = {
   id: string;
   sender_id: string;
+  recipient_role: "admin" | "customer" | "operative";
   message: string;
   created_at: string;
 };
@@ -91,7 +93,7 @@ export default function ContractorDisputesPage() {
     const supabase = createClient();
     const { data, error } = await supabase
       .from("dispute_messages")
-      .select("id, sender_id, message, created_at")
+      .select("id, sender_id, recipient_role, message, created_at")
       .eq("dispute_id", disputeId)
       .order("created_at", { ascending: true });
     if (error) console.error(error);
@@ -123,6 +125,7 @@ export default function ContractorDisputesPage() {
     const { error } = await supabase.from("dispute_messages").insert({
       dispute_id: dispute.id,
       sender_id: user.id,
+      recipient_role: "admin",
       message: text,
     });
     setSendingId(null);
@@ -137,9 +140,8 @@ export default function ContractorDisputesPage() {
 
   const isResolved = (s: DisputeStatus) => s === "resolved" || s === "closed";
 
-  const senderLabel = (senderId: string, disputeUserId: string, uid: string | null) => {
+  const senderLabel = (senderId: string, uid: string | null) => {
     if (uid && senderId === uid) return "You";
-    if (senderId === disputeUserId) return "Customer";
     return "Kleen";
   };
 
@@ -163,7 +165,7 @@ export default function ContractorDisputesPage() {
     <div>
       <h1 className="text-2xl font-bold text-slate-900">Disputes</h1>
       <p className="mt-1 text-sm text-slate-600">
-        Disputes raised by customers on jobs you are assigned to. You can read updates and reply in the thread.
+        Disputes raised by customers on jobs you are assigned to. This thread is mediated by Kleen (no direct customer chat).
       </p>
 
       <ul className="mt-8 space-y-4">
@@ -196,6 +198,11 @@ export default function ContractorDisputesPage() {
                     </p>
                     <p className="mt-1 line-clamp-2 text-sm text-slate-700">{d.reason}</p>
                     <p className="mt-1 text-xs text-slate-400">{new Date(d.created_at).toLocaleString("en-GB")}</p>
+                    <p className="mt-1">
+                      <Link href={`/contractor/jobs/${d.job_id}`} className="text-xs font-medium text-brand-600 hover:underline">
+                        Open job layout / evidence
+                      </Link>
+                    </p>
                   </div>
                 </div>
                 <span
@@ -237,7 +244,7 @@ export default function ContractorDisputesPage() {
                           (msgs || []).map((m) => (
                             <li key={m.id} className="rounded-xl bg-white px-3 py-2 text-sm shadow-sm ring-1 ring-slate-100">
                               <p className="text-xs font-medium text-slate-500">
-                                {senderLabel(m.sender_id, d.user_id, myUserId)} · {new Date(m.created_at).toLocaleString("en-GB")}
+                                {senderLabel(m.sender_id, myUserId)} · {new Date(m.created_at).toLocaleString("en-GB")}
                               </p>
                               <p className="mt-1 whitespace-pre-wrap text-slate-800">{m.message}</p>
                             </li>
@@ -248,7 +255,7 @@ export default function ContractorDisputesPage() {
                         <textarea
                           value={replyText[d.id] || ""}
                           onChange={(e) => setReplyText((prev) => ({ ...prev, [d.id]: e.target.value }))}
-                          placeholder="Reply to the customer and Kleen…"
+                          placeholder="Send message to Kleen…"
                           rows={2}
                           className="input-field min-h-[72px] flex-1 resize-y"
                         />

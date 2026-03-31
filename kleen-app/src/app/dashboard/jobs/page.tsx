@@ -12,7 +12,7 @@ import {
   XCircle,
   X,
 } from "lucide-react";
-import { fetchQuotePricesByJobId } from "@/lib/dashboard-jobs-fetch";
+import { fetchCustomerJobsList, fetchQuotePricesByJobId } from "@/lib/dashboard-jobs-fetch";
 
 type JobStatus = "all" | "pending" | "awaiting_quotes" | "sent_to_customer" | "customer_accepted" | "awaiting_completion" | "quoted" | "accepted" | "in_progress" | "completed" | "funds_released" | "disputed" | "cancelled";
 
@@ -60,6 +60,7 @@ const CANCELLABLE = ["pending", "quoted", "awaiting_quotes", "sent_to_customer"]
 export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState<JobStatus>("all");
   const [search, setSearch] = useState("");
   const [cancelTarget, setCancelTarget] = useState<Job | null>(null);
@@ -75,35 +76,37 @@ export default function JobsPage() {
       if (!user) { setLoading(false); return; }
 
       const fetchJobs = async () => {
-        const { data, error } = await supabase
-          .from("jobs")
-          .select("id, reference, service_id, status, preferred_date, address_line_1, postcode, services(name)")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false });
+        setLoadError(null);
+        const { rows, error } = await fetchCustomerJobsList(supabase, user.id, {
+          includeAddress: true,
+        });
         if (error) {
           console.error("jobs list:", error);
+          setLoadError(error.message);
+          setJobs([]);
           return;
         }
-        if (data?.length) {
+        if (rows.length) {
           const priceMap = await fetchQuotePricesByJobId(
             supabase,
-            data.map((j) => j.id as string)
+            rows.map((j) => j.id)
           );
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          setJobs(data.map((j: any) => {
-            const p = priceMap.get(j.id);
-            return {
-              id: j.id,
-              reference: j.reference,
-              service_name: j.services?.name || "Cleaning",
-              status: j.status,
-              preferred_date: j.preferred_date,
-              address_line_1: j.address_line_1 || "",
-              postcode: j.postcode || "",
-              min_price: p?.min ?? 0,
-              max_price: p?.max ?? 0,
-            };
-          }));
+          setJobs(
+            rows.map((j) => {
+              const p = priceMap.get(j.id);
+              return {
+                id: j.id,
+                reference: j.reference,
+                service_name: j.service_name,
+                status: j.status,
+                preferred_date: j.preferred_date,
+                address_line_1: j.address_line_1 || "",
+                postcode: j.postcode || "",
+                min_price: p?.min ?? 0,
+                max_price: p?.max ?? 0,
+              };
+            })
+          );
         } else {
           setJobs([]);
         }
@@ -177,6 +180,12 @@ export default function JobsPage() {
 
   return (
     <div>
+      {loadError && (
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+          <p className="font-medium">Could not load your jobs</p>
+          <p className="mt-1 text-red-800/90">{loadError}</p>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">My Jobs</h1>

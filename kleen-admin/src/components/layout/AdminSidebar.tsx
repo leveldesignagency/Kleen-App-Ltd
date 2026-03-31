@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   Briefcase,
   Users,
+  MessageSquare,
   UserSearch,
   Settings,
   LogOut,
@@ -21,6 +22,7 @@ const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/jobs", label: "Jobs", icon: Briefcase },
   { href: "/contractors", label: "Contractors", icon: Users },
+  { href: "/disputes", label: "Disputes", icon: MessageSquare },
   { href: "/customers", label: "Customers", icon: UserSearch },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

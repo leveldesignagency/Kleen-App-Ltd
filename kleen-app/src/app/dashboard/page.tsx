@@ -17,7 +17,7 @@ import {
   X,
 } from "lucide-react";
 import BookAgainSection from "@/components/dashboard/BookAgainSection";
-import { fetchQuotePricesByJobId } from "@/lib/dashboard-jobs-fetch";
+import { fetchCustomerJobsList, fetchQuotePricesByJobId } from "@/lib/dashboard-jobs-fetch";
 
 interface DashboardJob {
   id: string;
@@ -52,6 +52,7 @@ const CANCELLABLE = ["pending", "quoted", "awaiting_quotes", "sent_to_customer"]
 export default function DashboardOverview() {
   const [jobs, setJobs] = useState<DashboardJob[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<DashboardJob | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const pushNotification = useNotifications((s) => s.push);
@@ -65,35 +66,34 @@ export default function DashboardOverview() {
       if (!user) { setLoading(false); return; }
 
       const fetchJobs = async () => {
-        const { data, error } = await supabase
-          .from("jobs")
-          .select("id, reference, service_id, status, preferred_date, created_at, services(name)")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false })
-          .limit(30);
+        setLoadError(null);
+        const { rows, error } = await fetchCustomerJobsList(supabase, user.id, { limit: 30 });
         if (error) {
           console.error("dashboard jobs:", error);
+          setLoadError(error.message);
+          setJobs([]);
           return;
         }
-        if (data?.length) {
+        if (rows.length) {
           const priceMap = await fetchQuotePricesByJobId(
             supabase,
-            data.map((j) => j.id as string)
+            rows.map((j) => j.id)
           );
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          setJobs(data.map((j: any) => {
-            const p = priceMap.get(j.id);
-            return {
-              id: j.id,
-              reference: j.reference,
-              service_name: j.services?.name || "Cleaning",
-              status: j.status,
-              preferred_date: j.preferred_date,
-              min_price: p?.min ?? 0,
-              max_price: p?.max ?? 0,
-              created_at: j.created_at,
-            };
-          }));
+          setJobs(
+            rows.map((j) => {
+              const p = priceMap.get(j.id);
+              return {
+                id: j.id,
+                reference: j.reference,
+                service_name: j.service_name,
+                status: j.status,
+                preferred_date: j.preferred_date,
+                min_price: p?.min ?? 0,
+                max_price: p?.max ?? 0,
+                created_at: j.created_at,
+              };
+            })
+          );
         } else {
           setJobs([]);
         }
@@ -176,6 +176,15 @@ export default function DashboardOverview() {
 
   return (
     <div>
+      {loadError && (
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+          <p className="font-medium">Could not load your jobs</p>
+          <p className="mt-1 text-red-800/90">{loadError}</p>
+          <p className="mt-2 text-xs text-red-800/80">
+            If this persists, Kleen may need to restore database access policies. Try signing out and back in.
+          </p>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>

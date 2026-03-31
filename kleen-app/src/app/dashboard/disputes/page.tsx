@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { AlertTriangle, MessageSquare, Plus, Clock, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, MessageSquare, Plus, Clock, CheckCircle2, ChevronDown, ChevronRight, Send, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { getService } from "@/lib/services";
 import CustomDropdown from "@/components/ui/CustomDropdown";
@@ -29,6 +29,14 @@ interface DisputeRow {
   createdAt: string;
 }
 
+type MsgRow = {
+  id: string;
+  sender_id: string;
+  recipient_role: "admin" | "customer" | "operative";
+  message: string;
+  created_at: string;
+};
+
 export default function DisputesPage() {
   const supabase = createClient();
   const [disputes, setDisputes] = useState<DisputeRow[]>([]);
@@ -39,6 +47,12 @@ export default function DisputesPage() {
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [messagesByDispute, setMessagesByDispute] = useState<Record<string, MsgRow[]>>({});
+  const [loadingMessages, setLoadingMessages] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState<Record<string, string>>({});
+  const [sendingId, setSendingId] = useState<string | null>(null);
+  const [myUserId, setMyUserId] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -47,6 +61,7 @@ export default function DisputesPage() {
         setLoading(false);
         return;
       }
+      setMyUserId(user.id);
       const { data: rows } = await supabase
         .from("disputes")
         .select(`
@@ -162,6 +177,49 @@ export default function DisputesPage() {
   };
 
   const isResolved = (s: DisputeStatus) => s === "resolved" || s === "closed";
+  const senderLabel = (senderId: string, uid: string | null) => (uid && senderId === uid ? "You" : "Kleen");
+
+  const loadMessages = async (disputeId: string) => {
+    setLoadingMessages(disputeId);
+    const { data, error } = await supabase
+      .from("dispute_messages")
+      .select("id, sender_id, recipient_role, message, created_at")
+      .eq("dispute_id", disputeId)
+      .order("created_at", { ascending: true });
+    if (error) console.error(error);
+    setMessagesByDispute((prev) => ({ ...prev, [disputeId]: (data as MsgRow[]) || [] }));
+    setLoadingMessages(null);
+  };
+
+  const toggleExpand = (disputeId: string) => {
+    if (expandedId === disputeId) {
+      setExpandedId(null);
+      return;
+    }
+    setExpandedId(disputeId);
+    if (!messagesByDispute[disputeId]) void loadMessages(disputeId);
+  };
+
+  const sendReply = async (disputeId: string) => {
+    const text = (replyText[disputeId] || "").trim();
+    if (!text) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    setSendingId(disputeId);
+    const { error } = await supabase.from("dispute_messages").insert({
+      dispute_id: disputeId,
+      sender_id: user.id,
+      recipient_role: "admin",
+      message: text,
+    });
+    setSendingId(null);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    setReplyText((prev) => ({ ...prev, [disputeId]: "" }));
+    await loadMessages(disputeId);
+  };
 
   if (loading) {
     return (
@@ -242,8 +300,15 @@ export default function DisputesPage() {
         ) : (
           disputes.map((dispute) => (
             <div key={dispute.id} className="card">
-              <div className="flex items-start justify-between">
+              <button
+                type="button"
+                onClick={() => toggleExpand(dispute.id)}
+                className="flex w-full items-start justify-between gap-3 text-left"
+              >
                 <div className="flex items-start gap-3">
+                  <span className="mt-0.5 text-slate-400">
+                    {expandedId === dispute.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                  </span>
                   <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${
                     isResolved(dispute.status) ? "bg-accent-50" : "bg-amber-50"
                   }`}>
@@ -272,13 +337,57 @@ export default function DisputesPage() {
                 >
                   {dispute.status === "resolved" || dispute.status === "closed" ? "Resolved" : dispute.status.replace("_", " ")}
                 </span>
-              </div>
+              </button>
               {dispute.resolution && (
                 <div className="mt-3 rounded-lg bg-slate-50 p-3">
                   <p className="flex items-start gap-2 text-xs text-slate-600">
                     <MessageSquare className="mt-0.5 h-3 w-3 flex-shrink-0 text-slate-400" />
                     {dispute.resolution}
                   </p>
+                </div>
+              )}
+              {expandedId === dispute.id && (
+                <div className="mt-4 border-t border-slate-100 pt-4">
+                  {loadingMessages === dispute.id ? (
+                    <div className="flex justify-center py-3">
+                      <Loader2 className="h-5 w-5 animate-spin text-brand-600" />
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Thread with Kleen</p>
+                      <ul className="mt-3 space-y-2">
+                        {(messagesByDispute[dispute.id] || []).map((m) => (
+                          <li key={m.id} className="rounded-lg bg-slate-50 px-3 py-2 text-sm">
+                            <p className="text-xs text-slate-500">
+                              {senderLabel(m.sender_id, myUserId)} · {new Date(m.created_at).toLocaleString("en-GB")}
+                            </p>
+                            <p className="mt-1 whitespace-pre-wrap text-slate-700">{m.message}</p>
+                          </li>
+                        ))}
+                        {(messagesByDispute[dispute.id] || []).length === 0 && (
+                          <li className="text-sm text-slate-500">No messages yet.</li>
+                        )}
+                      </ul>
+                      <div className="mt-3 flex gap-2">
+                        <textarea
+                          value={replyText[dispute.id] || ""}
+                          onChange={(e) => setReplyText((prev) => ({ ...prev, [dispute.id]: e.target.value }))}
+                          className="input-field min-h-[72px] flex-1 resize-y"
+                          placeholder="Message Kleen about this dispute…"
+                          rows={2}
+                        />
+                        <button
+                          type="button"
+                          disabled={sendingId === dispute.id || !(replyText[dispute.id] || "").trim()}
+                          onClick={() => sendReply(dispute.id)}
+                          className="btn-primary h-fit self-end gap-2"
+                        >
+                          {sendingId === dispute.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                          Send
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
