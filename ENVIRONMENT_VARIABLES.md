@@ -33,5 +33,8 @@
 - `RESEND_API_KEY`
 - `RESEND_FROM_EMAIL`
 - `RESEND_FROM_VERIFIED`
+- `RESEND_REPLY_TO` (optional — same as kleen-app for funds-released emails)
 - `CUSTOMER_DASHBOARD_URL`
 - `CONTRACTOR_PORTAL_BASE_URL`
+- `ADMIN_NOTIFY_EMAIL` (optional — BCC-style notify on funds released)
+- `CRON_SECRET` — same pattern as kleen-app: set on the **kleen-admin** Vercel project for `GET /api/cron/release-due-funds` (see `kleen-admin/vercel.json`). You can reuse the same secret value as kleen-app or use a separate one.

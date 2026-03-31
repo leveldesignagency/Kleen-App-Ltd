@@ -10,3 +10,9 @@ export function resolveResendFrom(): string {
   }
   return "Kleen <onboarding@resend.dev>";
 }
+
+/** Optional Reply-To so replies reach you while "from" is onboarding@resend.dev */
+export function resolveResendReplyTo(): string | undefined {
+  const r = process.env.RESEND_REPLY_TO?.trim();
+  return r || undefined;
+}

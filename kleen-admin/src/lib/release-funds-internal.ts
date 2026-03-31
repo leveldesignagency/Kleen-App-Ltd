@@ -1,5 +1,6 @@
 import Stripe from "stripe";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
+import { sendFundsReleasedEmails } from "@/lib/resend-funds-released";
 
 const PLATFORM_FEE_RATE = 0.175;
 
@@ -27,7 +28,7 @@ export async function releaseFundsForJob(jobId: string): Promise<ReleaseFundsRes
   const { data: job, error: jobErr } = await supabase
     .from("jobs")
     .select(
-      "id, status, accepted_quote_request_id, payment_captured_at, funds_released_at, stripe_payment_intent_id, payment_authorized_at, escrow_release_date"
+      "id, reference, user_id, status, accepted_quote_request_id, payment_captured_at, funds_released_at, stripe_payment_intent_id, payment_authorized_at, escrow_release_date"
     )
     .eq("id", jobId)
     .single();
@@ -101,6 +102,9 @@ export async function releaseFundsForJob(jobId: string): Promise<ReleaseFundsRes
     return { ok: false, error: "Accepted quote request or operative not found", status: 404 };
   }
 
+  const jobUserId = (job as { user_id?: string }).user_id;
+  const jobReference = (job as { reference?: string | null }).reference || jobId.slice(0, 8).toUpperCase();
+
   const { data: resp } = await supabase
     .from("quote_responses")
     .select("customer_price_pence")
@@ -142,11 +146,24 @@ export async function releaseFundsForJob(jobId: string): Promise<ReleaseFundsRes
     return { ok: false, error: "Failed to update job", status: 500 };
   }
 
+  const transferred = !!operative?.stripe_account_id;
+  if (jobUserId) {
+    sendFundsReleasedEmails(supabase, {
+      jobId,
+      jobReference,
+      customerUserId: jobUserId,
+      operativeId: qr.operative_id,
+      contractorName: operative?.full_name?.trim() || "Contractor",
+      contractorSharePence,
+      transferred,
+    }).catch((e) => console.error("sendFundsReleasedEmails:", e));
+  }
+
   return {
     ok: true,
     contractor_share_pence: contractorSharePence,
-    transferred: !!operative?.stripe_account_id,
-    message: operative?.stripe_account_id
+    transferred,
+    message: transferred
       ? "Funds transferred to contractor Stripe account"
       : "Job marked as funds released; pay contractor manually (no Stripe Connect account).",
   };

@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useContractorPortal } from "@/components/contractor/contractor-portal-context";
 import CustomDropdown from "@/components/ui/CustomDropdown";
+import { JobEvidenceMedia } from "@/components/contractor/JobEvidenceMedia";
 import { Loader2 } from "lucide-react";
 
 type ReportStage = "pre_job" | "post_job" | "cannot_start";
@@ -78,6 +79,7 @@ export default function ContractorJobLayoutPage() {
   const [itemType, setItemType] = useState("damage");
   const [note, setNote] = useState("");
   const [photoUrlsRaw, setPhotoUrlsRaw] = useState("");
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [fieldAction, setFieldAction] = useState<string | null>(null);
   const [customerRating, setCustomerRating] = useState(5);
   const [customerComment, setCustomerComment] = useState("");
@@ -189,10 +191,26 @@ export default function ContractorJobLayoutPage() {
       }
       reportId = created.id;
     }
-    const photo_urls = photoUrlsRaw
+    const photo_urls: string[] = photoUrlsRaw
       .split("\n")
       .map((s) => s.trim())
       .filter(Boolean);
+    for (const file of pendingFiles) {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`/api/contractor/jobs/${jobId}/evidence/upload`, {
+        method: "POST",
+        body: fd,
+        credentials: "include",
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string; path?: string };
+      if (!res.ok) {
+        setSavingItem(false);
+        alert(json.error || "Upload failed");
+        return;
+      }
+      if (json.path) photo_urls.push(json.path);
+    }
     const { error } = await supabase.from("job_report_items").insert({
       report_id: reportId,
       item_type: itemType,
@@ -206,6 +224,7 @@ export default function ContractorJobLayoutPage() {
     }
     setNote("");
     setPhotoUrlsRaw("");
+    setPendingFiles([]);
     await load();
   };
 
@@ -406,7 +425,7 @@ export default function ContractorJobLayoutPage() {
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-sm font-semibold text-slate-900">Add evidence note</h2>
         <p className="mt-1 text-xs text-slate-500">
-          Add notes/photos for damages, obstructions, and post-job evidence to support future dispute review.
+          Upload photos or short videos (stored securely in Kleen), or paste external URLs. Evidence supports dispute review.
         </p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <div>
@@ -428,18 +447,38 @@ export default function ContractorJobLayoutPage() {
             placeholder="What did you find before starting, or what prevented completion?"
           />
         </label>
+        <div className="mt-3">
+          <label className="text-xs text-slate-500">Upload images or video (max ~50MB each)</label>
+          <input
+            type="file"
+            accept="image/*,video/mp4,video/quicktime,video/webm"
+            multiple
+            className="mt-1 block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-xs file:font-medium file:text-brand-700"
+            onChange={(e) => {
+              const list = e.target.files;
+              if (!list?.length) return;
+              setPendingFiles((prev) => [...prev, ...Array.from(list)]);
+              e.target.value = "";
+            }}
+          />
+          {pendingFiles.length > 0 && (
+            <p className="mt-1 text-xs text-slate-500">
+              {pendingFiles.length} file(s) will upload when you add evidence.
+            </p>
+          )}
+        </div>
         <label className="mt-3 block text-xs text-slate-500">
-          Photo URLs (one per line)
+          Extra URLs (one per line, optional)
           <textarea
             value={photoUrlsRaw}
             onChange={(e) => setPhotoUrlsRaw(e.target.value)}
-            rows={3}
+            rows={2}
             className="input-field mt-1"
             placeholder="https://..."
           />
         </label>
         <button type="button" disabled={savingItem || !note.trim()} onClick={addItem} className="btn-primary mt-3">
-          {savingItem ? "Adding…" : "Add evidence"}
+          {savingItem ? "Uploading…" : "Add evidence"}
         </button>
       </section>
 
@@ -460,11 +499,17 @@ export default function ContractorJobLayoutPage() {
                     <p className="font-medium text-slate-800">{i.item_type.replace("_", " ")}</p>
                     <p className="mt-1 text-slate-700">{i.note}</p>
                     {i.photo_urls?.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-2">
+                      <div className="mt-2 flex flex-col gap-2">
                         {i.photo_urls.map((u) => (
-                          <a key={u} href={u} target="_blank" rel="noreferrer" className="text-xs text-brand-600 underline">
-                            photo
-                          </a>
+                          <div key={u} className="rounded-lg border border-slate-100 bg-white p-2">
+                            {u.startsWith("http") ? (
+                              <a href={u} target="_blank" rel="noreferrer" className="text-xs text-brand-600 underline break-all">
+                                {u}
+                              </a>
+                            ) : (
+                              <JobEvidenceMedia pathOrUrl={u} />
+                            )}
+                          </div>
                         ))}
                       </div>
                     )}

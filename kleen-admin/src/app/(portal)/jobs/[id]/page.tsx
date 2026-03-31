@@ -174,6 +174,8 @@ export default function AdminJobDetailPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [showAddQuoteModal, setShowAddQuoteModal] = useState(false);
   const [addQuoteForm, setAddQuoteForm] = useState({ contractorId: "", pricePounds: "", hours: "", arrivalTime: "", notes: "" });
+  const [refundPounds, setRefundPounds] = useState("");
+  const [refundReason, setRefundReason] = useState("");
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [cancelReasonOther, setCancelReasonOther] = useState("");
@@ -748,6 +750,45 @@ export default function AdminJobDetailPage() {
     }
   };
 
+  const handleRefund = async (mode: "cancel" | "full" | "partial") => {
+    if (!job) return;
+    setActionLoading(true);
+    try {
+      const body: Record<string, unknown> = { jobId: job.id, reason: refundReason.trim() || undefined };
+      if (mode === "cancel") {
+        body.cancelAuthorizationOnly = true;
+      } else if (mode === "partial") {
+        const p = parseFloat(refundPounds);
+        if (!Number.isFinite(p) || p <= 0) {
+          toast({ type: "error", title: "Amount required", message: "Enter a valid GBP amount for a partial refund." });
+          setActionLoading(false);
+          return;
+        }
+        body.amountPence = Math.round(p * 100);
+      }
+
+      const res = await fetch("/api/stripe/refund-job", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast({ type: "error", title: "Refund failed", message: data.error || "Could not process refund." });
+        return;
+      }
+      toast({
+        type: "success",
+        title: data.cancelledAuthorization ? "Authorisation cancelled" : "Refund processed",
+        message: data.message || "Stripe has been updated.",
+      });
+      setRefundPounds("");
+      await refreshJobData();
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleCancelJob = async () => {
     if (!job || !cancelReason.trim()) return;
     const reasonText = cancelReason === "other" && cancelReasonOther.trim()
@@ -983,6 +1024,67 @@ export default function AdminJobDetailPage() {
             onReleaseFunds={handleReleaseFunds}
             onReinstateJob={handleReinstateJob}
           />
+
+          {job.stripe_payment_intent_id && !job.funds_released_at && (
+            <div className="rounded-2xl border border-rose-500/20 bg-rose-500/5 p-5">
+              <div className="flex items-center gap-2 text-rose-300">
+                <Banknote className="h-5 w-5" />
+                <h2 className="text-sm font-semibold">Refund customer (Stripe)</h2>
+              </div>
+              <p className="mt-2 text-xs text-slate-400">
+                Use this before you release funds to the contractor. Cancel an uncaptured card hold, or refund money already
+                captured (full or partial).
+              </p>
+              <label className="mt-3 block text-xs text-slate-500">
+                Note (optional, stored on payment record)
+                <input
+                  value={refundReason}
+                  onChange={(e) => setRefundReason(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200"
+                  placeholder="e.g. Goodwill discount agreed with customer"
+                />
+              </label>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={actionLoading}
+                  onClick={() => handleRefund("cancel")}
+                  className="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-white/10 disabled:opacity-50"
+                >
+                  Cancel card authorisation
+                </button>
+                <button
+                  type="button"
+                  disabled={actionLoading}
+                  onClick={() => handleRefund("full")}
+                  className="rounded-lg bg-rose-600 px-3 py-2 text-xs font-medium text-white hover:bg-rose-500 disabled:opacity-50"
+                >
+                  Full refund (captured charge)
+                </button>
+              </div>
+              <div className="mt-3 flex flex-wrap items-end gap-2">
+                <label className="text-xs text-slate-500">
+                  Partial (£)
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={refundPounds}
+                    onChange={(e) => setRefundPounds(e.target.value)}
+                    className="ml-2 w-28 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-slate-200"
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={actionLoading}
+                  onClick={() => handleRefund("partial")}
+                  className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs font-medium text-rose-200 hover:bg-rose-500/20 disabled:opacity-50"
+                >
+                  Refund partial amount
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Quote Counter — always show when not terminal; empty state when no quotes */}
           {!isTerminal && (

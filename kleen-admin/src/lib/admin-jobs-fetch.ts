@@ -36,6 +36,7 @@ function mapToAdminJob(
     created_at: j.created_at as string,
     is_blocked: prof?.is_blocked ?? false,
     payment_captured_at: (j.payment_captured_at as string | null) ?? null,
+    stripe_payment_intent_id: (j.stripe_payment_intent_id as string | null) ?? null,
     funds_released_at: (j.funds_released_at as string | null) ?? null,
     escrow_release_date: (j.escrow_release_date as string | null) ?? null,
     accepted_quote_request_id: (j.accepted_quote_request_id as string | null) ?? null,

@@ -23,6 +23,8 @@ export interface AdminJob {
   is_blocked?: boolean;
   /** Set when customer payment is captured — funds are in your Stripe account */
   payment_captured_at?: string | null;
+  /** Stripe PaymentIntent for refunds (before funds released to contractor) */
+  stripe_payment_intent_id?: string | null;
   /** Set when admin has released funds to the contractor (17.5% kept) */
   funds_released_at?: string | null;
   /** Earliest time funds may be released (3-day dispute window after both parties confirmed). */
