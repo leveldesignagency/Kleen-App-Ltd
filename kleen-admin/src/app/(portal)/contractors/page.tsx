@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAdminStore, Contractor, ContractorType } from "@/lib/admin-store";
 
@@ -32,6 +33,7 @@ function mapOperativeRowToContractor(c: Record<string, unknown>): Contractor {
     rejected_at: c.rejected_at ? String(c.rejected_at) : null,
     rejection_message: c.rejection_message ? String(c.rejection_message) : null,
     verified_at: c.verified_at ? String(c.verified_at) : null,
+    submitted_for_review_at: c.submitted_for_review_at ? String(c.submitted_for_review_at) : null,
     trading_name: String(c.trading_name || ""),
     registered_address: String(c.registered_address || ""),
   };
@@ -116,6 +118,7 @@ const emptyContractor: Omit<Contractor, "id" | "created_at"> & { operative_servi
 };
 
 export default function AdminContractorsPage() {
+  const router = useRouter();
   const { contractors, setContractors, addContractor, updateContractor, removeContractor } =
     useAdminStore();
   const [loading, setLoading] = useState(true);
@@ -192,6 +195,7 @@ export default function AdminContractorsPage() {
             rejected_at: c.rejected_at ?? null,
             rejection_message: c.rejection_message ?? null,
             verified_at: c.verified_at ?? null,
+            submitted_for_review_at: c.submitted_for_review_at ?? null,
             trading_name: c.trading_name || "",
             registered_address: c.registered_address || "",
           }))
@@ -208,7 +212,7 @@ export default function AdminContractorsPage() {
     else if (statusFilter === "inactive") list = list.filter((c) => !c.is_active);
     else if (statusFilter === "verified") list = list.filter((c) => c.is_verified);
     else if (statusFilter === "pending_review")
-      list = list.filter((c) => !c.is_verified && !c.rejected_at);
+      list = list.filter((c) => !c.is_verified && !!c.submitted_for_review_at && !c.rejected_at);
     else if (statusFilter === "rejected") list = list.filter((c) => !!c.rejected_at);
     else if (statusFilter === "sole_trader") list = list.filter((c) => c.contractor_type === "sole_trader");
     else if (statusFilter === "business") list = list.filter((c) => c.contractor_type === "business");
@@ -385,7 +389,8 @@ export default function AdminContractorsPage() {
                 filtered.map((c) => (
                   <tr
                     key={c.id}
-                    className="border-b border-white/[0.06] transition-colors hover:bg-white/[0.03]"
+                    className="cursor-pointer border-b border-white/[0.06] transition-colors hover:bg-white/[0.03]"
+                    onClick={() => router.push(`/contractors/${c.id}`)}
                   >
                     <td className="px-4 py-3">
                       <div>
@@ -452,17 +457,26 @@ export default function AdminContractorsPage() {
                               ? "bg-emerald-500/15 text-emerald-300"
                               : c.rejected_at
                                 ? "bg-red-500/15 text-red-300"
-                                : "bg-amber-500/15 text-amber-200"
+                                : c.submitted_for_review_at
+                                  ? "bg-amber-500/15 text-amber-200"
+                                  : "bg-slate-500/15 text-slate-300"
                           }`}
                         >
-                          {c.is_verified ? "Verified" : c.rejected_at ? "Declined" : "Pending review"}
+                          {c.is_verified
+                            ? "Verified"
+                            : c.rejected_at
+                              ? "Declined"
+                              : c.submitted_for_review_at
+                                ? "Awaiting review"
+                                : "Draft"}
                         </span>
                       </div>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
                         <button
-                          onClick={async () => {
+                          onClick={async (e) => {
+                            e.stopPropagation();
                             const supabase = createClient();
                             const { data: osData } = await supabase
                               .from("operative_services")
@@ -502,14 +516,20 @@ export default function AdminContractorsPage() {
                           <Pencil className="h-4 w-4" />
                         </button>
                         <button
-                          onClick={() => setReviewTarget(c)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            router.push(`/contractors/${c.id}`);
+                          }}
                           className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-white/10 hover:text-brand-400"
-                          title="Review — approve or decline with email"
+                          title="Open review page"
                         >
                           <ClipboardList className="h-4 w-4" />
                         </button>
                         <button
-                          onClick={() => toggleActive(c)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleActive(c);
+                          }}
                           className={`rounded-lg p-1.5 transition-colors ${
                             c.is_active
                               ? "text-amber-400 hover:bg-amber-500/20"
@@ -528,7 +548,10 @@ export default function AdminContractorsPage() {
                           )}
                         </button>
                         <button
-                          onClick={() => setDeleteTarget(c)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteTarget(c);
+                          }}
                           className="rounded-lg p-1.5 text-red-400 transition-colors hover:bg-red-500/20"
                           title="Delete"
                         >

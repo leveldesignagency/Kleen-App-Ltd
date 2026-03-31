@@ -53,6 +53,7 @@ export async function POST(request: NextRequest) {
       .update({
         is_verified: true,
         verified_at: now,
+        submitted_for_review_at: null,
         rejected_at: null,
         rejection_message: null,
       })
@@ -79,6 +80,7 @@ export async function POST(request: NextRequest) {
     .update({
       is_verified: false,
       verified_at: null,
+      submitted_for_review_at: null,
       rejected_at: now,
       rejection_message: trimmed,
     })

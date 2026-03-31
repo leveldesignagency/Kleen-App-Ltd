@@ -76,6 +76,7 @@ export default function AdminDashboardPage() {
             hourly_rate: c.hourly_rate,
             is_active: c.is_active ?? true,
             is_verified: c.is_verified ?? false,
+            submitted_for_review_at: c.submitted_for_review_at ?? null,
             notes: c.notes || "",
             bank_account_name: c.bank_account_name || "",
             bank_sort_code: c.bank_sort_code || "",
@@ -98,6 +99,9 @@ export default function AdminDashboardPage() {
   const activeQuotes = jobs.filter((j) =>
     ["awaiting_quotes", "quotes_received", "quoted", "sent_to_customer"].includes(j.status)
   ).length;
+  const contractorReviewCount = contractors.filter(
+    (c) => !c.is_verified && !!c.submitted_for_review_at && !c.rejected_at
+  ).length;
   const revenue = jobs
     .filter((j) => j.status === "completed")
     .reduce((sum, j) => sum + j.price_estimate, 0);
@@ -107,6 +111,7 @@ export default function AdminDashboardPage() {
     { label: "Pending Review",    value: String(pendingCount),          icon: Clock,          color: "text-amber-400  bg-amber-500/20" },
     { label: "Active Quotes",     value: String(activeQuotes),          icon: ClipboardList,  color: "text-blue-400   bg-blue-500/20" },
     { label: "Contractors",       value: String(contractors.length),    icon: Users,          color: "text-violet-400 bg-violet-500/20" },
+    { label: "Contractor Reviews", value: String(contractorReviewCount), icon: AlertCircle,    color: "text-amber-300 bg-amber-500/20" },
     { label: "Revenue",           value: `£${(revenue / 100).toFixed(0)}`, icon: TrendingUp,  color: "text-emerald-400 bg-emerald-500/20" },
   ];
 
@@ -152,7 +157,7 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* Stat Cards */}
-      <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-6">
         {stats.map((stat) => {
           const Icon = stat.icon;
           return (
@@ -169,6 +174,16 @@ export default function AdminDashboardPage() {
           );
         })}
       </div>
+      {contractorReviewCount > 0 && (
+        <Link
+          href="/contractors"
+          className="mt-4 inline-flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-medium text-amber-200 hover:bg-amber-500/20"
+        >
+          <AlertCircle className="h-4 w-4" />
+          {contractorReviewCount} contractor{contractorReviewCount === 1 ? "" : "s"} awaiting review
+          <ArrowRight className="h-4 w-4" />
+        </Link>
+      )}
 
       {/* Recent Jobs */}
       <div className="mt-8">

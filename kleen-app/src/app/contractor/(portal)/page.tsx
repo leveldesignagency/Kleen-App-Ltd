@@ -13,6 +13,8 @@ export default function ContractorHomePage() {
   const [stripeId, setStripeId] = useState<string | null>(null);
   const [serviceCount, setServiceCount] = useState<number | null>(null);
   const [onboardingSteps, setOnboardingSteps] = useState<OnboardingStep[] | null>(null);
+  const [submittedForReviewAt, setSubmittedForReviewAt] = useState<string | null>(null);
+  const [submittingReview, setSubmittingReview] = useState(false);
 
   useEffect(() => {
     if (!operativeId) return;
@@ -20,6 +22,7 @@ export default function ContractorHomePage() {
     (async () => {
       const { data: op } = await supabase.from("operatives").select("*").eq("id", operativeId).single();
       setStripeId((op as { stripe_account_id?: string } | null)?.stripe_account_id || null);
+      setSubmittedForReviewAt((op as { submitted_for_review_at?: string } | null)?.submitted_for_review_at || null);
 
       const { count } = await supabase
         .from("operative_services")
@@ -124,9 +127,44 @@ export default function ContractorHomePage() {
             ))}
           </ul>
           {onboardingSteps.every((s) => s.done) && (
-            <p className="mt-4 text-xs font-medium text-emerald-800">
-              Profile looks complete — Kleen will review your application. Refresh after you make changes.
-            </p>
+            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+              <p className="text-xs font-medium text-emerald-900">
+                Your profile looks complete. Send it to Kleen when you are ready for review.
+              </p>
+              {submittedForReviewAt ? (
+                <p className="mt-2 text-xs text-emerald-800/90">
+                  Submitted for review on {new Date(submittedForReviewAt).toLocaleString("en-GB")}. You can keep editing;
+                  admin will review your latest details.
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  disabled={submittingReview}
+                  onClick={async () => {
+                    setSubmittingReview(true);
+                    const supabase = createClient();
+                    const now = new Date().toISOString();
+                    const { error } = await supabase
+                      .from("operatives")
+                      .update({
+                        submitted_for_review_at: now,
+                        rejected_at: null,
+                        rejection_message: null,
+                      })
+                      .eq("id", operativeId);
+                    setSubmittingReview(false);
+                    if (error) {
+                      alert(error.message);
+                      return;
+                    }
+                    setSubmittedForReviewAt(now);
+                  }}
+                  className="mt-3 rounded-lg bg-emerald-700 px-3.5 py-2 text-xs font-semibold text-white hover:bg-emerald-600 disabled:opacity-60"
+                >
+                  {submittingReview ? "Sending…" : "Send for review"}
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}

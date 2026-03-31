@@ -70,6 +70,7 @@ export default function ReviewContractorModal({ contractor, onClose, onUpdated, 
       ...contractor,
       is_verified: Boolean(o.is_verified),
       verified_at: o.verified_at ? String(o.verified_at) : null,
+      submitted_for_review_at: o.submitted_for_review_at ? String(o.submitted_for_review_at) : null,
       rejected_at: o.rejected_at ? String(o.rejected_at) : null,
       rejection_message: o.rejection_message ? String(o.rejection_message) : null,
     };

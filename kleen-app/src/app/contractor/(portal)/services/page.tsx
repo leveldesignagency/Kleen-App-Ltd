@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useContractorPortal } from "@/components/contractor/contractor-portal-context";
+import CustomDropdown from "@/components/ui/CustomDropdown";
 import { Loader2, Trash2 } from "lucide-react";
 
 type ServiceRow = { id: string; name: string };
@@ -189,19 +190,15 @@ export default function ContractorServicesPage() {
           <form onSubmit={addService} className="mt-4 space-y-3">
             <label className="block text-xs">
               <span className="text-slate-500">Service</span>
-              <select
+              <CustomDropdown
                 value={addServiceId}
-                onChange={(e) => setAddServiceId(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                required
-              >
-                <option value="">Choose…</option>
-                {canAdd.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setAddServiceId}
+                options={canAdd.map((s) => ({ value: s.id, label: s.name }))}
+                placeholder="Choose a service…"
+                className="mt-1"
+                searchable
+                searchPlaceholder="Type to find a service…"
+              />
             </label>
             <label className="block text-xs">
               <span className="text-slate-500">Contract title</span>

@@ -45,6 +45,8 @@ export interface Contractor {
   hourly_rate?: number;
   is_active: boolean;
   is_verified: boolean;
+  /** Set when contractor clicks "Send for review". */
+  submitted_for_review_at?: string | null;
   /** Set when application was declined (see rejection_message). */
   rejected_at?: string | null;
   rejection_message?: string | null;
