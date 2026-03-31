@@ -20,6 +20,26 @@ function contractorPortalBaseUrl() {
   );
 }
 
+/** PostgREST missing column / stale schema cache — retry with fewer fields. */
+function shouldRetryOperativesUpdate(message: string | undefined) {
+  if (!message) return false;
+  const m = message.toLowerCase();
+  return (
+    m.includes("schema cache") ||
+    m.includes("could not find") ||
+    m.includes("pgrst204") ||
+    m.includes("submitted_for_review_at") ||
+    m.includes("verified_at") ||
+    m.includes("rejected_at") ||
+    m.includes("rejection_message") ||
+    (m.includes("column") && m.includes("operatives"))
+  );
+}
+
+function getErrorMessage(err: { message?: string } | null) {
+  return err?.message ?? "";
+}
+
 export async function POST(request: NextRequest) {
   const auth = await requireAdminApi();
   if (!auth.ok) return auth.response;
@@ -48,24 +68,65 @@ export async function POST(request: NextRequest) {
   const now = new Date().toISOString();
 
   if (action === "approve") {
-    const { data, error } = await supabase
-      .from("operatives")
-      .update({
+    const payloads: Record<string, unknown>[] = [
+      {
         is_verified: true,
         verified_at: now,
         submitted_for_review_at: null,
         rejected_at: null,
         rejection_message: null,
-      })
-      .eq("id", operativeId)
-      .select("*")
-      .single();
+      },
+      {
+        is_verified: true,
+        verified_at: now,
+        rejected_at: null,
+        rejection_message: null,
+      },
+      { is_verified: true, verified_at: now },
+      { is_verified: true },
+    ];
 
-    if (error) {
-      console.error("contractors/verification approve:", error);
-      return NextResponse.json({ error: error.message }, { status: 400 });
+    let data: Record<string, unknown> | null = null;
+    let lastError: { message?: string } | null = null;
+    let usedFallback = false;
+
+    for (let i = 0; i < payloads.length; i++) {
+      const { data: row, error } = await supabase
+        .from("operatives")
+        .update(payloads[i])
+        .eq("id", operativeId)
+        .select("*")
+        .single();
+
+      if (!error) {
+        data = row as Record<string, unknown>;
+        usedFallback = i > 0;
+        break;
+      }
+      lastError = error;
+      if (!shouldRetryOperativesUpdate(getErrorMessage(error))) {
+        break;
+      }
     }
-    return NextResponse.json({ ok: true, operative: data });
+
+    if (!data) {
+      console.error("contractors/verification approve:", lastError);
+      return NextResponse.json(
+        { error: getErrorMessage(lastError) || "Approve failed" },
+        { status: 400 }
+      );
+    }
+
+    return NextResponse.json({
+      ok: true,
+      operative: data,
+      ...(usedFallback
+        ? {
+            dbWarning:
+              "Contractor was approved using a minimal DB update. Run kleen-app/supabase/manual/ensure_operatives_contractor_verification_columns.sql on Supabase so verification timestamps and the review queue work fully.",
+          }
+        : {}),
+    });
   }
 
   const { data: before } = await supabase
@@ -75,22 +136,52 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
 
   const trimmed = String(message).trim();
-  const { data, error } = await supabase
-    .from("operatives")
-    .update({
+  const rejectPayloads: Record<string, unknown>[] = [
+    {
       is_verified: false,
       verified_at: null,
       submitted_for_review_at: null,
       rejected_at: now,
       rejection_message: trimmed,
-    })
-    .eq("id", operativeId)
-    .select("*")
-    .single();
+    },
+    {
+      is_verified: false,
+      verified_at: null,
+      rejected_at: now,
+      rejection_message: trimmed,
+    },
+    { is_verified: false, rejected_at: now, rejection_message: trimmed },
+    { is_verified: false, rejection_message: trimmed },
+    { is_verified: false, rejected_at: now },
+    { is_verified: false },
+  ];
 
-  if (error) {
-    console.error("contractors/verification reject:", error);
-    return NextResponse.json({ error: error.message }, { status: 400 });
+  let data: Record<string, unknown> | null = null;
+  let lastError: { message?: string } | null = null;
+  let usedFallback = false;
+
+  for (let i = 0; i < rejectPayloads.length; i++) {
+    const { data: row, error } = await supabase
+      .from("operatives")
+      .update(rejectPayloads[i])
+      .eq("id", operativeId)
+      .select("*")
+      .single();
+
+    if (!error) {
+      data = row as Record<string, unknown>;
+      usedFallback = i > 0;
+      break;
+    }
+    lastError = error;
+    if (!shouldRetryOperativesUpdate(getErrorMessage(error))) {
+      break;
+    }
+  }
+
+  if (!data) {
+    console.error("contractors/verification reject:", lastError);
+    return NextResponse.json({ error: getErrorMessage(lastError) || "Decline failed" }, { status: 400 });
   }
 
   const toEmail = before?.email?.trim();
@@ -102,6 +193,7 @@ export async function POST(request: NextRequest) {
           ok: true,
           operative: data,
           emailWarning: "Contractor updated but email was not sent (RESEND_API_KEY missing).",
+          ...(usedFallback ? { dbWarning: "Decline used minimal DB columns; run ensure_operatives_contractor_verification_columns.sql for full rejection storage." } : {}),
         },
         { status: 200 }
       );
@@ -131,11 +223,21 @@ export async function POST(request: NextRequest) {
           ok: true,
           operative: data,
           emailWarning: "Contractor saved but the email failed to send. Check Resend logs.",
+          ...(usedFallback ? { dbWarning: "Decline used minimal DB columns; run ensure_operatives_contractor_verification_columns.sql for full rejection storage." } : {}),
         },
         { status: 200 }
       );
     }
   }
 
-  return NextResponse.json({ ok: true, operative: data });
+  return NextResponse.json({
+    ok: true,
+    operative: data,
+    ...(usedFallback
+      ? {
+          dbWarning:
+            "Decline was saved with minimal columns. Run kleen-app/supabase/manual/ensure_operatives_contractor_verification_columns.sql on Supabase so rejection reasons persist on the profile.",
+        }
+      : {}),
+  });
 }

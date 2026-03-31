@@ -55,6 +55,7 @@ export default function ReviewContractorModal({ contractor, onClose, onUpdated, 
       error?: string;
       operative?: Record<string, unknown>;
       emailWarning?: string;
+      dbWarning?: string;
     };
     setSubmitting(null);
     if (!res.ok || !json.operative) {
@@ -75,6 +76,9 @@ export default function ReviewContractorModal({ contractor, onClose, onUpdated, 
       rejection_message: o.rejection_message ? String(o.rejection_message) : null,
     };
     onUpdated(updated);
+    if (json.dbWarning) {
+      toast({ type: "info", title: "Database", message: json.dbWarning });
+    }
     if (json.emailWarning) {
       toast({ type: "info", title: "Saved", message: json.emailWarning });
     } else {

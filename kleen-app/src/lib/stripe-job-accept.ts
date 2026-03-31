@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendAdminQuoteAcceptedEmail } from "@/lib/resend-admin-notify";
+import { sendContractorJobBookedEmail } from "@/lib/resend-contractor-notify";
 import { sendCustomerFullContractEmail } from "@/lib/resend-customer-contract";
 import { generateOperativePortalToken } from "@/lib/operative-portal-token";
 
@@ -87,7 +88,7 @@ export async function applyQuoteAcceptAuthorized(params: {
   const { error: jobUpdateErr } = await supabase
     .from("jobs")
     .update({
-      status: "customer_accepted",
+      status: "awaiting_completion",
       accepted_quote_request_id: quoteRequestId,
       customer_accepted_at: now,
       payment_authorized_at: now,
@@ -152,6 +153,27 @@ export async function applyQuoteAcceptAuthorized(params: {
 
   await sendFullContractToCustomerIfNeeded(supabase, jobId, quoteRequestId, now);
 
+  const { data: qrRow } = await supabase.from("quote_requests").select("operative_id").eq("id", quoteRequestId).maybeSingle();
+  if (qrRow?.operative_id) {
+    const { data: op } = await supabase
+      .from("operatives")
+      .select("email, full_name")
+      .eq("id", qrRow.operative_id)
+      .maybeSingle();
+    const toEmail = op?.email?.trim();
+    if (toEmail) {
+      const { data: refRow } = await supabase.from("jobs").select("reference").eq("id", jobId).single();
+      const ref = refRow?.reference || jobId.slice(0, 8).toUpperCase();
+      await sendContractorJobBookedEmail({
+        toEmail,
+        contractorName: op?.full_name?.trim() || "there",
+        jobReference: ref,
+        jobId,
+        amountPence,
+      });
+    }
+  }
+
   return null;
 }
 
@@ -202,7 +224,7 @@ export async function applyLegacyImmediateCapture(
   const { error: jobUpdateErr } = await supabase
     .from("jobs")
     .update({
-      status: "customer_accepted",
+      status: "awaiting_completion",
       accepted_quote_request_id: quoteRequestId,
       customer_accepted_at: now,
       payment_captured_at: now,
@@ -262,6 +284,27 @@ export async function applyLegacyImmediateCapture(
   });
 
   await sendFullContractToCustomerIfNeeded(supabase, jobId, quoteRequestId, now);
+
+  const { data: qrRow } = await supabase.from("quote_requests").select("operative_id").eq("id", quoteRequestId).maybeSingle();
+  if (qrRow?.operative_id) {
+    const { data: op } = await supabase
+      .from("operatives")
+      .select("email, full_name")
+      .eq("id", qrRow.operative_id)
+      .maybeSingle();
+    const toEmail = op?.email?.trim();
+    if (toEmail) {
+      const { data: refRow } = await supabase.from("jobs").select("reference").eq("id", jobId).single();
+      const ref = refRow?.reference || jobId.slice(0, 8).toUpperCase();
+      await sendContractorJobBookedEmail({
+        toEmail,
+        contractorName: op?.full_name?.trim() || "there",
+        jobReference: ref,
+        jobId,
+        amountPence,
+      });
+    }
+  }
 
   return null;
 }

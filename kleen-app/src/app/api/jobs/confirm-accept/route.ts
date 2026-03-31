@@ -44,7 +44,10 @@ export async function POST(request: NextRequest) {
   if (jobErr || !job) {
     return NextResponse.json({ error: "Job not found" }, { status: 404 });
   }
-  if (job.accepted_quote_request_id === quoteRequestId && job.status === "customer_accepted") {
+  if (
+    job.accepted_quote_request_id === quoteRequestId &&
+    ["customer_accepted", "awaiting_completion"].includes(job.status)
+  ) {
     return NextResponse.json({ ok: true, idempotent: true });
   }
   if (job.status !== "sent_to_customer") {

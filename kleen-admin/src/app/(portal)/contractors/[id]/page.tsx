@@ -57,6 +57,7 @@ export default function ContractorReviewPage() {
   const [services, setServices] = useState<OperativeService[]>([]);
   const [rejectText, setRejectText] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -108,12 +109,17 @@ export default function ContractorReviewPage() {
         message: action === "reject" ? rejectText.trim() : undefined,
       }),
     });
-    const json = (await res.json().catch(() => ({}))) as { error?: string; operative?: Operative };
+    const json = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      operative?: Operative;
+      dbWarning?: string;
+    };
     setSaving(null);
     if (!res.ok || !json.operative) {
       setError(json.error || "Could not save review");
       return;
     }
+    setNotice(json.dbWarning ?? null);
     setOp(json.operative);
     if (action === "reject") setRejectText("");
   };
@@ -136,6 +142,11 @@ export default function ContractorReviewPage() {
 
   return (
     <div className="space-y-6">
+      {notice && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+          {notice}
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <Link href="/contractors" className="inline-flex items-center gap-1 text-sm text-brand-400 hover:underline">

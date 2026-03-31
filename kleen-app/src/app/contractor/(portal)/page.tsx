@@ -8,6 +8,11 @@ import { FileText, Landmark, Briefcase, UserRound, ShieldAlert, CheckCircle2, Ci
 
 type OnboardingStep = { label: string; done: boolean; href?: string };
 
+function isMissingSubmittedForReviewColumn(message: string) {
+  const m = message.toLowerCase();
+  return m.includes("submitted_for_review_at") || m.includes("schema cache");
+}
+
 export default function ContractorHomePage() {
   const { operativeId, isVerified, rejectionMessage } = useContractorPortal();
   const [stripeId, setStripeId] = useState<string | null>(null);
@@ -144,7 +149,7 @@ export default function ContractorHomePage() {
                     setSubmittingReview(true);
                     const supabase = createClient();
                     const now = new Date().toISOString();
-                    const { error } = await supabase
+                    const { error: fullErr } = await supabase
                       .from("operatives")
                       .update({
                         submitted_for_review_at: now,
@@ -152,6 +157,27 @@ export default function ContractorHomePage() {
                         rejection_message: null,
                       })
                       .eq("id", operativeId);
+
+                    let error = fullErr;
+                    if (error && isMissingSubmittedForReviewColumn(error.message)) {
+                      const { error: retryErr } = await supabase
+                        .from("operatives")
+                        .update({
+                          rejected_at: null,
+                          rejection_message: null,
+                        })
+                        .eq("id", operativeId);
+                      error = retryErr;
+                      if (!error) {
+                        alert(
+                          "Your rejection notice was cleared, but the database is missing column operatives.submitted_for_review_at. " +
+                            "Run migration 036 (or kleen-app/supabase/manual/add_submitted_for_review_at_column.sql) in Supabase so admins can see you in the review queue."
+                        );
+                        setSubmittingReview(false);
+                        return;
+                      }
+                    }
+
                     setSubmittingReview(false);
                     if (error) {
                       alert(error.message);

@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     const { data: job, error: jobErr } = await supabase
       .from("jobs")
       .select(
-        "id, status, accepted_quote_request_id, payment_captured_at, funds_released_at, stripe_payment_intent_id, payment_authorized_at"
+        "id, status, accepted_quote_request_id, payment_captured_at, funds_released_at, stripe_payment_intent_id, payment_authorized_at, escrow_release_date"
       )
       .eq("id", jobId)
       .single();
@@ -66,6 +66,34 @@ export async function POST(request: NextRequest) {
     if (!paymentCapturedAt) {
       return NextResponse.json(
         { error: "Payment not yet authorized or captured for this job" },
+        { status: 400 }
+      );
+    }
+
+    const escrowRelease = (job as { escrow_release_date?: string | null }).escrow_release_date;
+    if (escrowRelease) {
+      const until = new Date(escrowRelease).getTime();
+      if (Number.isFinite(until) && Date.now() < until) {
+        return NextResponse.json(
+          {
+            error: `Dispute window active until ${new Date(escrowRelease).toISOString()}. Release after that time or resolve disputes first.`,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    const { data: openDispute } = await supabase
+      .from("disputes")
+      .select("id")
+      .eq("job_id", jobId)
+      .in("status", ["open", "under_review", "escalated"])
+      .limit(1)
+      .maybeSingle();
+
+    if (openDispute?.id) {
+      return NextResponse.json(
+        { error: "Resolve or close the open dispute before releasing funds." },
         { status: 400 }
       );
     }

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useNotifications } from "@/lib/notifications";
 import { customerDisplayPricePence } from "@/lib/customer-quote-price";
+import { escrowReleaseFromNow } from "@/lib/contractor-field-job";
 import {
   ArrowLeft,
   Loader2,
@@ -105,6 +106,9 @@ interface JobDetail {
   /** When payment was captured; 48h from this = full refund if cancelled. */
   payment_captured_at: string | null;
   cancelled_at: string | null;
+  operative_en_route_at: string | null;
+  operative_arrived_at: string | null;
+  escrow_release_date: string | null;
 }
 
 interface CustomerQuote {
@@ -130,6 +134,16 @@ export default function CustomerJobDetailPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [cancelModal, setCancelModal] = useState(false);
   const [confirmCompleteModal, setConfirmCompleteModal] = useState(false);
+  const [acceptedOperativeId, setAcceptedOperativeId] = useState<string | null>(null);
+  const [existingReview, setExistingReview] = useState<{
+    rating: number;
+    kleen_rating: number | null;
+    comment: string | null;
+  } | null>(null);
+  const [reviewContractor, setReviewContractor] = useState(5);
+  const [reviewKleen, setReviewKleen] = useState(5);
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewSaving, setReviewSaving] = useState(false);
 
   const searchParams = useSearchParams();
   useEffect(() => {
@@ -198,6 +212,9 @@ export default function CustomerJobDetailPage() {
         actual_start: j.actual_start || null,
         payment_captured_at: j.payment_captured_at || null,
         cancelled_at: j.cancelled_at || null,
+        operative_en_route_at: j.operative_en_route_at || null,
+        operative_arrived_at: j.operative_arrived_at || null,
+        escrow_release_date: j.escrow_release_date || null,
       });
 
       const showQuotes = [
@@ -205,6 +222,26 @@ export default function CustomerJobDetailPage() {
         "awaiting_completion", "in_progress", "pending_confirmation",
         "completed", "funds_released",
       ].includes(j.status);
+
+      if (j.accepted_quote_request_id) {
+        const [{ data: accQr }, { data: revRow }] = await Promise.all([
+          supabase.from("quote_requests").select("operative_id").eq("id", j.accepted_quote_request_id).maybeSingle(),
+          supabase.from("reviews").select("rating, kleen_rating, comment").eq("job_id", jobId).maybeSingle(),
+        ]);
+        setAcceptedOperativeId((accQr as { operative_id?: string } | null)?.operative_id ?? null);
+        setExistingReview(
+          revRow
+            ? {
+                rating: revRow.rating,
+                kleen_rating: revRow.kleen_rating ?? null,
+                comment: revRow.comment ?? null,
+              }
+            : null
+        );
+      } else {
+        setAcceptedOperativeId(null);
+        setExistingReview(null);
+      }
 
       if (showQuotes) {
         const { data: qrData } = await supabase
@@ -313,12 +350,13 @@ export default function CustomerJobDetailPage() {
     setActionLoading(true);
     const supabase = createClient();
 
-    const updates: Record<string, string> = {
+    const updates: Record<string, string | null> = {
       customer_confirmed_complete_at: new Date().toISOString(),
     };
 
     if (job.contractor_confirmed_complete_at) {
       updates.status = "completed";
+      updates.escrow_release_date = escrowReleaseFromNow();
     } else {
       updates.status = "pending_confirmation";
     }
@@ -330,19 +368,59 @@ export default function CustomerJobDetailPage() {
     } else {
       setJob({
         ...job,
-        status: updates.status,
-        customer_confirmed_complete_at: updates.customer_confirmed_complete_at,
+        status: updates.status as JobDetail["status"],
+        customer_confirmed_complete_at: updates.customer_confirmed_complete_at as string,
+        escrow_release_date: (updates.escrow_release_date as string | null) ?? job.escrow_release_date,
       });
       toast({
         type: "success",
         title: updates.status === "completed" ? "Job Complete" : "Confirmation Received",
-        message: updates.status === "completed"
-          ? "Both parties confirmed. Funds will be released shortly."
-          : "Waiting for the contractor to confirm completion.",
+        message:
+          updates.status === "completed" && updates.escrow_release_date
+            ? `Both parties confirmed. The contractor can be paid after ${new Date(updates.escrow_release_date).toLocaleString("en-GB")} (3-day dispute window).`
+            : updates.status === "completed"
+              ? "Both parties confirmed."
+              : "Waiting for the contractor to confirm completion.",
       });
     }
     setActionLoading(false);
     setConfirmCompleteModal(false);
+  };
+
+  const handleSubmitReview = async () => {
+    if (!job || !acceptedOperativeId) return;
+    setReviewSaving(true);
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setReviewSaving(false);
+      return;
+    }
+    const { error } = await supabase.from("reviews").insert({
+      job_id: job.id,
+      user_id: user.id,
+      operative_id: acceptedOperativeId,
+      rating: reviewContractor,
+      kleen_rating: reviewKleen,
+      comment: reviewComment.trim() || null,
+    });
+    setReviewSaving(false);
+    if (error) {
+      toast({ type: "error", title: "Could not save review", message: error.message });
+      return;
+    }
+    setExistingReview({
+      rating: reviewContractor,
+      kleen_rating: reviewKleen,
+      comment: reviewComment.trim() || null,
+    });
+    toast({
+      type: "success",
+      title: "Thanks",
+      message: "Your feedback helps Kleen and the contractor.",
+    });
   };
 
   /* ─── Loading / Not Found ─────────────────────────────────────────── */
@@ -606,6 +684,18 @@ export default function CustomerJobDetailPage() {
             </div>
           )}
 
+          {job.operative_en_route_at &&
+            ["awaiting_completion", "in_progress", "pending_confirmation"].includes(job.status) && (
+              <div className="rounded-2xl border border-cyan-200 bg-cyan-50 p-4">
+                <p className="text-sm font-medium text-cyan-900">Contractor on the way</p>
+                <p className="mt-1 text-xs text-cyan-800/90">
+                  {job.operative_arrived_at
+                    ? "They have marked themselves as arrived."
+                    : "They’ve started travelling to you."}
+                </p>
+              </div>
+            )}
+
           {/* Confirm Completion */}
           {canConfirmComplete && (
             <div className="rounded-2xl border border-teal-200 bg-teal-50 p-5">
@@ -649,6 +739,80 @@ export default function CustomerJobDetailPage() {
                   Final price: {formatPrice(acceptedQuote.customer_price_pence)}
                 </p>
               )}
+              {job.escrow_release_date && job.status === "completed" && (
+                <p className="mt-2 text-xs text-emerald-700/90">
+                  Payment to the contractor is eligible after{" "}
+                  {new Date(job.escrow_release_date).toLocaleString("en-GB")} (3-day dispute window).
+                </p>
+              )}
+            </div>
+          )}
+
+          {(job.status === "completed" || job.status === "funds_released") &&
+            acceptedOperativeId &&
+            !existingReview && (
+              <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                <h2 className="text-sm font-semibold text-slate-900">How was everything?</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  Rate the contractor and Kleen. One review per job.
+                </p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <label className="block text-xs text-slate-500">
+                    Contractor (1–5)
+                    <select
+                      value={reviewContractor}
+                      onChange={(e) => setReviewContractor(Number(e.target.value))}
+                      className="input-field mt-1 w-full"
+                    >
+                      {[5, 4, 3, 2, 1].map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block text-xs text-slate-500">
+                    Kleen service (1–5)
+                    <select
+                      value={reviewKleen}
+                      onChange={(e) => setReviewKleen(Number(e.target.value))}
+                      className="input-field mt-1 w-full"
+                    >
+                      {[5, 4, 3, 2, 1].map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <label className="mt-3 block text-xs text-slate-500">
+                  Comment (optional)
+                  <textarea
+                    value={reviewComment}
+                    onChange={(e) => setReviewComment(e.target.value)}
+                    rows={2}
+                    className="input-field mt-1 w-full"
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={reviewSaving}
+                  onClick={handleSubmitReview}
+                  className="mt-3 w-full rounded-xl bg-brand-600 py-2.5 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-60"
+                >
+                  {reviewSaving ? "Saving…" : "Submit review"}
+                </button>
+              </div>
+            )}
+
+          {(job.status === "completed" || job.status === "funds_released") && existingReview && (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+              <p className="font-medium text-slate-900">Your review</p>
+              <p className="mt-1 text-xs">
+                Contractor {existingReview.rating}/5 · Kleen {existingReview.kleen_rating ?? "—"}/5
+              </p>
+              {existingReview.comment && <p className="mt-2 text-slate-600">{existingReview.comment}</p>}
             </div>
           )}
         </div>

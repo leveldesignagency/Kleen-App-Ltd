@@ -19,6 +19,11 @@ type JobRow = {
   city: string | null;
   postcode: string;
   preferred_date: string;
+  user_id: string;
+  operative_en_route_at: string | null;
+  operative_arrived_at: string | null;
+  operative_marked_complete_at: string | null;
+  operative_marked_incomplete_at: string | null;
 };
 
 type ReportItem = {
@@ -73,6 +78,11 @@ export default function ContractorJobLayoutPage() {
   const [itemType, setItemType] = useState("damage");
   const [note, setNote] = useState("");
   const [photoUrlsRaw, setPhotoUrlsRaw] = useState("");
+  const [fieldAction, setFieldAction] = useState<string | null>(null);
+  const [customerRating, setCustomerRating] = useState(5);
+  const [customerComment, setCustomerComment] = useState("");
+  const [savingCustomerRating, setSavingCustomerRating] = useState(false);
+  const [hasCustomerRating, setHasCustomerRating] = useState(false);
 
   const reportByStage = useMemo(
     () => ({
@@ -98,10 +108,12 @@ export default function ContractorJobLayoutPage() {
       return;
     }
 
-    const [{ data: jobData }, { data: reportData }] = await Promise.all([
+    const [{ data: jobData }, { data: reportData }, { data: ratingRow }] = await Promise.all([
       supabase
         .from("jobs")
-        .select("id, reference, status, address_line_1, city, postcode, preferred_date")
+        .select(
+          "id, reference, status, user_id, address_line_1, city, postcode, preferred_date, operative_en_route_at, operative_arrived_at, operative_marked_complete_at, operative_marked_incomplete_at"
+        )
         .eq("id", jobId)
         .single(),
       supabase
@@ -110,10 +122,12 @@ export default function ContractorJobLayoutPage() {
         .eq("job_id", jobId)
         .eq("operative_id", operativeId)
         .order("submitted_at", { ascending: false }),
+      supabase.from("job_customer_ratings").select("id").eq("job_id", jobId).maybeSingle(),
     ]);
 
     setJob((jobData as JobRow) || null);
     setReports((reportData as unknown as ReportRow[]) || []);
+    setHasCustomerRating(!!ratingRow);
     setLoading(false);
   }, [jobId, operativeId, isVerified, router]);
 
@@ -195,6 +209,49 @@ export default function ContractorJobLayoutPage() {
     await load();
   };
 
+  const runField = async (action: "en_route" | "arrived" | "complete") => {
+    if (!jobId) return;
+    setFieldAction(action);
+    const res = await fetch(`/api/contractor/jobs/${jobId}/field`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action }),
+    });
+    const json = (await res.json().catch(() => ({}))) as { error?: string };
+    setFieldAction(null);
+    if (!res.ok) {
+      alert(json.error || "Could not update job");
+      return;
+    }
+    await load();
+  };
+
+  const submitCustomerRating = async () => {
+    if (!jobId || !operativeId || !job?.user_id) return;
+    setSavingCustomerRating(true);
+    const supabase = createClient();
+    const { error } = await supabase.from("job_customer_ratings").insert({
+      job_id: jobId,
+      operative_id: operativeId,
+      customer_user_id: job.user_id,
+      rating: customerRating,
+      comment: customerComment.trim() || null,
+    });
+    setSavingCustomerRating(false);
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    setHasCustomerRating(true);
+  };
+
+  const liveStatuses = ["customer_accepted", "accepted", "awaiting_completion", "in_progress", "pending_confirmation"];
+  const showLive =
+    job && liveStatuses.includes(job.status) && !job.operative_marked_complete_at && !job.operative_marked_incomplete_at;
+  const showRateCustomer =
+    job && ["completed", "funds_released"].includes(job.status) && !hasCustomerRating;
+
   if (!isVerified || loading) {
     return (
       <div className="flex justify-center py-16">
@@ -217,6 +274,90 @@ export default function ContractorJobLayoutPage() {
           {job.city ? `, ${job.city}` : ""} · {job.postcode}
         </p>
       </div>
+
+      {showLive && (
+        <section className="rounded-2xl border border-cyan-200 bg-cyan-50/80 p-5 shadow-sm">
+          <h2 className="text-sm font-semibold text-cyan-900">Live job</h2>
+          <p className="mt-1 text-xs text-cyan-800/90">
+            The customer is notified when you&apos;re on the way. Mark arrived before completing the job.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={!!job.operative_en_route_at || fieldAction === "en_route"}
+              onClick={() => runField("en_route")}
+              className="rounded-lg bg-cyan-700 px-3 py-2 text-xs font-semibold text-white hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {fieldAction === "en_route" ? "Updating…" : "On my way"}
+            </button>
+            <button
+              type="button"
+              disabled={!job.operative_en_route_at || !!job.operative_arrived_at || fieldAction === "arrived"}
+              onClick={() => runField("arrived")}
+              className="rounded-lg bg-cyan-700 px-3 py-2 text-xs font-semibold text-white hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {fieldAction === "arrived" ? "Updating…" : "Arrived"}
+            </button>
+            <button
+              type="button"
+              disabled={!job.operative_arrived_at || fieldAction === "complete"}
+              onClick={() => runField("complete")}
+              className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {fieldAction === "complete" ? "Updating…" : "Mark job complete"}
+            </button>
+          </div>
+          <ul className="mt-3 space-y-1 text-xs text-cyan-900/80">
+            {job.operative_en_route_at && (
+              <li>On route: {new Date(job.operative_en_route_at).toLocaleString("en-GB")}</li>
+            )}
+            {job.operative_arrived_at && (
+              <li>Arrived: {new Date(job.operative_arrived_at).toLocaleString("en-GB")}</li>
+            )}
+          </ul>
+        </section>
+      )}
+
+      {/* Could not complete — keep simple; use portal token flow or admin for disputed */}
+      {showRateCustomer && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-sm font-semibold text-slate-900">Rate this customer</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Helps Kleen spot unfair behaviour. One rating per job.
+          </p>
+          <label className="mt-3 block text-xs text-slate-500">
+            Score (1–5)
+            <select
+              value={customerRating}
+              onChange={(e) => setCustomerRating(Number(e.target.value))}
+              className="input-field mt-1"
+            >
+              {[5, 4, 3, 2, 1].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="mt-3 block text-xs text-slate-500">
+            Comment (optional)
+            <textarea
+              value={customerComment}
+              onChange={(e) => setCustomerComment(e.target.value)}
+              rows={2}
+              className="input-field mt-1"
+            />
+          </label>
+          <button
+            type="button"
+            disabled={savingCustomerRating}
+            onClick={submitCustomerRating}
+            className="btn-primary mt-3"
+          >
+            {savingCustomerRating ? "Saving…" : "Submit rating"}
+          </button>
+        </section>
+      )}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-sm font-semibold text-slate-900">Create / update report</h2>
