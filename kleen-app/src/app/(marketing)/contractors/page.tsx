@@ -35,7 +35,7 @@ const STEPS = [
 export default function ContractorsMarketingPage() {
   return (
     <div className="bg-white">
-      <section className="border-b border-slate-100 bg-gradient-to-b from-slate-50 to-white px-6 py-16 sm:px-10 lg:px-16 lg:py-24">
+      <section className="border-b border-slate-100 bg-gradient-to-b from-slate-50 to-white px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
         <div className="mx-auto max-w-3xl text-center">
           <p className="text-xs font-semibold uppercase tracking-wider text-brand-600">For professionals</p>
           <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
@@ -64,7 +64,7 @@ export default function ContractorsMarketingPage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-screen-lg px-6 py-16 sm:px-10 lg:px-16">
+      <section className="mx-auto max-w-screen-lg px-4 py-16 sm:px-6 lg:px-8">
         <h2 className="text-center text-2xl font-bold text-slate-900">How it works</h2>
         <div className="mt-12 grid gap-8 md:grid-cols-3">
           {STEPS.map(({ icon: Icon, title, body }) => (

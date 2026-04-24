@@ -32,7 +32,7 @@ interface FooterProps {
 export default function Footer({ user = null }: FooterProps) {
   return (
     <footer className="border-t border-slate-200 bg-white">
-      <div className="mx-auto max-w-screen-2xl px-6 py-10 sm:px-10 lg:px-16">
+      <div className="mx-auto max-w-screen-2xl px-4 py-10 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between lg:gap-8">
           <Link href="/" className="w-fit shrink-0">
             <Image

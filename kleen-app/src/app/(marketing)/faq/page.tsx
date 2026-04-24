@@ -51,7 +51,7 @@ export default function FAQPage() {
       <section className="relative -mt-[5.25rem] overflow-hidden bg-gradient-to-br from-slate-900 via-brand-950 to-slate-900">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(6,182,212,0.15),_transparent_60%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_left,_rgba(16,185,129,0.1),_transparent_60%)]" />
-        <div className="relative mx-auto max-w-screen-2xl px-6 pb-20 pt-32 sm:px-10 lg:px-16 lg:pb-28 lg:pt-40">
+        <div className="relative mx-auto max-w-screen-2xl px-4 pb-20 pt-32 sm:px-6 lg:px-8 lg:pb-28 lg:pt-40">
           <div className="mx-auto max-w-3xl text-center">
             <div className="inline-flex items-center gap-2 rounded-full border border-brand-400/20 bg-brand-500/10 px-4 py-1.5 text-sm text-brand-300">
               <Sparkles className="h-3.5 w-3.5" />
@@ -67,7 +67,7 @@ export default function FAQPage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-4xl px-6 py-16 sm:px-10 lg:px-16 lg:py-24">
+      <section className="mx-auto max-w-4xl px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
         <div className="space-y-3">
           {FAQS.map((faq, i) => {
             const isOpen = openIndex === i;

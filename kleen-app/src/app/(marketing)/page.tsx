@@ -54,7 +54,7 @@ export default function HomePage() {
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(6,182,212,0.15),_transparent_60%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_left,_rgba(16,185,129,0.1),_transparent_60%)]" />
         <HeroBubbles />
-        <div className="relative mx-auto flex w-full max-w-screen-2xl items-center px-6 pb-28 pt-40 sm:px-10 sm:pb-36 sm:pt-44 lg:px-16 lg:pb-44 lg:pt-52">
+        <div className="relative mx-auto flex w-full max-w-screen-2xl items-center px-4 pb-28 pt-40 sm:px-6 sm:pb-36 sm:pt-44 lg:px-8 lg:pb-44 lg:pt-52">
           <div className="max-w-2xl">
             <div className="inline-flex items-center gap-2 rounded-full border border-brand-400/20 bg-brand-500/10 px-4 py-1.5 text-sm text-brand-300">
               <Sparkles className="h-3.5 w-3.5" />
@@ -88,7 +88,7 @@ export default function HomePage() {
 
       {/* Contractors — distinct from customer booking */}
       <section className="border-b border-slate-200 bg-slate-100">
-        <div className="mx-auto flex max-w-screen-2xl flex-col items-start justify-between gap-4 px-6 py-5 sm:flex-row sm:items-center sm:px-10 lg:px-16">
+        <div className="mx-auto flex max-w-screen-2xl flex-col items-start justify-between gap-4 px-4 py-5 sm:flex-row sm:items-center sm:px-6 lg:px-8">
           <p className="text-sm text-slate-700">
             <span className="font-semibold text-slate-900">Professional cleaner or trade business?</span> The contractor
             portal is separate from booking as a customer — apply here, then Kleen verifies your account.
@@ -104,7 +104,7 @@ export default function HomePage() {
 
       {/* Trust Signals */}
       <section className="border-b border-slate-100 bg-white">
-        <div className="mx-auto max-w-screen-2xl px-6 py-12 sm:px-10 lg:px-16">
+        <div className="mx-auto max-w-screen-2xl px-4 py-12 sm:px-6 lg:px-8">
           <div className="grid grid-cols-2 gap-6 lg:grid-cols-4">
             {TRUST_SIGNALS.map((item) => {
               const Icon = item.icon;
@@ -123,7 +123,7 @@ export default function HomePage() {
       </section>
 
       {/* Services Grid */}
-      <section className="bg-slate-50 px-6 py-16 sm:px-10 lg:px-16 lg:py-24">
+      <section className="bg-slate-50 px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
         <div className="mx-auto max-w-screen-2xl">
           <div className="text-center">
             <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
@@ -161,7 +161,7 @@ export default function HomePage() {
       </section>
 
       {/* How It Works */}
-      <section className="bg-white px-6 py-16 sm:px-10 lg:px-16 lg:py-24">
+      <section className="bg-white px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
         <div className="mx-auto max-w-screen-2xl">
           <div className="text-center">
             <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
@@ -185,7 +185,7 @@ export default function HomePage() {
 
       {/* CTA */}
       <section className="bg-gradient-to-br from-brand-600 to-brand-700">
-        <div className="mx-auto max-w-screen-2xl px-6 py-16 text-center sm:px-10 lg:px-16 lg:py-20">
+        <div className="mx-auto max-w-screen-2xl px-4 py-16 text-center sm:px-6 lg:px-8 lg:py-20">
           <h2 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
             Ready to get started?
           </h2>

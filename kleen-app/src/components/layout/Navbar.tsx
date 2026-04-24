@@ -66,7 +66,7 @@ export default function Navbar({ user }: NavbarProps) {
             : "border-b border-slate-200/60 bg-white/80 shadow-sm backdrop-blur-xl"
         }`}
       >
-        <nav className="mx-auto flex h-20 max-w-screen-2xl items-center justify-between px-6 sm:px-10 lg:px-16">
+        <nav className="mx-auto flex h-20 max-w-screen-2xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link href="/" className="flex items-center">
             <Image
               src="/images/kleen-logo.svg"
