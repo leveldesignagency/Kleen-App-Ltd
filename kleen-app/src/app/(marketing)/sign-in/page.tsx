@@ -4,6 +4,7 @@ import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { contractorPortalHref } from "@/lib/contractor-portal-url";
 import Image from "next/image";
 import { Mail, Lock, ArrowRight, Loader2 } from "lucide-react";
 
@@ -238,9 +239,9 @@ function SignInContent() {
 
           <p className="text-center text-xs text-slate-500">
             Contractor or cleaner? Use the{" "}
-            <Link href="/contractor/sign-in" className="font-medium text-brand-600 hover:text-brand-700">
+            <a href={contractorPortalHref("/contractor/sign-in")} className="font-medium text-brand-600 hover:text-brand-700">
               contractor portal sign in
-            </Link>{" "}
+            </a>{" "}
             — not this customer page.
           </p>
 

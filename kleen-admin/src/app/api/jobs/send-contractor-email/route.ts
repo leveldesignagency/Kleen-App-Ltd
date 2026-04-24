@@ -121,10 +121,10 @@ export async function POST(request: NextRequest) {
       .update({ operative_portal_token: portalToken, operative_portal_token_created_at: ts })
       .eq("id", jobId);
   }
+  /** `/o/[token]` is served by kleen-app (customer deployment), not the contractor portal. */
   const portalBase =
-    process.env.CONTRACTOR_PORTAL_BASE_URL?.replace(/\/$/, "") ||
-    process.env.NEXT_PUBLIC_CUSTOMER_APP_URL?.replace(/\/$/, "") ||
     process.env.CUSTOMER_DASHBOARD_URL?.replace(/\/$/, "") ||
+    process.env.NEXT_PUBLIC_CUSTOMER_APP_URL?.replace(/\/$/, "") ||
     "https://dashboard.kleenapp.co.uk";
   const fieldPortalUrl = `${portalBase}/o/${portalToken}`;
 

@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { ArrowRight, Briefcase, ShieldCheck, UserPlus } from "lucide-react";
 import { customerAppHref } from "@/lib/customer-app-url";
+import { contractorPortalHref } from "@/lib/contractor-portal-url";
 
 const jobFlowHref = customerAppHref("/job-flow");
 const customerSignInHref = customerAppHref("/sign-in");
-const contractorJoinHref = customerAppHref("/contractor/join");
-const contractorSignInHref = customerAppHref("/contractor/sign-in");
+const contractorJoinHref = contractorPortalHref("/contractor/join");
+const contractorSignInHref = contractorPortalHref("/contractor/sign-in");
 
 export const metadata = {
   title: "Contractors & cleaners | KLEEN",

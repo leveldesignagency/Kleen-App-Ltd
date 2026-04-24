@@ -1,9 +1,6 @@
 import { Resend } from "resend";
 import { resolveResendFrom, resolveResendReplyTo } from "@/lib/resend-config";
-
-function dashboardBaseUrl() {
-  return process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || "https://dashboard.kleenapp.co.uk";
-}
+import { contractorPortalOrigin } from "@/lib/contractor-portal-url";
 
 /**
  * Email the contractor when a customer accepts their quote (job booked).
@@ -21,7 +18,7 @@ export async function sendContractorJobBookedEmail(params: {
     return { ok: false };
   }
 
-  const base = dashboardBaseUrl();
+  const base = contractorPortalOrigin();
   const jobUrl = `${base}/contractor/jobs/${params.jobId}`;
   const amount = `£${(params.amountPence / 100).toFixed(2)}`;
 

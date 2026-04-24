@@ -28,3 +28,6 @@ yarn-error.log*
 # Cursor
 .cursor/
 agent-transcripts/
+
+# Contractor app: standalone repo (https://github.com/leveldesignagency/driverkleenapp)
+kleen-contractor/

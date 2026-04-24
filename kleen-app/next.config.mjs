@@ -1,5 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  async redirects() {
+    const base = (process.env.NEXT_PUBLIC_CONTRACTOR_PORTAL_URL || "").trim().replace(/\/$/, "");
+    if (!base) return [];
+    return [
+      { source: "/contractor", destination: `${base}/contractor`, permanent: false },
+      { source: "/contractor/:path*", destination: `${base}/contractor/:path*`, permanent: false },
+    ];
+  },
   headers: async () => [
     {
       source: "/sw.js",

@@ -16,7 +16,7 @@ export default async function MarketingLayout({
     <div className="flex min-h-screen flex-col">
       <Navbar user={user ? { email: user.email ?? "" } : null} />
       <main className="flex-1 pt-[5.25rem]">{children}</main>
-      <Footer />
+      <Footer user={user ? { email: user.email ?? "" } : null} />
     </div>
   );
 }
