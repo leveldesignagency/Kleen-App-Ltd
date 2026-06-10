@@ -10,6 +10,7 @@ import { customerAppHref } from "@/lib/customer-app-url";
 
 interface NavbarProps {
   user?: { email: string } | null;
+  framed?: boolean;
 }
 
 const NAV_LINKS = [
@@ -20,9 +21,9 @@ const NAV_LINKS = [
   { href: "/faq", label: "FAQ" },
 ];
 
-const SCROLL_THRESHOLD = 50;
+const SCROLL_THRESHOLD = 48;
 
-export default function Navbar({ user }: NavbarProps) {
+export default function Navbar({ user, framed = false }: NavbarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const pathname = usePathname();
@@ -30,18 +31,12 @@ export default function Navbar({ user }: NavbarProps) {
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href + "/");
 
-  const isMarketingPage =
-    pathname === "/" ||
-    pathname === "/services" ||
-    pathname === "/contractors" ||
-    pathname === "/about" ||
-    pathname === "/contact" ||
-    pathname === "/faq";
-
-  // Transparent nav uses white text + inverted logo — only works over dark heroes.
-  // /contractors opens with a light gradient (slate-50 → white), so keep the solid bar.
-  const transparent =
-    isMarketingPage && pathname !== "/contractors" && !scrolled && !mobileOpen;
+  const isHome = pathname === "/";
+  const atHeroTop = isHome && !scrolled && !mobileOpen;
+  const shellActive = !atHeroTop;
+  const useLightNav = shellActive || atHeroTop;
+  const useFixedNav = isHome;
+  const headerPadding = "px-4 pt-4 sm:px-5 sm:pt-5 lg:px-6 lg:pt-6";
 
   const jobFlowHref = customerAppHref("/job-flow");
   const signInHref = customerAppHref("/sign-in");
@@ -56,74 +51,151 @@ export default function Navbar({ user }: NavbarProps) {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  const linkClass = (href: string) => {
+    const active = isActive(href);
+    if (useLightNav) {
+      return active
+        ? "rounded-full bg-white/20 px-3.5 py-2 text-sm font-medium text-white lg:px-4"
+        : "rounded-full px-3.5 py-2 text-sm font-medium text-white/80 transition-colors hover:bg-white/12 hover:text-white lg:px-4";
+    }
+    return active
+      ? "rounded-full bg-brand-50 px-3.5 py-2 text-sm font-medium text-brand-700 lg:px-4"
+      : "rounded-full px-3.5 py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900 lg:px-4";
+  };
+
   return (
-    <header className="fixed inset-x-0 top-0 z-50">
-      <div className="h-1 bg-gradient-to-r from-brand-500 via-brand-400 to-accent-400" />
-      <div
-        className={`transition-all duration-300 ${
-          transparent
-            ? "border-b border-transparent bg-transparent"
-            : "border-b border-slate-200/60 bg-white/80 shadow-sm backdrop-blur-xl"
-        }`}
-      >
-        <nav className="mx-auto flex h-20 max-w-screen-2xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <Link href="/" className="flex items-center">
+    <header
+      className={`z-50 ${
+        useFixedNav
+          ? `fixed inset-x-0 top-0 ${headerPadding}`
+          : `sticky top-0 ${headerPadding}`
+      }`}
+    >
+      {!framed ? (
+        <div className="h-1 bg-gradient-to-r from-brand-500 via-brand-400 to-accent-400" />
+      ) : null}
+      <nav className="mx-auto max-w-screen-2xl">
+        <div
+          className="marketing-nav-shell relative flex h-[4.5rem] w-full items-center justify-between gap-4 px-2 sm:h-20 sm:px-4 lg:px-6"
+          data-active={shellActive ? "true" : "false"}
+        >
+          <Link href="/" className="relative z-[1] flex shrink-0 items-center">
             <Image
               src="/images/kleen-logo.svg"
               alt="KLEEN"
               width={160}
               height={66}
-              className={`h-14 w-auto transition-all duration-300 ${
-                transparent ? "brightness-0 invert" : ""
+              className={`h-11 w-auto transition-[filter] duration-300 sm:h-14 ${
+                useLightNav ? "brightness-0 invert" : ""
               }`}
               priority
             />
           </Link>
 
-          <div className="hidden items-center gap-6 md:flex">
-            <div className="flex items-center gap-1">
-              {NAV_LINKS.map((link) => (
+          <div className="relative z-[1] hidden items-center gap-0.5 md:flex">
+            {NAV_LINKS.map((link) => (
+              <Link key={link.href} href={link.href} className={linkClass(link.href)}>
+                {link.label}
+              </Link>
+            ))}
+
+            <span
+              className={`mx-1 h-6 w-px shrink-0 ${useLightNav ? "bg-white/25" : "bg-slate-200"}`}
+              aria-hidden="true"
+            />
+
+            {user ? (
+              <SparkleButton href={dashboardHref} className="!rounded-full !py-2 !text-sm">
+                Dashboard
+              </SparkleButton>
+            ) : (
+              <>
                 <Link
-                  key={link.href}
-                  href={link.href}
-                  className={`nav-link relative rounded-lg px-4 py-2 text-sm font-medium transition-colors duration-300 ${
-                    isActive(link.href)
-                      ? transparent
-                        ? "text-white nav-link-active"
-                        : "text-brand-700 nav-link-active"
-                      : transparent
-                      ? "text-white/80 hover:text-white"
-                      : "text-slate-500 hover:text-slate-900"
+                  href={signInHref}
+                  className={`rounded-full px-3.5 py-2 text-sm font-medium transition-colors lg:px-4 ${
+                    useLightNav
+                      ? "text-white/90 hover:bg-white/12 hover:text-white"
+                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                   }`}
                 >
-                  {link.label}
+                  Log in
                 </Link>
-              ))}
-            </div>
+                <Link
+                  href={jobFlowHref}
+                  className={
+                    useLightNav
+                      ? "btn-hero-nav !gap-1.5 !px-4 !py-2 !text-sm"
+                      : "btn-primary gap-1.5 rounded-full px-4 py-2 text-sm"
+                  }
+                >
+                  Get Started
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </>
+            )}
+          </div>
 
-            <div className="flex items-center gap-3">
+          <button
+            className={`relative z-[1] ml-auto rounded-full p-2.5 transition-colors md:hidden ${
+              useLightNav
+                ? "text-white/85 hover:bg-white/12 hover:text-white"
+                : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+            }`}
+            onClick={() => setMobileOpen(!mobileOpen)}
+            aria-label="Toggle menu"
+          >
+            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+        </div>
+
+        {mobileOpen && (
+          <div
+            className="marketing-nav-mobile-panel mx-auto mt-2 px-5 pb-5 pt-3 md:hidden"
+            data-active={shellActive ? "true" : "false"}
+          >
+            {NAV_LINKS.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={`block rounded-xl px-4 py-3 text-sm font-medium transition-colors ${
+                  isActive(link.href)
+                    ? shellActive
+                      ? "bg-white/20 text-white"
+                      : "bg-brand-50 text-brand-700"
+                    : shellActive
+                      ? "text-white/85 hover:bg-white/12"
+                      : "text-slate-600 hover:bg-slate-50"
+                }`}
+                onClick={() => setMobileOpen(false)}
+              >
+                {link.label}
+              </Link>
+            ))}
+            <div
+              className={`mt-4 space-y-2 border-t pt-4 ${shellActive ? "border-white/20" : "border-slate-100"}`}
+            >
               {user ? (
-                <SparkleButton href={dashboardHref}>Dashboard</SparkleButton>
+                <SparkleButton href={dashboardHref} onClick={() => setMobileOpen(false)}>
+                  Dashboard
+                </SparkleButton>
               ) : (
                 <>
                   <Link
                     href={jobFlowHref}
-                    className={`gap-2 px-5 py-2.5 text-sm transition-all duration-300 ${
-                      transparent
-                        ? "btn-secondary border-white/20 bg-white/10 text-white backdrop-blur-sm hover:bg-white/20"
-                        : "btn-primary"
-                    }`}
+                    className="btn-primary flex w-full items-center justify-center gap-2 py-3 text-sm"
+                    onClick={() => setMobileOpen(false)}
                   >
                     Get Started
                     <ArrowRight className="h-3.5 w-3.5" />
                   </Link>
                   <Link
                     href={signInHref}
-                    className={`text-sm font-medium transition-all duration-300 ${
-                      transparent
-                        ? "text-white/90 hover:text-white"
-                        : "text-slate-600 hover:text-slate-900"
+                    className={`block rounded-xl px-4 py-3 text-center text-sm font-medium ${
+                      shellActive
+                        ? "border border-white/20 bg-white/10 text-white hover:bg-white/15"
+                        : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
                     }`}
+                    onClick={() => setMobileOpen(false)}
                   >
                     Log in
                   </Link>
@@ -131,71 +203,8 @@ export default function Navbar({ user }: NavbarProps) {
               )}
             </div>
           </div>
-
-          <button
-            className={`rounded-lg p-2.5 transition-colors md:hidden ${
-              transparent
-                ? "text-white/80 hover:bg-white/10 hover:text-white"
-                : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-            }`}
-            onClick={() => setMobileOpen(!mobileOpen)}
-            aria-label="Toggle menu"
-          >
-            {mobileOpen ? (
-              <X className="h-5 w-5" />
-            ) : (
-              <Menu className="h-5 w-5" />
-            )}
-          </button>
-        </nav>
-      </div>
-
-      {mobileOpen && (
-        <div className="border-b border-slate-200/60 bg-white px-5 pb-5 pt-3 shadow-lg md:hidden">
-          {NAV_LINKS.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={`block rounded-xl px-4 py-3 text-sm font-medium transition-colors ${
-                isActive(link.href)
-                  ? "bg-brand-50 text-brand-700"
-                  : "text-slate-600 hover:bg-slate-50"
-              }`}
-              onClick={() => setMobileOpen(false)}
-            >
-              {link.label}
-            </Link>
-          ))}
-          <div className="mt-4 space-y-2 border-t border-slate-100 pt-4">
-            {user ? (
-              <SparkleButton
-                href={dashboardHref}
-                onClick={() => setMobileOpen(false)}
-              >
-                Dashboard
-              </SparkleButton>
-            ) : (
-              <>
-                <Link
-                  href={jobFlowHref}
-                  className="btn-primary flex w-full items-center justify-center gap-2 py-3 text-sm"
-                  onClick={() => setMobileOpen(false)}
-                >
-                  Get Started
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </Link>
-                <Link
-                  href={signInHref}
-                  className="block rounded-xl border border-slate-200 bg-white px-4 py-3 text-center text-sm font-medium text-slate-700 hover:bg-slate-50"
-                  onClick={() => setMobileOpen(false)}
-                >
-                  Log in
-                </Link>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+        )}
+      </nav>
     </header>
   );
 }

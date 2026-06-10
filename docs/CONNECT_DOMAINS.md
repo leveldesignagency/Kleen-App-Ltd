@@ -5,7 +5,7 @@ Do this **after** Vercel projects (**kleen-app**, **kleen-contractor**, **kleen-
 ## 1. Add domains in Vercel
 
 - **kleen-app** (customer dashboard): **Settings → Domains** → Add **dashboard.kleenapp.co.uk**
-- **kleen-contractor** (contractor portal): **Settings → Domains** → Add e.g. **contractors.kleenapp.co.uk** (do not use the customer dashboard host for this app)
+- **kleen-contractor** (contractor portal): **Settings → Domains** → Add **driver.kleenapp.co.uk** (do not use the customer dashboard host for this app)
 - **kleen-admin** (admin portal): **Settings → Domains** → Add **admin.kleenapp.co.uk**
 
 Vercel may show a target (e.g. `cname.vercel-dns.com` or a project-specific CNAME). Note it for the next step.
@@ -20,7 +20,7 @@ In Wix: **Domains** → your domain (kleenapp.co.uk) → **Manage DNS** / **Adva
 | Type  | Name (host)  | Value                     | TTL   |
 |-------|--------------|---------------------------|-------|
 | CNAME | `dashboard`    | `cname.vercel-dns.com`    | 3600  |
-| CNAME | `contractors`  | `cname.vercel-dns.com`    | 3600  |
+| CNAME | `driver`       | `cname.vercel-dns.com`    | 3600  |
 | CNAME | `admin`        | `cname.vercel-dns.com`    | 3600  |
 
 If Vercel gave you a different target for each project, use the value Vercel shows in the Domains tab for that domain.
@@ -31,11 +31,11 @@ Propagation can take up to 48 hours (often minutes). Vercel will show a check wh
 
 ## 4. HTTPS
 
-Vercel issues certificates automatically once DNS is correct. Use **https://dashboard.kleenapp.co.uk**, **https://contractors.kleenapp.co.uk** (or the hostname you chose), and **https://admin.kleenapp.co.uk**.
+Vercel issues certificates automatically once DNS is correct. Use **https://dashboard.kleenapp.co.uk**, **https://driver.kleenapp.co.uk**, and **https://admin.kleenapp.co.uk**.
 
 ## 5. Supabase Auth redirect URLs
 
-In Supabase **Authentication → URL configuration**, add the contractor portal origin (e.g. `https://contractors.kleenapp.co.uk`) to **Redirect URLs**, including `https://contractors.kleenapp.co.uk/auth/callback` if you use Google OAuth for contractors.
+In Supabase **Authentication → URL configuration**, add the contractor portal origin **`https://driver.kleenapp.co.uk`** to **Redirect URLs**, including `https://driver.kleenapp.co.uk/auth/callback` for Google OAuth.
 
 ## 6. Environment variables after cutover
 

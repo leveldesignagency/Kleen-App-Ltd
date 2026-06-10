@@ -1,5 +1,6 @@
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
+import MarketingSiteFrame from "@/components/marketing/MarketingSiteFrame";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export default async function MarketingLayout({
@@ -13,10 +14,10 @@ export default async function MarketingLayout({
   } = await supabase.auth.getUser();
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <Navbar user={user ? { email: user.email ?? "" } : null} />
-      <main className="flex-1 pt-[5.25rem]">{children}</main>
-      <Footer user={user ? { email: user.email ?? "" } : null} />
-    </div>
+    <MarketingSiteFrame>
+      <Navbar user={user ? { email: user.email ?? "" } : null} framed />
+      <main className="flex-1 px-4 sm:px-5 lg:px-6">{children}</main>
+      <Footer user={user ? { email: user.email ?? "" } : null} framed />
+    </MarketingSiteFrame>
   );
 }

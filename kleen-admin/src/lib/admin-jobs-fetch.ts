@@ -41,6 +41,14 @@ function mapToAdminJob(
     escrow_release_date: (j.escrow_release_date as string | null) ?? null,
     accepted_quote_request_id: (j.accepted_quote_request_id as string | null) ?? null,
     cancelled_reason: j.cancelled_reason as string | undefined,
+    contractor_confirmed_complete_at: (j.contractor_confirmed_complete_at as string | null) ?? null,
+    customer_confirmed_complete_at: (j.customer_confirmed_complete_at as string | null) ?? null,
+    actual_start: (j.actual_start as string | null) ?? null,
+    operative_en_route_at: (j.operative_en_route_at as string | null) ?? null,
+    operative_arrived_at: (j.operative_arrived_at as string | null) ?? null,
+    operative_marked_complete_at: (j.operative_marked_complete_at as string | null) ?? null,
+    operative_marked_incomplete_at: (j.operative_marked_incomplete_at as string | null) ?? null,
+    operative_incomplete_reason: (j.operative_incomplete_reason as string | null) ?? null,
   };
 }
 

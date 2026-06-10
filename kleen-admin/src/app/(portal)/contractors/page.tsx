@@ -48,6 +48,7 @@ import {
   Pencil,
   Trash2,
   ShieldOff,
+  ShieldCheck,
   Star,
   X,
   Check,
@@ -515,6 +516,18 @@ export default function AdminContractorsPage() {
                         >
                           <Pencil className="h-4 w-4" />
                         </button>
+                        {!c.is_verified && c.submitted_for_review_at && !c.rejected_at ? (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setReviewTarget(c);
+                            }}
+                            className="rounded-lg p-1.5 text-amber-300 transition-colors hover:bg-amber-500/20 hover:text-amber-200"
+                            title="Review application"
+                          >
+                            <ShieldCheck className="h-4 w-4" />
+                          </button>
+                        ) : null}
                         <button
                           onClick={(e) => {
                             e.stopPropagation();

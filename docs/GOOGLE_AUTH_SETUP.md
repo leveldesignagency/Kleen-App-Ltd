@@ -49,6 +49,13 @@ In **Supabase → Authentication → URL configuration**, **Redirect URLs** must
 - `https://www.kleenapp.co.uk/**`
 - `https://kleenapp.co.uk/**`
 - `https://admin.kleenapp.co.uk/**`
+- `https://driver.kleenapp.co.uk/**` ← **contractor portal** (apply / contractor sign-in)
+
+If **driver.kleenapp.co.uk** is missing, contractor Google sign-in falls back to **Site URL** (`dashboard.kleenapp.co.uk`) and users land on the **customer** dashboard after login.
+
+In **Google Cloud Console → OAuth client → Authorized JavaScript origins**, also add:
+
+- `https://driver.kleenapp.co.uk`
 
 ## 5. After login → dashboard.kleenapp.co.uk
 
@@ -72,6 +79,23 @@ If after Google sign-in users land on **localhost:3000** with a `?code=...` URL,
 
 The app now blocks “Continue with Google” on localhost and forces the callback to redirect to the live dashboard when the request host is localhost.
 
-## 7. Optional: restrict to your domain
+## 8. Contractor portal (driver.kleenapp.co.uk)
 
-In Google OAuth consent screen you can limit sign-in to users from your organisation, or leave it open for any Google account. Restrictive options can be added later.
+Contractors sign in on **https://driver.kleenapp.co.uk** (kleen-contractor), not the customer dashboard.
+
+**Supabase → Redirect URLs** must include `https://driver.kleenapp.co.uk/**`.
+
+**Vercel → kleen-contractor** environment variables:
+
+| Variable | Value |
+|----------|--------|
+| `NEXT_PUBLIC_SITE_URL` | `https://driver.kleenapp.co.uk` |
+| `NEXT_PUBLIC_CUSTOMER_APP_URL` | `https://dashboard.kleenapp.co.uk` |
+
+**Vercel → kleen-app** (marketing links):
+
+| Variable | Value |
+|----------|--------|
+| `NEXT_PUBLIC_CONTRACTOR_PORTAL_URL` | `https://driver.kleenapp.co.uk` |
+
+After Google sign-in, contractors should land on **https://driver.kleenapp.co.uk/contractor** (onboarding portal), not dashboard.kleenapp.co.uk/dashboard.

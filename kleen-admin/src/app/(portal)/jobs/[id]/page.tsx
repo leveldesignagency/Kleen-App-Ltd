@@ -27,6 +27,8 @@ import {
   ShieldCheck,
   XCircle,
   RefreshCw,
+  Undo2,
+  MapPin,
 } from "lucide-react";
 import CustomDropdown from "@/components/ui/CustomDropdown";
 
@@ -100,8 +102,25 @@ function formatTimeForDisplay(t: string): string {
   return `${h}:${m.toString().padStart(2, "0")} am`;
 }
 
-const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => ({ value: i.toString().padStart(2, "0"), label: i.toString().padStart(2, "0") }));
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => ({
+  value: i.toString().padStart(2, "0"),
+  label: i.toString().padStart(2, "0"),
+}));
 const MINUTE_OPTIONS = ["00", "15", "30", "45"].map((m) => ({ value: m, label: m }));
+
+function formatAdminTs(v: string | null | undefined) {
+  if (!v) return "—";
+  try {
+    return new Date(v).toLocaleString("en-GB", {
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return "—";
+  }
+}
 
 function TimePicker({
   value,
@@ -714,6 +733,78 @@ export default function AdminJobDetailPage() {
       message: bothConfirmed ? "Both parties confirmed. Ready to release funds." : `${confirmedBy === "contractor" ? "Contractor" : "Customer"} confirmed completion. Waiting for the other party.`,
     });
     setActionLoading(false);
+    await refreshJobData();
+  };
+
+  /** Clears a recorded completion confirmation. Blocked after funds are released. */
+  const handleClearCompletionConfirmation = async (party: "contractor" | "customer") => {
+    if (!job) return;
+    if (job.funds_released_at) {
+      toast({
+        type: "error",
+        title: "Cannot undo",
+        message: "Funds have already been released. Contact support if a confirmation was wrong.",
+      });
+      return;
+    }
+    setActionLoading(true);
+    const supabase = createClient();
+    const { data: row, error: fetchErr } = await supabase
+      .from("jobs")
+      .select("contractor_confirmed_complete_at, customer_confirmed_complete_at, status, escrow_release_date")
+      .eq("id", job.id)
+      .single();
+    if (fetchErr || !row) {
+      toast({ type: "error", title: "Error", message: fetchErr?.message || "Could not load job" });
+      setActionLoading(false);
+      return;
+    }
+    const c = row.contractor_confirmed_complete_at;
+    const u = row.customer_confirmed_complete_at;
+    if (party === "contractor" && !c) {
+      toast({ type: "info", title: "Nothing to undo", message: "Contractor confirmation is not set." });
+      setActionLoading(false);
+      return;
+    }
+    if (party === "customer" && !u) {
+      toast({ type: "info", title: "Nothing to undo", message: "Customer confirmation is not set." });
+      setActionLoading(false);
+      return;
+    }
+    const newC = party === "contractor" ? null : c;
+    const newU = party === "customer" ? null : u;
+    const bothAfter = Boolean(newC && newU);
+    const newStatus = bothAfter
+      ? "completed"
+      : newC || newU
+        ? "pending_confirmation"
+        : "awaiting_completion";
+    const nextEscrow =
+      bothAfter
+        ? (row as { escrow_release_date?: string | null }).escrow_release_date ?? null
+        : null;
+    const { error: upErr } = await supabase
+      .from("jobs")
+      .update({
+        contractor_confirmed_complete_at: newC,
+        customer_confirmed_complete_at: newU,
+        status: newStatus,
+        escrow_release_date: nextEscrow,
+      })
+      .eq("id", job.id);
+    if (upErr) {
+      toast({ type: "error", title: "Update failed", message: upErr.message });
+      setActionLoading(false);
+      return;
+    }
+    updateJob(job.id, { status: newStatus, escrow_release_date: nextEscrow });
+    toast({
+      type: "success",
+      title: "Confirmation cleared",
+      message: `${party === "contractor" ? "Contractor" : "Customer"} completion flag removed. You can re-record it if needed.`,
+    });
+    setActionLoading(false);
+    await refreshJobData();
   };
 
   const handleReleaseFunds = async () => {
@@ -1007,6 +1098,46 @@ export default function AdminJobDetailPage() {
               <MiniField label="Estimate" value={job.price_estimate > 0 ? `£${(job.price_estimate / 100).toFixed(2)}` : "—"} />
             </div>
           </div>
+
+          {/* Same timestamps the customer app uses for "Live job activity" */}
+          {job.accepted_quote_request_id && !["cancelled", "disputed", "funds_released"].includes(job.status) && (
+            <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-5">
+              <div className="flex items-center gap-2 text-cyan-300">
+                <MapPin className="h-4 w-4" />
+                <h2 className="text-sm font-semibold">Field tracking (customer view)</h2>
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                Shown in the customer dashboard in real time when the contractor uses their field link. Use completion
+                &quot;undo&quot; in the action card if a confirmation was wrong — refunds cannot be auto-reversed.
+              </p>
+              <div className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+                <div className="rounded-lg bg-white/[0.04] px-3 py-2">
+                  <p className="text-slate-500">On the way</p>
+                  <p className="mt-0.5 font-mono text-slate-200">{formatAdminTs(job.operative_en_route_at)}</p>
+                </div>
+                <div className="rounded-lg bg-white/[0.04] px-3 py-2">
+                  <p className="text-slate-500">Arrived</p>
+                  <p className="mt-0.5 font-mono text-slate-200">{formatAdminTs(job.operative_arrived_at)}</p>
+                </div>
+                <div className="rounded-lg bg-white/[0.04] px-3 py-2">
+                  <p className="text-slate-500">Work started (if set)</p>
+                  <p className="mt-0.5 font-mono text-slate-200">{formatAdminTs(job.actual_start)}</p>
+                </div>
+                <div className="rounded-lg bg-white/[0.04] px-3 py-2">
+                  <p className="text-slate-500">Marked complete on site</p>
+                  <p className="mt-0.5 font-mono text-slate-200">{formatAdminTs(job.operative_marked_complete_at)}</p>
+                </div>
+                <div className="rounded-lg bg-white/[0.04] px-3 py-2 sm:col-span-2">
+                  <p className="text-slate-500">Issue flagged (incomplete)</p>
+                  <p className="mt-0.5 font-mono text-slate-200">
+                    {job.operative_marked_incomplete_at
+                      ? `${formatAdminTs(job.operative_marked_incomplete_at)}${job.operative_incomplete_reason ? ` — ${job.operative_incomplete_reason}` : ""}`
+                      : "—"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right column: Actions & Quote Tracking */}
@@ -1021,6 +1152,7 @@ export default function AdminJobDetailPage() {
             onSendToCustomer={handleSendToCustomer}
             onForwardToContractor={handleForwardToContractor}
             onConfirmCompletion={handleConfirmCompletion}
+            onClearCompletionConfirmation={handleClearCompletionConfirmation}
             onReleaseFunds={handleReleaseFunds}
             onReinstateJob={handleReinstateJob}
           />
@@ -1034,6 +1166,11 @@ export default function AdminJobDetailPage() {
               <p className="mt-2 text-xs text-slate-400">
                 Use this before you release funds to the contractor. Cancel an uncaptured card hold, or refund money already
                 captured (full or partial).
+              </p>
+              <p className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-100/90">
+                <strong>Not reversible in-app.</strong> Refunds and authorisation cancels are final in Stripe. If you
+                make a mistake, you may need to take a new payment or fix it in the Stripe dashboard — there is no undo
+                here.
               </p>
               <label className="mt-3 block text-xs text-slate-500">
                 Note (optional, stored on payment record)
@@ -1423,6 +1560,54 @@ export default function AdminJobDetailPage() {
 
 /* ─── Workflow Actions Card ─────────────────────────────────────────────── */
 
+function CompletionConfUndo({
+  job,
+  actionLoading,
+  onClear,
+}: {
+  job: {
+    funds_released_at?: string | null;
+    contractor_confirmed_complete_at?: string | null;
+    customer_confirmed_complete_at?: string | null;
+  };
+  actionLoading: boolean;
+  onClear: (by: "contractor" | "customer") => void;
+}) {
+  if (job.funds_released_at) return null;
+  const c = job.contractor_confirmed_complete_at;
+  const u = job.customer_confirmed_complete_at;
+  if (!c && !u) return null;
+  return (
+    <div className="mt-4 border-t border-white/10 pt-3">
+      <p className="text-[11px] text-slate-500">Wrong confirmation? Clear it and re-record. Blocked after funds are released.</p>
+      <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+        {c && (
+          <button
+            type="button"
+            onClick={() => onClear("contractor")}
+            disabled={actionLoading}
+            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-white/15 bg-white/5 py-2 text-xs font-medium text-slate-200 hover:bg-white/10 disabled:opacity-50"
+          >
+            <Undo2 className="h-3.5 w-3.5" />
+            Undo contractor complete
+          </button>
+        )}
+        {u && (
+          <button
+            type="button"
+            onClick={() => onClear("customer")}
+            disabled={actionLoading}
+            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-white/15 bg-white/5 py-2 text-xs font-medium text-slate-200 hover:bg-white/10 disabled:opacity-50"
+          >
+            <Undo2 className="h-3.5 w-3.5" />
+            Undo customer complete
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function WorkflowActions({
   job,
   quotedResponses,
@@ -1432,10 +1617,19 @@ function WorkflowActions({
   onSendToCustomer,
   onForwardToContractor,
   onConfirmCompletion,
+  onClearCompletionConfirmation,
   onReleaseFunds,
   onReinstateJob,
 }: {
-  job: { status: string; reference: string; cancelled_reason?: string; escrow_release_date?: string | null };
+  job: {
+    status: string;
+    reference: string;
+    cancelled_reason?: string;
+    escrow_release_date?: string | null;
+    funds_released_at?: string | null;
+    contractor_confirmed_complete_at?: string | null;
+    customer_confirmed_complete_at?: string | null;
+  };
   quotedResponses: QuoteRequest[];
   actionLoading: boolean;
   onSendForQuotes: () => void;
@@ -1443,6 +1637,7 @@ function WorkflowActions({
   onSendToCustomer: () => void;
   onForwardToContractor: (qr: QuoteRequest) => void;
   onConfirmCompletion: (by: "contractor" | "customer") => void;
+  onClearCompletionConfirmation: (by: "contractor" | "customer") => void;
   onReleaseFunds: () => void;
   onReinstateJob?: () => void;
 }) {
@@ -1670,6 +1865,7 @@ function WorkflowActions({
             Customer Confirmed Complete
           </button>
         </div>
+        <CompletionConfUndo job={job} onClear={onClearCompletionConfirmation} actionLoading={actionLoading} />
       </div>
     );
   }
@@ -1700,6 +1896,7 @@ function WorkflowActions({
             Customer Confirmed
           </button>
         </div>
+        <CompletionConfUndo job={job} onClear={onClearCompletionConfirmation} actionLoading={actionLoading} />
       </div>
     );
   }
@@ -1742,6 +1939,7 @@ function WorkflowActions({
             open dispute.
           </p>
         )}
+        <CompletionConfUndo job={job} onClear={onClearCompletionConfirmation} actionLoading={actionLoading} />
         <button
           onClick={onReleaseFunds}
           disabled={actionLoading || disputeWindowActive}

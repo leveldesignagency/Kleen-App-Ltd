@@ -15,9 +15,7 @@ function escapeHtml(s: string) {
 function contractorPortalBaseUrl() {
   return (
     process.env.CONTRACTOR_PORTAL_BASE_URL?.replace(/\/$/, "") ||
-    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
-    process.env.CUSTOMER_DASHBOARD_URL?.replace(/\/$/, "") ||
-    "https://dashboard.kleenapp.co.uk"
+    "https://driver.kleenapp.co.uk"
   );
 }
 
@@ -118,9 +116,40 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const toEmail = String(data.email || "").trim();
+    let emailWarning: string | undefined;
+    if (toEmail) {
+      const apiKey = process.env.RESEND_API_KEY;
+      if (!apiKey) {
+        emailWarning = "Contractor approved but approval email was not sent (RESEND_API_KEY missing).";
+      } else {
+        const resend = new Resend(apiKey);
+        const base = contractorPortalBaseUrl();
+        const portalUrl = `${base}/contractor`;
+        const htmlBody = `
+          <p>Hi ${escapeHtml(String(data.full_name || "there"))},</p>
+          <p>Good news — your Kleen contractor application has been <strong>approved</strong>.</p>
+          <p>You can now receive quote invitations, connect Stripe for payouts, and manage jobs from your contractor portal.</p>
+          <p><a href="${portalUrl}">Open contractor portal</a></p>
+          <p style="color:#64748b;font-size:12px;margin-top:24px;">— Kleen</p>
+        `;
+        const { error: sendErr } = await resend.emails.send({
+          from: resolveResendFrom(),
+          to: toEmail,
+          subject: "Your Kleen contractor account is approved",
+          html: htmlBody,
+        });
+        if (sendErr) {
+          console.error("contractors/verification approve resend:", sendErr);
+          emailWarning = "Contractor approved but the approval email failed to send.";
+        }
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       operative: data,
+      ...(emailWarning ? { emailWarning } : {}),
       ...(usedFallback
         ? {
             dbWarning:

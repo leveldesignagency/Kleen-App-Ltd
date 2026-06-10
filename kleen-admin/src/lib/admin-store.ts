@@ -30,6 +30,16 @@ export interface AdminJob {
   /** Earliest time funds may be released (3-day dispute window after both parties confirmed). */
   escrow_release_date?: string | null;
   accepted_quote_request_id?: string | null;
+  /** Completion confirmations (admin can record; customer also confirms in app) */
+  contractor_confirmed_complete_at?: string | null;
+  customer_confirmed_complete_at?: string | null;
+  /** Field / customer-visible tracking (mirrors customer app “live activity”) */
+  actual_start?: string | null;
+  operative_en_route_at?: string | null;
+  operative_arrived_at?: string | null;
+  operative_marked_complete_at?: string | null;
+  operative_marked_incomplete_at?: string | null;
+  operative_incomplete_reason?: string | null;
 }
 
 export type ContractorType = "sole_trader" | "business";

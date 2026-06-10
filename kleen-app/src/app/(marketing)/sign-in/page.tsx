@@ -89,8 +89,8 @@ function SignInContent() {
   };
 
   return (
-    <div className="flex min-h-[calc(100vh-10rem)] items-center justify-center px-4 py-16">
-      <div className="w-full max-w-sm">
+    <div className="flex min-h-[calc(100vh-12rem)] items-center justify-center py-12 sm:py-16">
+      <div className="w-full max-w-md overflow-hidden rounded-[1.5rem] bg-slate-50 p-8 shadow-sm sm:p-10">
         <div className="text-center">
           <Link href="/" className="mb-6 inline-flex items-center">
             <Image

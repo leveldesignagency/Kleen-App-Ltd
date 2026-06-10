@@ -22,6 +22,7 @@ import {
   Banknote,
   Check,
 } from "lucide-react";
+import { JobActivityTimeline } from "@/components/dashboard/JobActivityTimeline";
 
 /* ─── Status Config ───────────────────────────────────────────────────────── */
 
@@ -108,6 +109,9 @@ interface JobDetail {
   cancelled_at: string | null;
   operative_en_route_at: string | null;
   operative_arrived_at: string | null;
+  operative_marked_complete_at: string | null;
+  operative_marked_incomplete_at: string | null;
+  operative_incomplete_reason: string | null;
   escrow_release_date: string | null;
 }
 
@@ -214,6 +218,9 @@ export default function CustomerJobDetailPage() {
         cancelled_at: j.cancelled_at || null,
         operative_en_route_at: j.operative_en_route_at || null,
         operative_arrived_at: j.operative_arrived_at || null,
+        operative_marked_complete_at: j.operative_marked_complete_at || null,
+        operative_marked_incomplete_at: j.operative_marked_incomplete_at || null,
+        operative_incomplete_reason: j.operative_incomplete_reason || null,
         escrow_release_date: j.escrow_release_date || null,
       });
 
@@ -554,6 +561,26 @@ export default function CustomerJobDetailPage() {
         </div>
       )}
 
+      {job.accepted_quote_request_id && !["cancelled", "disputed"].includes(job.status) && (
+        <div className="mt-6">
+          <JobActivityTimeline
+            job={{
+              status: job.status,
+              preferred_date: job.preferred_date || null,
+              hasAcceptedQuote: true,
+              actual_start: job.actual_start,
+              operative_en_route_at: job.operative_en_route_at,
+              operative_arrived_at: job.operative_arrived_at,
+              operative_marked_complete_at: job.operative_marked_complete_at,
+              operative_marked_incomplete_at: job.operative_marked_incomplete_at,
+              operative_incomplete_reason: job.operative_incomplete_reason,
+              contractor_confirmed_complete_at: job.contractor_confirmed_complete_at,
+              customer_confirmed_complete_at: job.customer_confirmed_complete_at,
+            }}
+          />
+        </div>
+      )}
+
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         {/* Left: Job Spec */}
         <div className="lg:col-span-2 space-y-6">
@@ -683,18 +710,6 @@ export default function CustomerJobDetailPage() {
               </p>
             </div>
           )}
-
-          {job.operative_en_route_at &&
-            ["awaiting_completion", "in_progress", "pending_confirmation"].includes(job.status) && (
-              <div className="rounded-2xl border border-cyan-200 bg-cyan-50 p-4">
-                <p className="text-sm font-medium text-cyan-900">Contractor on the way</p>
-                <p className="mt-1 text-xs text-cyan-800/90">
-                  {job.operative_arrived_at
-                    ? "They have marked themselves as arrived."
-                    : "They’ve started travelling to you."}
-                </p>
-              </div>
-            )}
 
           {/* Confirm Completion */}
           {canConfirmComplete && (

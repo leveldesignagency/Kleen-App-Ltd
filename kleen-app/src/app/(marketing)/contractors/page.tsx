@@ -1,7 +1,13 @@
 import Link from "next/link";
-import { ArrowRight, Briefcase, ShieldCheck, UserPlus } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Briefcase, ShieldCheck, UserPlus } from "lucide-react";
 import { customerAppHref } from "@/lib/customer-app-url";
 import { contractorPortalHref } from "@/lib/contractor-portal-url";
+import MarketingFeatureCard from "@/components/marketing/MarketingFeatureCard";
+import MarketingPageHero, {
+  MarketingPageSection,
+  marketingCard,
+  marketingCardPanel,
+} from "@/components/marketing/MarketingPageHero";
 
 const jobFlowHref = customerAppHref("/job-flow");
 const customerSignInHref = customerAppHref("/sign-in");
@@ -18,77 +24,92 @@ const STEPS = [
   {
     icon: UserPlus,
     title: "Create your contractor account",
-    body: "Sign up with your business email. You will add company details, areas, and services in the contractor portal after sign-in.",
+    body: "Sign in with Google, then complete the application checklist in the contractor portal — profile, services, and bank details.",
   },
   {
     icon: ShieldCheck,
     title: "Kleen confirms your business",
-    body: "Our team reviews your profile in the admin app and marks your account as verified when you are approved to take jobs.",
+    body: "Submit your completed application for review. Kleen approves you in the admin app — or adds contractors manually — before jobs unlock.",
   },
   {
     icon: Briefcase,
     title: "Jobs, quotes & payouts",
-    body: "After verification you can receive quote invitations, submit pricing, and connect Stripe for escrow payouts.",
+    body: "After verification you can browse local jobs, submit quotes, and get paid via the bank details on your application.",
   },
 ];
 
 export default function ContractorsMarketingPage() {
   return (
-    <div className="bg-white">
-      <section className="border-b border-slate-100 bg-gradient-to-b from-slate-50 to-white px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
-        <div className="mx-auto max-w-3xl text-center">
-          <p className="text-xs font-semibold uppercase tracking-wider text-brand-600">For professionals</p>
-          <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-            Contractor &amp; cleaner portal
-          </h1>
-          <p className="mt-4 text-lg text-slate-600">
-            This page is for <strong>cleaning businesses and trades</strong> who want to work with Kleen — not for
-            customers booking a clean. If you need a quote for your home or business, use{" "}
-            <Link href={jobFlowHref} className="font-medium text-brand-600 underline-offset-2 hover:underline">
-              Get a quote
+    <>
+      <MarketingPageHero
+        badge="For professionals"
+        title="Contractor & cleaner portal"
+        description="This page is for cleaning businesses and trades who want to work with Kleen — not for customers booking a clean."
+      >
+        <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
+          <Link href={contractorJoinHref} className="btn-primary inline-flex gap-2 px-8 py-3.5 text-base">
+            Apply as a contractor
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+          <Link href={contractorSignInHref} className="btn-secondary px-8 py-3.5 text-base">
+            Contractor sign in
+          </Link>
+        </div>
+        <p className="mx-auto mt-6 max-w-xl text-sm text-slate-500">
+          Need a quote for your home or business?{" "}
+          <Link href={jobFlowHref} className="font-semibold text-brand-600 hover:text-brand-700">
+            Get a quote
+          </Link>{" "}
+          from the main site instead.
+        </p>
+      </MarketingPageHero>
+
+      <MarketingPageSection>
+        <div className="mx-auto max-w-2xl text-center">
+          <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">How it works</h2>
+          <p className="mt-3 text-slate-500">Three steps to start taking jobs on the platform.</p>
+        </div>
+
+        <div className="mt-10 grid grid-cols-1 gap-5 lg:grid-cols-3 lg:gap-6">
+          {STEPS.map((step, index) => {
+            const Icon = step.icon;
+            return (
+              <MarketingFeatureCard
+                key={step.title}
+                icon={Icon}
+                title={step.title}
+                description={step.body}
+                footerLabel={`Step ${String(index + 1).padStart(2, "0")}`}
+              />
+            );
+          })}
+        </div>
+
+        <div className={`mt-12 text-center ${marketingCard}`}>
+          <div className={marketingCardPanel}>
+          <p className="text-sm text-slate-600">
+            Looking to book a service? Go to{" "}
+            <Link href="/" className="font-semibold text-brand-600 hover:text-brand-700">
+              the homepage
             </Link>{" "}
-            from the main site.
+            or{" "}
+            <Link href={customerSignInHref} className="font-semibold text-brand-600 hover:text-brand-700">
+              customer sign in
+            </Link>
+            .
           </p>
-          <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
-            <Link href={contractorJoinHref} className="btn-primary inline-flex gap-2 px-8 py-3.5 text-base">
-              Apply as a contractor
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link
-              href={contractorSignInHref}
-              className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-8 py-3.5 text-base font-medium text-slate-800 shadow-sm hover:bg-slate-50"
-            >
-              Contractor sign in
-            </Link>
+          <Link
+            href={contractorJoinHref}
+            className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-brand-600 hover:text-brand-700"
+          >
+            Start your application
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white shadow-sm">
+              <ArrowUpRight className="h-4 w-4" />
+            </span>
+          </Link>
           </div>
         </div>
-      </section>
-
-      <section className="mx-auto max-w-screen-lg px-4 py-16 sm:px-6 lg:px-8">
-        <h2 className="text-center text-2xl font-bold text-slate-900">How it works</h2>
-        <div className="mt-12 grid gap-8 md:grid-cols-3">
-          {STEPS.map(({ icon: Icon, title, body }) => (
-            <div key={title} className="rounded-2xl border border-slate-200 bg-slate-50/80 p-6">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-100">
-                <Icon className="h-5 w-5 text-brand-700" />
-              </div>
-              <h3 className="mt-4 font-semibold text-slate-900">{title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-slate-600">{body}</p>
-            </div>
-          ))}
-        </div>
-        <p className="mx-auto mt-12 max-w-xl text-center text-sm text-slate-500">
-          Looking to book a service? Go to{" "}
-          <Link href="/" className="font-medium text-brand-600 hover:underline">
-            the homepage
-          </Link>{" "}
-          or{" "}
-          <Link href={customerSignInHref} className="font-medium text-brand-600 hover:underline">
-            customer sign in
-          </Link>
-          .
-        </p>
-      </section>
-    </div>
+      </MarketingPageSection>
+    </>
   );
 }

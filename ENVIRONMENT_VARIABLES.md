@@ -26,6 +26,16 @@
 - `DATABASE_URL`
 - `VERCEL_URL` (Vercel injects)
 
+**kleen-contractor**
+
+- `NEXT_PUBLIC_CUSTOMER_APP_URL` (customer app links)
+- `NEXT_PUBLIC_MARKETING_URL` (optional)
+- `NEXT_PUBLIC_AUTH_COOKIE_DOMAIN` (optional, shared auth across subdomains)
+- `SUPABASE_SERVICE_ROLE_KEY` (OAuth customer→operative upgrade, submit-for-review API)
+- `ADMIN_APP_URL` (link in admin review email; default `https://admin.kleenapp.co.uk`)
+- `ADMIN_NOTIFY_EMAIL` (inbox for contractor application review emails)
+- `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `RESEND_FROM_VERIFIED`, `RESEND_REPLY_TO`
+
 **kleen-admin**
 
 - `NEXT_PUBLIC_CUSTOMER_APP_URL`
