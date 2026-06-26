@@ -23,6 +23,12 @@ type SubmitBody = {
   };
 };
 
+function normalizePreferredTime(time: string): string {
+  const t = time.trim();
+  if (/^\d{1,2}:\d{2}$/.test(t)) return `${t}:00`;
+  return t;
+}
+
 function missingFields(body: SubmitBody): string | null {
   const { serviceId, cleaningType, address, postcode, preferredDate, preferredTime, detail, estimate } = body;
   if (!serviceId || !cleaningType || !address?.trim() || !postcode?.trim() || !preferredDate || !preferredTime) {
@@ -43,87 +49,91 @@ function missingFields(body: SubmitBody): string | null {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  let body: SubmitBody;
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-  }
+    const supabase = createServerSupabaseClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-  const validationError = missingFields(body);
-  if (validationError) {
-    return NextResponse.json({ error: validationError }, { status: 400 });
-  }
+    let body: SubmitBody;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    }
 
-  const { serviceId, cleaningType, address, postcode, preferredDate, preferredTime, notes, detail, estimate } = body;
+    const validationError = missingFields(body);
+    if (validationError) {
+      return NextResponse.json({ error: validationError }, { status: 400 });
+    }
 
-  const { data: job, error: jobError } = await supabase
-    .from("jobs")
-    .insert({
-      user_id: user.id,
+    const { serviceId, cleaningType, address, postcode, preferredDate, preferredTime, notes, detail, estimate } = body;
+
+    const { data: job, error: jobError } = await supabase
+      .from("jobs")
+      .insert({
+        user_id: user.id,
+        service_id: serviceId,
+        cleaning_type: cleaningType,
+        address_line_1: address!.trim(),
+        postcode: postcode!.trim(),
+        preferred_date: preferredDate,
+        preferred_time: normalizePreferredTime(preferredTime!),
+        notes: notes?.trim() || null,
+      })
+      .select("id, reference, postcode, preferred_date, service_id")
+      .single();
+
+    if (jobError || !job) {
+      console.error("jobs/submit insert:", jobError);
+      return NextResponse.json({ error: jobError?.message || "Could not create job" }, { status: 400 });
+    }
+
+    const { error: detailError } = await supabase.from("job_details").insert({
+      job_id: job.id,
       service_id: serviceId,
-      cleaning_type: cleaningType,
-      address_line_1: address!.trim(),
-      postcode: postcode!.trim(),
-      preferred_date: preferredDate,
-      preferred_time: preferredTime,
-      notes: notes?.trim() || null,
-    })
-    .select("id, reference, postcode, preferred_date, service_id")
-    .single();
-
-  if (jobError || !job) {
-    return NextResponse.json({ error: jobError?.message || "Could not create job" }, { status: 400 });
-  }
-
-  const { error: detailError } = await supabase.from("job_details").insert({
-    job_id: job.id,
-    service_id: serviceId,
-    size: detail!.size,
-    quantity: detail!.quantity,
-    complexity: detail!.complexity,
-  });
-  if (detailError) {
-    console.error("jobs/submit job_details:", detailError);
-  }
-
-  const { error: quoteError } = await supabase.from("quotes").insert({
-    job_id: job.id,
-    min_price_pence: Math.round(estimate!.minPrice! * 100),
-    max_price_pence: Math.round(estimate!.maxPrice! * 100),
-    estimated_duration_min: estimate!.estimatedDuration,
-    operatives_required: estimate!.operativesRequired,
-  });
-  if (quoteError) {
-    console.error("jobs/submit quotes:", quoteError);
-  }
-
-  const adminEmail = await notifyAdminNewJobEmail(supabase, {
-    jobId: job.id,
-    userId: user.id,
-    userEmail: user.email,
-  });
-
-  if (!adminEmail.ok) {
-    console.error("jobs/submit admin email failed:", adminEmail.error, {
-      hasResendKey: Boolean(process.env.RESEND_API_KEY),
-      to: process.env.ADMIN_NOTIFY_EMAIL || "info@kleenapp.co.uk",
+      size: detail!.size,
+      quantity: detail!.quantity,
+      complexity: detail!.complexity,
     });
-  }
+    if (detailError) {
+      console.error("jobs/submit job_details:", detailError);
+    }
 
-  return NextResponse.json({
-    ok: true,
-    jobId: job.id,
-    reference: job.reference,
-    adminEmailSent: adminEmail.ok,
-    adminEmailError: adminEmail.error,
-  });
+    const { error: quoteError } = await supabase.from("quotes").insert({
+      job_id: job.id,
+      min_price_pence: Math.round(estimate!.minPrice! * 100),
+      max_price_pence: Math.round(estimate!.maxPrice! * 100),
+      estimated_duration_min: estimate!.estimatedDuration,
+      operatives_required: estimate!.operativesRequired,
+    });
+    if (quoteError) {
+      console.error("jobs/submit quotes:", quoteError);
+    }
+
+    const adminEmail = await notifyAdminNewJobEmail(supabase, {
+      jobId: job.id,
+      userId: user.id,
+      userEmail: user.email,
+    });
+
+    if (!adminEmail.ok) {
+      console.error("jobs/submit admin email failed:", adminEmail.error);
+    }
+
+    return NextResponse.json({
+      ok: true,
+      jobId: job.id,
+      reference: job.reference,
+      adminEmailSent: adminEmail.ok,
+      adminEmailError: adminEmail.error,
+    });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Job submit failed";
+    console.error("jobs/submit unhandled:", e);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

@@ -3,38 +3,41 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { notifyAdminNewJobEmail } from "@/lib/admin-new-job-email";
 
 export async function POST(request: NextRequest) {
-  const supabase = createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  let body: { jobId?: string };
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-  }
-  const jobId = body.jobId;
-  if (!jobId) {
-    return NextResponse.json({ error: "Missing jobId" }, { status: 400 });
-  }
+    const supabase = createServerSupabaseClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-  const result = await notifyAdminNewJobEmail(supabase, {
-    jobId,
-    userId: user.id,
-    userEmail: user.email,
-  });
+    let body: { jobId?: string };
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    }
+    const jobId = body.jobId;
+    if (!jobId) {
+      return NextResponse.json({ error: "Missing jobId" }, { status: 400 });
+    }
 
-  if (!result.ok) {
-    console.error("notify-admin-new-job:", result.error, {
+    const result = await notifyAdminNewJobEmail(supabase, {
       jobId,
-      hasResendKey: Boolean(process.env.RESEND_API_KEY),
+      userId: user.id,
+      userEmail: user.email,
     });
-    return NextResponse.json({ error: result.error || "Email not sent" }, { status: 503 });
-  }
 
-  return NextResponse.json({ ok: true });
+    if (!result.ok) {
+      console.error("notify-admin-new-job:", result.error, { jobId });
+      return NextResponse.json({ error: result.error || "Email not sent" }, { status: 503 });
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Notify failed";
+    console.error("notify-admin-new-job unhandled:", e);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
