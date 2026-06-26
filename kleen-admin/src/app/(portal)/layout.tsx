@@ -2,6 +2,7 @@
 
 import AdminSidebar from "@/components/layout/AdminSidebar";
 import AdminToastContainer from "@/components/admin/AdminToastContainer";
+import AdminRealtimeAlerts from "@/components/admin/AdminRealtimeAlerts";
 
 export default function PortalLayout({
   children,
@@ -16,6 +17,7 @@ export default function PortalLayout({
           {children}
         </div>
       </main>
+      <AdminRealtimeAlerts />
       <AdminToastContainer />
     </div>
   );
