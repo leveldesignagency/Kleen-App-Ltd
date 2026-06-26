@@ -105,8 +105,21 @@ export default function Step7Confirm() {
       return;
     }
 
-    if (submitJson.adminEmailSent === false) {
-      console.warn("Admin new-job email not sent:", submitJson.adminEmailError);
+    if (submitJson.adminEmailSent === false && submitJson.jobId) {
+      console.warn("Admin new-job email not sent from submit:", submitJson.adminEmailError);
+      try {
+        const notifyRes = await fetch("/api/jobs/notify-admin-new-job", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ jobId: submitJson.jobId }),
+        });
+        if (!notifyRes.ok) {
+          console.warn("notify-admin-new-job fallback:", notifyRes.status, await notifyRes.text().catch(() => ""));
+        }
+      } catch (e) {
+        console.warn("notify-admin-new-job fallback failed:", e);
+      }
     }
 
     const job = { id: submitJson.jobId, reference: submitJson.reference };
