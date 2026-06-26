@@ -2,6 +2,7 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseAuthCookieOptions } from "@/lib/supabase/auth-cookie-options";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
+import { hasSiteAccess, isSiteAccessGateEnabled } from "@/lib/site-access-gate";
 
 /**
  * OAuth PKCE exchange — must use getAll/setAll so cookies attach to the redirect response.
@@ -18,6 +19,10 @@ export async function GET(request: NextRequest) {
 
   /** Keep post-login redirect on the same host that received the OAuth callback (session cookies are host-scoped). */
   const sameOrigin = url.origin;
+
+  if (isSiteAccessGateEnabled() && !hasSiteAccess(request)) {
+    return NextResponse.redirect(new URL("/sign-in?locked=1", sameOrigin));
+  }
 
   if (!code) {
     return NextResponse.redirect(new URL("/sign-in", sameOrigin));

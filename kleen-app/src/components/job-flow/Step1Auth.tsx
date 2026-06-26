@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Loader2 } from "lucide-react";
+import SiteAccessGate from "@/components/auth/SiteAccessGate";
 
 /** Show email/password only when explicitly enabled (e.g. dev). Booking flow uses Google. */
 const EMAIL_AUTH_ENABLED = process.env.NEXT_PUBLIC_ENABLE_EMAIL_AUTH === "true";
@@ -38,6 +39,7 @@ export default function Step1Auth() {
   };
 
   return (
+    <SiteAccessGate>
     <div>
       <div className="text-center">
         <h1 className="text-xl font-bold text-slate-900 sm:text-2xl">
@@ -81,5 +83,6 @@ export default function Step1Auth() {
         )}
       </div>
     </div>
+    </SiteAccessGate>
   );
 }

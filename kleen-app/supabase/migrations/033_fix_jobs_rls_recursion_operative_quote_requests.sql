@@ -14,7 +14,6 @@
 create or replace function public.operative_has_quote_request_for_job(p_job_id uuid)
 returns boolean
 language plpgsql
-stable
 security definer
 set search_path = public
 as $$

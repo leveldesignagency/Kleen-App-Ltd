@@ -1,24 +1,10 @@
 -- ============================================================================
--- KLEEN — Migration 043: Contractor job marketplace (browse + self-apply)
--- RLS policies use SECURITY DEFINER helpers — see 044 if 043 was applied without them.
+-- KLEEN — Migration 044: Fix infinite RLS recursion from marketplace policies (043)
+--
+-- 043 policies on jobs/job_details/quote_requests subquery each other via RLS.
+-- Use SECURITY DEFINER helpers with row_security off (same pattern as 033).
 -- ============================================================================
 
-alter table public.operatives
-  add column if not exists base_postcode text,
-  add column if not exists max_travel_radius_miles int not null default 25;
-
-comment on column public.operatives.base_postcode is 'Home / depot postcode for distance filtering on job browse.';
-comment on column public.operatives.max_travel_radius_miles is 'Max miles willing to travel from base_postcode.';
-
-alter table public.quote_requests
-  add column if not exists initiated_by text not null default 'admin';
-
-comment on column public.quote_requests.initiated_by is 'admin = Kleen invited; contractor = operative applied from portal.';
-
-alter table public.quote_requests
-  alter column sent_by drop not null;
-
--- Helpers (no RLS recursion) — duplicated in 044 for projects that already ran bare 043 policies
 create or replace function public.operative_can_browse_open_job(p_job_id uuid)
 returns boolean
 language plpgsql
