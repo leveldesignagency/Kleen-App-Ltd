@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { contractorPortalHref } from "@/lib/contractor-portal-url";
+import { getMarketingHomeHref } from "@/lib/customer-app-url";
 import Image from "next/image";
 import { Mail, Lock, ArrowRight, Loader2 } from "lucide-react";
 import SiteAccessGate from "@/components/auth/SiteAccessGate";
@@ -94,7 +95,7 @@ function SignInContent() {
     <div className="flex min-h-[calc(100vh-12rem)] items-center justify-center py-12 sm:py-16">
       <div className="w-full max-w-md overflow-hidden rounded-[1.5rem] bg-slate-50 p-8 shadow-sm sm:p-10">
         <div className="text-center">
-          <Link href="/" className="mb-6 inline-flex items-center">
+          <Link href={getMarketingHomeHref()} className="mb-6 inline-flex items-center">
             <Image
               src="/images/kleen-logo.svg"
               alt="KLEEN"

@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import "./globals.css";
 import ServiceWorkerRegistration from "@/components/ui/ServiceWorkerRegistration";
 import PWAInstallPrompt from "@/components/ui/PWAInstallPrompt";
+import { SiteAccessProvider } from "@/components/auth/SiteAccessProvider";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -51,7 +52,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
       >
-        {children}
+        <SiteAccessProvider>{children}</SiteAccessProvider>
         <ServiceWorkerRegistration />
         <PWAInstallPrompt />
       </body>

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import GatedAppLink from "@/components/auth/GatedAppLink";
 import { customerAppHref } from "@/lib/customer-app-url";
 import { contractorPortalHref } from "@/lib/contractor-portal-url";
 import MarketingHero from "@/components/marketing/MarketingHero";
@@ -59,10 +60,10 @@ export default function HomePage() {
             description="Get an instant quote in under 2 minutes. No obligation."
           />
           <div className="mt-8">
-            <Link href={jobFlowHref} className="btn-primary gap-2 rounded-full px-8 py-4 text-base">
+            <GatedAppLink href={jobFlowHref} className="btn-primary gap-2 rounded-full px-8 py-4 text-base">
               Get Your Free Quote
               <ArrowRight className="h-4 w-4" />
-            </Link>
+            </GatedAppLink>
           </div>
         </div>
       </section>

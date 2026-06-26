@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import { ArrowRight } from "lucide-react";
 import MarketingFeatureCard from "@/components/marketing/MarketingFeatureCard";
+import GatedAppLink from "@/components/auth/GatedAppLink";
+import { isGatedCustomerHref } from "@/lib/site-access-gate-public";
 
 export type FeatureCardItem = {
   icon: LucideIcon;
@@ -194,10 +196,17 @@ export default function HomeFeatureCardsSection({
 
         {cta ? (
           <div className="mt-12 text-center">
-            <Link href={cta.href} className="btn-primary gap-2 px-8 py-4 text-base">
-              {cta.label}
-              <ArrowRight className="h-4 w-4" />
-            </Link>
+            {isGatedCustomerHref(cta.href) ? (
+              <GatedAppLink href={cta.href} className="btn-primary gap-2 px-8 py-4 text-base">
+                {cta.label}
+                <ArrowRight className="h-4 w-4" />
+              </GatedAppLink>
+            ) : (
+              <Link href={cta.href} className="btn-primary gap-2 px-8 py-4 text-base">
+                {cta.label}
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            )}
           </div>
         ) : null}
       </div>

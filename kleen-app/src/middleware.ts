@@ -5,6 +5,7 @@ import {
   isSiteAccessGateEnabled,
   siteAccessGateBlocksPath,
 } from "@/lib/site-access-gate";
+import { getMarketingHomeHref } from "@/lib/customer-app-url";
 
 const DASHBOARD_HOST = "dashboard.kleenapp.co.uk";
 
@@ -26,6 +27,9 @@ export async function middleware(request: NextRequest) {
 
   // On the dashboard subdomain, root "/" should go to the dashboard (not the marketing home)
   if (host === DASHBOARD_HOST && (pathname === "/" || pathname === "")) {
+    if (isSiteAccessGateEnabled() && !hasSiteAccess(request)) {
+      return NextResponse.redirect(getMarketingHomeHref());
+    }
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 

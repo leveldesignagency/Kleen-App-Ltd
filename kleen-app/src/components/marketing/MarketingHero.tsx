@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowRight, Play, Sparkles } from "lucide-react";
 import KineticHighlight from "@/components/marketing/KineticHighlight";
 import HeroProductPreview from "@/components/marketing/HeroProductPreview";
+import GatedAppLink from "@/components/auth/GatedAppLink";
 
 type MarketingHeroProps = {
   jobFlowHref: string;
@@ -31,12 +32,12 @@ export default function MarketingHero({ jobFlowHref }: MarketingHeroProps) {
             </p>
 
             <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <Link href={jobFlowHref} className="btn-hero-primary">
+              <GatedAppLink href={jobFlowHref} className="btn-hero-primary">
                 Get your free quote
                 <span className="relative z-[1] flex h-8 w-8 items-center justify-center rounded-full bg-brand-600 text-white">
                   <ArrowRight className="h-4 w-4" />
                 </span>
-              </Link>
+              </GatedAppLink>
               <Link href="/services" className="btn-hero-secondary">
                 <Play className="h-4 w-4 fill-white/80 text-white/80" />
                 Browse services

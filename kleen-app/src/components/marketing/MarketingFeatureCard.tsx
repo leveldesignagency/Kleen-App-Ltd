@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import { ChevronRight } from "lucide-react";
+import GatedAppLink from "@/components/auth/GatedAppLink";
+import { isGatedCustomerHref } from "@/lib/site-access-gate-public";
 
 type MarketingFeatureCardProps = {
   icon: LucideIcon;
@@ -62,12 +64,21 @@ export default function MarketingFeatureCard({
 
       {href ? (
         <div className="px-1 pb-1 pt-4">
-          <Link href={href} className="marketing-feature-card-action group">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white transition-transform group-hover:translate-x-0.5">
-              <ChevronRight className="h-4 w-4" />
-            </span>
-            <span className="text-sm font-semibold text-slate-800">{linkLabel}</span>
-          </Link>
+          {isGatedCustomerHref(href) ? (
+            <GatedAppLink href={href} className="marketing-feature-card-action group">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white transition-transform group-hover:translate-x-0.5">
+                <ChevronRight className="h-4 w-4" />
+              </span>
+              <span className="text-sm font-semibold text-slate-800">{linkLabel}</span>
+            </GatedAppLink>
+          ) : (
+            <Link href={href} className="marketing-feature-card-action group">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white transition-transform group-hover:translate-x-0.5">
+                <ChevronRight className="h-4 w-4" />
+              </span>
+              <span className="text-sm font-semibold text-slate-800">{linkLabel}</span>
+            </Link>
+          )}
         </div>
       ) : footerLabel ? (
         <div className="px-1 pb-1 pt-4">

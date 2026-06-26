@@ -24,3 +24,10 @@ export function customerAppHref(path: string): string {
   const p = path.startsWith("/") ? path : `/${path}`;
   return o ? `${o}${p}` : p;
 }
+
+/** Marketing home — use for sign-in logo on dashboard host (not `/` → dashboard bypass). */
+export function getMarketingHomeHref(): string {
+  const fromEnv = process.env.NEXT_PUBLIC_MARKETING_URL?.trim();
+  if (fromEnv) return normalizeSiteOrigin(fromEnv);
+  return "https://www.kleenapp.co.uk";
+}

@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { Menu, X, ArrowRight } from "lucide-react";
 import SparkleButton from "@/components/ui/SparkleButton";
 import { customerAppHref } from "@/lib/customer-app-url";
+import GatedAppLink from "@/components/auth/GatedAppLink";
 
 interface NavbarProps {
   user?: { email: string } | null;
@@ -110,7 +111,7 @@ export default function Navbar({ user, framed = false }: NavbarProps) {
               </SparkleButton>
             ) : (
               <>
-                <Link
+                <GatedAppLink
                   href={signInHref}
                   className={`rounded-full px-3.5 py-2 text-sm font-medium transition-colors lg:px-4 ${
                     useLightNav
@@ -119,8 +120,8 @@ export default function Navbar({ user, framed = false }: NavbarProps) {
                   }`}
                 >
                   Log in
-                </Link>
-                <Link
+                </GatedAppLink>
+                <GatedAppLink
                   href={jobFlowHref}
                   className={
                     useLightNav
@@ -130,7 +131,7 @@ export default function Navbar({ user, framed = false }: NavbarProps) {
                 >
                   Get Started
                   <ArrowRight className="h-3.5 w-3.5" />
-                </Link>
+                </GatedAppLink>
               </>
             )}
           </div>
@@ -180,15 +181,15 @@ export default function Navbar({ user, framed = false }: NavbarProps) {
                 </SparkleButton>
               ) : (
                 <>
-                  <Link
+                  <GatedAppLink
                     href={jobFlowHref}
                     className="btn-primary flex w-full items-center justify-center gap-2 py-3 text-sm"
                     onClick={() => setMobileOpen(false)}
                   >
                     Get Started
                     <ArrowRight className="h-3.5 w-3.5" />
-                  </Link>
-                  <Link
+                  </GatedAppLink>
+                  <GatedAppLink
                     href={signInHref}
                     className={`block rounded-xl px-4 py-3 text-center text-sm font-medium ${
                       shellActive
@@ -198,7 +199,7 @@ export default function Navbar({ user, framed = false }: NavbarProps) {
                     onClick={() => setMobileOpen(false)}
                   >
                     Log in
-                  </Link>
+                  </GatedAppLink>
                 </>
               )}
             </div>
