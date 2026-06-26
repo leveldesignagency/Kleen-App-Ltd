@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAdminStore } from "@/lib/admin-store";
 import { fetchAdminJobsList } from "@/lib/admin-jobs-fetch";
+import { fetchAdminContractors } from "@/lib/admin-contractors-fetch";
 import {
   AlertCircle,
   Briefcase,
@@ -47,7 +48,7 @@ export default function AdminDashboardPage() {
 
       const [jobsRes, contractorsRes] = await Promise.all([
         fetchAdminJobsList(supabase),
-        supabase.from("operatives").select("*").order("created_at", { ascending: false }),
+        fetchAdminContractors(supabase),
       ]);
 
       const err = jobsRes.error?.message || contractorsRes.error?.message;
@@ -59,35 +60,7 @@ export default function AdminDashboardPage() {
       setJobs(jobsRes.data);
 
       if (contractorsRes.data) {
-        setContractors(
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          contractorsRes.data.map((c: any) => ({
-            id: c.id,
-            user_id: c.user_id,
-            full_name: c.full_name || "Unknown",
-            email: c.email || "",
-            phone: c.phone || "",
-            contractor_type: c.contractor_type || "sole_trader",
-            company_name: c.company_name || "",
-            specialisations: c.specialisations || [],
-            service_areas: c.service_areas || [],
-            rating: c.avg_rating || 0,
-            total_jobs: c.total_jobs || 0,
-            hourly_rate: c.hourly_rate,
-            is_active: c.is_active ?? true,
-            is_verified: c.is_verified ?? false,
-            submitted_for_review_at: c.submitted_for_review_at ?? null,
-            notes: c.notes || "",
-            bank_account_name: c.bank_account_name || "",
-            bank_sort_code: c.bank_sort_code || "",
-            bank_account_number: c.bank_account_number || "",
-            company_number: c.company_number || "",
-            vat_number: c.vat_number || "",
-            utr_number: c.utr_number || "",
-            stripe_account_id: c.stripe_account_id || "",
-            created_at: c.created_at,
-          }))
-        );
+        setContractors(contractorsRes.data);
       }
 
       setLoading(false);

@@ -1,10 +1,8 @@
 import { Resend } from "resend";
 import { resolveResendFrom, resolveResendReplyTo } from "@/lib/resend-config";
+import { getAdminAppUrl, getAdminNotifyEmail } from "@/lib/admin-notify-email";
 
-/** Where admin notifications go (Resend test mode: often only your own verified inbox works until domain is verified) */
-const ADMIN_NOTIFY_EMAIL = process.env.ADMIN_NOTIFY_EMAIL || "info@kleenapp.co.uk";
-
-const ADMIN_APP_URL = process.env.ADMIN_APP_URL || "https://admin.kleenapp.co.uk";
+export type AdminEmailResult = { ok: boolean; error?: string };
 
 /**
  * Email admin when a new customer job is submitted.
@@ -17,15 +15,17 @@ export async function sendAdminNewJobEmail(params: {
   customerEmail: string;
   postcode: string;
   preferredDate: string;
-}): Promise<void> {
+}): Promise<AdminEmailResult> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
-    console.warn("sendAdminNewJobEmail: RESEND_API_KEY not set, skipping");
-    return;
+    const error = "RESEND_API_KEY not set";
+    console.warn("sendAdminNewJobEmail:", error);
+    return { ok: false, error };
   }
 
   const resend = new Resend(apiKey);
-  const adminJobUrl = `${ADMIN_APP_URL.replace(/\/$/, "")}/jobs/${params.jobId}`;
+  const adminNotifyEmail = getAdminNotifyEmail();
+  const adminJobUrl = `${getAdminAppUrl()}/jobs/${params.jobId}`;
   const html = `
 <!DOCTYPE html>
 <html>
@@ -52,18 +52,23 @@ export async function sendAdminNewJobEmail(params: {
   try {
     const { error, data } = await resend.emails.send({
       from,
-      to: ADMIN_NOTIFY_EMAIL,
+      to: adminNotifyEmail,
       subject: `New job — ${params.jobReference}`,
       html,
       ...(replyTo ? { replyTo } : {}),
     });
     if (error) {
-      console.error("sendAdminNewJobEmail Resend error:", JSON.stringify(error), { from, to: ADMIN_NOTIFY_EMAIL });
-    } else if (data?.id) {
-      console.log("sendAdminNewJobEmail sent id:", data.id, "from:", from);
+      console.error("sendAdminNewJobEmail Resend error:", JSON.stringify(error), { from, to: adminNotifyEmail });
+      return { ok: false, error: error.message || JSON.stringify(error) };
     }
+    if (data?.id) {
+      console.log("sendAdminNewJobEmail sent id:", data.id, "from:", from, "to:", adminNotifyEmail);
+    }
+    return { ok: true };
   } catch (e) {
+    const message = e instanceof Error ? e.message : "Send failed";
     console.error("sendAdminNewJobEmail failed:", e);
+    return { ok: false, error: message };
   }
 }
 
@@ -77,16 +82,18 @@ export async function sendAdminQuoteAcceptedEmail(params: {
   customerName: string;
   customerEmail: string;
   amountPence: number;
-}): Promise<void> {
+}): Promise<AdminEmailResult> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
-    console.warn("sendAdminQuoteAcceptedEmail: RESEND_API_KEY not set, skipping admin email");
-    return;
+    const error = "RESEND_API_KEY not set";
+    console.warn("sendAdminQuoteAcceptedEmail:", error);
+    return { ok: false, error };
   }
 
   const resend = new Resend(apiKey);
+  const adminNotifyEmail = getAdminNotifyEmail();
   const amount = `£${(params.amountPence / 100).toFixed(2)}`;
-  const adminJobUrl = `${ADMIN_APP_URL.replace(/\/$/, "")}/jobs/${params.jobId}`;
+  const adminJobUrl = `${getAdminAppUrl()}/jobs/${params.jobId}`;
 
   const html = `
 <!DOCTYPE html>
@@ -112,17 +119,22 @@ export async function sendAdminQuoteAcceptedEmail(params: {
   try {
     const { error, data } = await resend.emails.send({
       from,
-      to: ADMIN_NOTIFY_EMAIL,
+      to: adminNotifyEmail,
       subject: `Quote accepted — ${params.jobReference}`,
       html,
       ...(replyTo ? { replyTo } : {}),
     });
     if (error) {
-      console.error("sendAdminQuoteAcceptedEmail Resend error:", JSON.stringify(error), { from, to: ADMIN_NOTIFY_EMAIL });
-    } else if (data?.id) {
-      console.log("sendAdminQuoteAcceptedEmail sent id:", data.id, "from:", from);
+      console.error("sendAdminQuoteAcceptedEmail Resend error:", JSON.stringify(error), { from, to: adminNotifyEmail });
+      return { ok: false, error: error.message || JSON.stringify(error) };
     }
+    if (data?.id) {
+      console.log("sendAdminQuoteAcceptedEmail sent id:", data.id, "from:", from, "to:", adminNotifyEmail);
+    }
+    return { ok: true };
   } catch (e) {
+    const message = e instanceof Error ? e.message : "Send failed";
     console.error("sendAdminQuoteAcceptedEmail failed:", e);
+    return { ok: false, error: message };
   }
 }

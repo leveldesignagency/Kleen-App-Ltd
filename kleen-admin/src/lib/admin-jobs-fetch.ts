@@ -16,6 +16,7 @@ function mapToAdminJob(
     id: j.id as string,
     reference: (j.reference as string) || String(j.id).slice(0, 8).toUpperCase(),
     service: services?.name || "Cleaning",
+    service_id: (j.service_id as string) || undefined,
     cleaning_type: (j.cleaning_type as string) || "domestic",
     status: j.status as string,
     user_id: j.user_id as string | undefined,

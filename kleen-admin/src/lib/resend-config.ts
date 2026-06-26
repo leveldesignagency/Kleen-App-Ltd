@@ -1,5 +1,8 @@
 /** Same behaviour as kleen-app — set RESEND_FROM_VERIFIED=true when domain is verified in Resend. */
 export function resolveResendFrom(): string {
+  if (process.env.RESEND_FORCE_ONBOARDING === "true") {
+    return "Kleen <onboarding@resend.dev>";
+  }
   const verified = process.env.RESEND_FROM_VERIFIED === "true";
   const from = process.env.RESEND_FROM_EMAIL?.trim();
   if (verified && from) {

@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAdminStore, Contractor, ContractorType } from "@/lib/admin-store";
+import { contractorServiceTags, fetchAdminContractors } from "@/lib/admin-contractors-fetch";
 
 function mapOperativeRowToContractor(c: Record<string, unknown>): Contractor {
   return {
@@ -161,47 +162,12 @@ export default function AdminContractorsPage() {
     }
     const load = async () => {
       const supabase = createClient();
-      const { data } = await supabase
-        .from("operatives")
-        .select("*")
-        .order("created_at", { ascending: false });
+      const { data, error } = await fetchAdminContractors(supabase);
 
       if (data) {
-        setContractors(
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          data.map((c: any) => ({
-            id: c.id,
-            user_id: c.user_id,
-            full_name: c.full_name || "",
-            email: c.email || "",
-            phone: c.phone || "",
-            contractor_type: c.contractor_type || "sole_trader",
-            company_name: c.company_name || "",
-            specialisations: c.specialisations || [],
-            service_areas: c.service_areas || [],
-            rating: c.avg_rating || 0,
-            total_jobs: c.total_jobs || 0,
-            hourly_rate: c.hourly_rate,
-            is_active: c.is_active ?? true,
-            is_verified: c.is_verified ?? false,
-            notes: c.notes || "",
-            bank_account_name: c.bank_account_name || "",
-            bank_sort_code: c.bank_sort_code || "",
-            bank_account_number: c.bank_account_number || "",
-            company_number: c.company_number || "",
-            vat_number: c.vat_number || "",
-            utr_number: c.utr_number || "",
-            stripe_account_id: c.stripe_account_id || "",
-            created_at: c.created_at,
-            rejected_at: c.rejected_at ?? null,
-            rejection_message: c.rejection_message ?? null,
-            verified_at: c.verified_at ?? null,
-            submitted_for_review_at: c.submitted_for_review_at ?? null,
-            trading_name: c.trading_name || "",
-            registered_address: c.registered_address || "",
-          }))
-        );
+        setContractors(data);
       }
+      if (error) console.error("load contractors:", error.message);
       setLoading(false);
     };
     load();
@@ -387,7 +353,9 @@ export default function AdminContractorsPage() {
                   </td>
                 </tr>
               ) : (
-                filtered.map((c) => (
+                filtered.map((c) => {
+                  const serviceTags = contractorServiceTags(c);
+                  return (
                   <tr
                     key={c.id}
                     className="cursor-pointer border-b border-white/[0.06] transition-colors hover:bg-white/[0.03]"
@@ -420,7 +388,7 @@ export default function AdminContractorsPage() {
                     </td>
                     <td className="hidden px-4 py-3 lg:table-cell">
                       <div className="flex flex-wrap gap-1">
-                        {c.specialisations.slice(0, 2).map((s) => (
+                        {serviceTags.slice(0, 2).map((s) => (
                           <span
                             key={s}
                             className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-slate-300"
@@ -428,9 +396,9 @@ export default function AdminContractorsPage() {
                             {s}
                           </span>
                         ))}
-                        {c.specialisations.length > 2 && (
+                        {serviceTags.length > 2 && (
                           <span className="text-[11px] text-slate-500">
-                            +{c.specialisations.length - 2}
+                            +{serviceTags.length - 2}
                           </span>
                         )}
                       </div>
@@ -573,7 +541,8 @@ export default function AdminContractorsPage() {
                       </div>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>

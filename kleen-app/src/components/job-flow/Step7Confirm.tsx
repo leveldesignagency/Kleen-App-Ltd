@@ -60,46 +60,56 @@ export default function Step7Confirm() {
     const serviceName = service.name;
     const priceLabel = `${formatPrice(est.minPrice)}–${formatPrice(est.maxPrice)}`;
 
-    // Insert job into Supabase
-    const { data: job, error: jobError } = await supabase
-      .from("jobs")
-      .insert({
-        user_id: user.id,
-        service_id: store.serviceId,
-        cleaning_type: store.cleaningType,
-        address_line_1: store.address,
+    const submitRes = await fetch("/api/jobs/submit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        serviceId: store.serviceId,
+        cleaningType: store.cleaningType,
+        address: store.address,
         postcode: store.postcode,
-        preferred_date: store.preferredDate,
-        preferred_time: store.preferredTime,
+        preferredDate: store.preferredDate,
+        preferredTime: store.preferredTime,
         notes: store.details[0]?.notes || null,
-      })
-      .select("id, reference")
-      .single();
+        detail: {
+          size: detail.size,
+          quantity: detail.quantity,
+          complexity: detail.complexity,
+        },
+        estimate: {
+          minPrice: est.minPrice,
+          maxPrice: est.maxPrice,
+          estimatedDuration: est.estimatedDuration,
+          operativesRequired: est.operativesRequired,
+        },
+      }),
+    });
 
-    if (jobError || !job) {
-      console.error("Job insert error:", jobError);
-      pushNotification({ type: "error", title: "Submission failed", message: jobError?.message || "Please try again." });
+    const submitJson = (await submitRes.json().catch(() => ({}))) as {
+      error?: string;
+      jobId?: string;
+      reference?: string;
+      adminEmailSent?: boolean;
+      adminEmailError?: string;
+    };
+
+    if (!submitRes.ok || !submitJson.jobId) {
+      console.error("Job submit error:", submitJson.error || submitRes.status);
+      pushNotification({
+        type: "error",
+        title: "Submission failed",
+        message: submitJson.error || "Please try again.",
+      });
       setSubmitting(false);
       return;
     }
 
-    // Insert job details
-    await supabase.from("job_details").insert({
-      job_id: job.id,
-      service_id: store.serviceId,
-      size: detail.size,
-      quantity: detail.quantity,
-      complexity: detail.complexity,
-    });
+    if (submitJson.adminEmailSent === false) {
+      console.warn("Admin new-job email not sent:", submitJson.adminEmailError);
+    }
 
-    // Insert the quote estimate (form estimate is in pounds; DB stores pence)
-    await supabase.from("quotes").insert({
-      job_id: job.id,
-      min_price_pence: Math.round(est.minPrice * 100),
-      max_price_pence: Math.round(est.maxPrice * 100),
-      estimated_duration_min: est.estimatedDuration,
-      operatives_required: est.operativesRequired,
-    });
+    const job = { id: submitJson.jobId, reference: submitJson.reference };
 
     // Also keep in local store for dashboard display
     addSubmittedJob({
@@ -116,23 +126,6 @@ export default function Step7Confirm() {
 
     if (paymentMethod) {
       addPaymentIfNew(supabase, paymentMethod);
-    }
-
-    // Must await before navigation: otherwise the browser may abort the request
-    // when the page unloads (router.push), and the admin email never sends.
-    try {
-      const res = await fetch("/api/jobs/notify-admin-new-job", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ jobId: job.id }),
-        keepalive: true,
-      });
-      if (!res.ok) {
-        console.warn("notify-admin-new-job:", res.status, await res.text().catch(() => ""));
-      }
-    } catch (e) {
-      console.warn("notify-admin-new-job failed:", e);
     }
 
     store.reset();

@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useAdminStore, Contractor, QuoteRequest, QuoteResponse } from "@/lib/admin-store";
 import { useAdminNotifications } from "@/lib/admin-notifications";
 import { fetchAdminJobById, fetchAdminJobsList } from "@/lib/admin-jobs-fetch";
+import { contractorOffersService, contractorServiceTags, fetchAdminContractors } from "@/lib/admin-contractors-fetch";
 import {
   ArrowLeft,
   Loader2,
@@ -193,6 +194,8 @@ export default function AdminJobDetailPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [showAddQuoteModal, setShowAddQuoteModal] = useState(false);
   const [addQuoteForm, setAddQuoteForm] = useState({ contractorId: "", pricePounds: "", hours: "", arrivalTime: "", notes: "" });
+  const [addQuoteContractorSearch, setAddQuoteContractorSearch] = useState("");
+  const [addQuoteOnlyMatchingService, setAddQuoteOnlyMatchingService] = useState(true);
   const [refundPounds, setRefundPounds] = useState("");
   const [refundReason, setRefundReason] = useState("");
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -217,10 +220,23 @@ export default function AdminJobDetailPage() {
     [quoteRequestsList, id]
   );
   const activeContractors = contractors.filter((c) => c.is_active);
-  const addQuoteContractors = useMemo(
-    () => activeContractors.filter((c) => !jobQuotes.some((q) => q.operative_id === c.id)),
-    [activeContractors, jobQuotes]
-  );
+  const addQuoteContractors = useMemo(() => {
+    let list = activeContractors.filter((c) => !jobQuotes.some((q) => q.operative_id === c.id));
+    if (addQuoteOnlyMatchingService && job?.service_id) {
+      list = list.filter((c) => contractorOffersService(c, job.service_id, job.service));
+    }
+    const q = addQuoteContractorSearch.trim().toLowerCase();
+    if (q) {
+      list = list.filter(
+        (c) =>
+          c.full_name.toLowerCase().includes(q) ||
+          (c.company_name || "").toLowerCase().includes(q) ||
+          c.email.toLowerCase().includes(q) ||
+          contractorServiceTags(c).some((t) => t.toLowerCase().includes(q)),
+      );
+    }
+    return list;
+  }, [activeContractors, jobQuotes, addQuoteOnlyMatchingService, job?.service_id, job?.service, addQuoteContractorSearch]);
 
   useEffect(() => {
     const load = async () => {
@@ -232,34 +248,8 @@ export default function AdminJobDetailPage() {
       }
 
       if (contractors.length === 0) {
-        const { data: opsData } = await supabase
-          .from("operatives")
-          .select("*")
-          .order("created_at", { ascending: false });
-
-        if (opsData) {
-          setContractors(
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            opsData.map((c: any) => ({
-              id: c.id,
-              user_id: c.user_id,
-              full_name: c.full_name || "",
-              email: c.email || "",
-              phone: c.phone || "",
-              contractor_type: c.contractor_type || "sole_trader",
-              company_name: c.company_name || "",
-              specialisations: c.specialisations || [],
-              service_areas: c.service_areas || [],
-              rating: c.avg_rating || 0,
-              total_jobs: c.total_jobs || 0,
-              hourly_rate: c.hourly_rate,
-              is_active: c.is_active ?? true,
-              is_verified: c.is_verified ?? false,
-              notes: c.notes || "",
-              created_at: c.created_at,
-            }))
-          );
-        }
+        const { data: opsData } = await fetchAdminContractors(supabase);
+        if (opsData?.length) setContractors(opsData);
       }
 
       const { data: qrData } = await supabase
@@ -1381,7 +1371,9 @@ export default function AdminJobDetailPage() {
       {showAddQuoteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setShowAddQuoteModal(false)}>
           <div className="w-full max-w-md rounded-2xl border border-white/10 bg-slate-900 p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-semibold text-white">Add Quote</h2>
+            <h2 className="text-lg font-semibold text-white">
+              Add quote for: {job?.service || "this job"}
+            </h2>
             <p className="mt-1 text-sm text-slate-400">Add a contractor quote manually. They will appear in the list and can be sent to the customer individually or all at once.</p>
             <div className="mt-4 space-y-3">
               <div>
@@ -1391,14 +1383,45 @@ export default function AdminJobDetailPage() {
                   onChange={(v) => setAddQuoteForm((f) => ({ ...f, contractorId: v }))}
                   options={addQuoteContractors.map((c) => ({
                     value: c.id,
-                    label: c.full_name || c.email || c.id.slice(0, 8),
+                    label: `${c.full_name || c.email || c.id.slice(0, 8)}${c.company_name ? ` · ${c.company_name}` : ""}`,
                   }))}
                   placeholder="Select contractor"
                   className="mt-0.5"
                 />
                 {addQuoteContractors.length === 0 && (
-                  <p className="mt-1 text-xs text-amber-400">All active contractors already have a quote for this job.</p>
+                  <p className="mt-1 text-xs text-amber-400">
+                    {addQuoteOnlyMatchingService
+                      ? `No contractors offer “${job?.service || "this service"}” yet — untick the filter below or add the service in the driver portal.`
+                      : "All active contractors already have a quote for this job."}
+                  </p>
                 )}
+              </div>
+              <div>
+                <label className="block text-[11px] text-slate-400">
+                  Search for {job?.service || "this service"}
+                </label>
+                <div className="relative mt-0.5">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="text"
+                    value={addQuoteContractorSearch}
+                    onChange={(e) => setAddQuoteContractorSearch(e.target.value)}
+                    placeholder={`e.g. ${job?.service || "driveway"} or company name`}
+                    className="w-full rounded-lg border border-white/10 bg-white/5 py-1.5 pl-8 pr-2.5 text-sm text-white outline-none placeholder:text-slate-500 focus:border-brand-500"
+                  />
+                </div>
+                <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs text-slate-400">
+                  <input
+                    type="checkbox"
+                    checked={addQuoteOnlyMatchingService}
+                    onChange={(e) => {
+                      setAddQuoteOnlyMatchingService(e.target.checked);
+                      setAddQuoteForm((f) => ({ ...f, contractorId: "" }));
+                    }}
+                    className="rounded border-slate-500"
+                  />
+                  Only show contractors who offer {job?.service || "this service"}
+                </label>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -1473,7 +1496,12 @@ export default function AdminJobDetailPage() {
                 Add Quote
               </button>
               <button
-                onClick={() => { setShowAddQuoteModal(false); setAddQuoteForm({ contractorId: "", pricePounds: "", hours: "", arrivalTime: "", notes: "" }); }}
+                onClick={() => {
+                  setShowAddQuoteModal(false);
+                  setAddQuoteForm({ contractorId: "", pricePounds: "", hours: "", arrivalTime: "", notes: "" });
+                  setAddQuoteContractorSearch("");
+                  setAddQuoteOnlyMatchingService(true);
+                }}
                 className="rounded-xl border border-white/10 px-4 py-2.5 text-sm font-medium text-slate-300 hover:bg-white/10"
               >
                 Cancel

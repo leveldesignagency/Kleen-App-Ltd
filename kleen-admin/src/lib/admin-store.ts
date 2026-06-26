@@ -4,6 +4,7 @@ export interface AdminJob {
   id: string;
   reference: string;
   service: string;
+  service_id?: string;
   cleaning_type: string;
   status: string;
   cancelled_reason?: string;
@@ -53,6 +54,9 @@ export interface Contractor {
   contractor_type: ContractorType;
   company_name?: string;
   specialisations: string[];
+  /** Service names from operative_services (driver portal / admin contracts tab). */
+  linked_service_names?: string[];
+  linked_service_ids?: string[];
   service_areas: string[];
   rating: number;
   total_jobs: number;
