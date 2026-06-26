@@ -143,13 +143,16 @@ export function SiteAccessProvider({ children }: { children: React.ReactNode }) 
                 Private preview
               </span>
             </div>
-            <h2 className="text-center text-xl font-bold text-white">Access required</h2>
+            <h2 className="text-center text-xl font-bold text-white">Private preview</h2>
             <p className="mt-2 text-center text-sm text-slate-400">
-              Enter the preview password to continue.
+              Kleen is not open to the public yet. Enter the preview password to reach the
+              sign-in page — you will still sign in with Google after this.
             </p>
             <form onSubmit={handleUnlock} className="mt-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-300">Username</label>
+                <label className="block text-sm font-medium text-slate-300">
+                  Preview username
+                </label>
                 <input
                   type="text"
                   value={username}
@@ -160,7 +163,9 @@ export function SiteAccessProvider({ children }: { children: React.ReactNode }) 
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-300">Password</label>
+                <label className="block text-sm font-medium text-slate-300">
+                  Preview password
+                </label>
                 <input
                   type="password"
                   value={password}
@@ -174,7 +179,11 @@ export function SiteAccessProvider({ children }: { children: React.ReactNode }) 
                 <p className="rounded-lg bg-red-500/10 p-3 text-sm text-red-400">{error}</p>
               ) : null}
               <button type="submit" disabled={loading} className="btn-primary w-full py-3">
-                {loading ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : "Continue"}
+                {loading ? (
+                  <Loader2 className="mx-auto h-4 w-4 animate-spin" />
+                ) : (
+                  "Continue to sign in"
+                )}
               </button>
               <button
                 type="button"

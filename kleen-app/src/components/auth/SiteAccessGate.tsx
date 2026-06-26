@@ -8,7 +8,10 @@ type Props = {
   children: React.ReactNode;
 };
 
-/** Blocks page content until preview password is entered (sign-in / job-flow). */
+/**
+ * Hides sign-in / job-flow UI until the preview gate password is entered.
+ * Does not authenticate the user — Google sign-in on the next screen still required.
+ */
 export default function SiteAccessGate({ children }: Props) {
   const { gateEnabled, unlocked, checking, requestAccess } = useSiteAccess();
 
@@ -18,7 +21,7 @@ export default function SiteAccessGate({ children }: Props) {
     }
   }, [gateEnabled, checking, unlocked, requestAccess]);
 
-  if (!gateEnabled) return <>{children}</>;
+  if (!gateEnabled || unlocked) return <>{children}</>;
 
   if (checking) {
     return (
@@ -28,13 +31,6 @@ export default function SiteAccessGate({ children }: Props) {
     );
   }
 
-  if (!unlocked) {
-    return (
-      <div className="flex min-h-[50vh] items-center justify-center text-sm text-slate-500">
-        Private preview — enter password to continue.
-      </div>
-    );
-  }
-
-  return <>{children}</>;
+  // Preview modal is rendered by SiteAccessProvider — keep sign-in hidden until passed.
+  return null;
 }

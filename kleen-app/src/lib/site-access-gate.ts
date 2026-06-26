@@ -26,14 +26,32 @@ export function siteAccessGateBlocksPath(pathname: string): boolean {
   );
 }
 
-export function setSiteAccessCookie(response: NextResponse): void {
-  response.cookies.set(SITE_ACCESS_COOKIE, SITE_ACCESS_COOKIE_VALUE, {
+/** Share preview gate across www + dashboard (same as auth cookie domain). */
+export function getSiteAccessCookieOptions(): {
+  httpOnly: boolean;
+  secure: boolean;
+  sameSite: "lax";
+  path: string;
+  maxAge: number;
+  domain?: string;
+} {
+  const domain =
+    process.env.SITE_ACCESS_COOKIE_DOMAIN?.trim() ||
+    process.env.NEXT_PUBLIC_AUTH_COOKIE_DOMAIN?.trim() ||
+    (process.env.NODE_ENV === "production" ? ".kleenapp.co.uk" : undefined);
+
+  return {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
     maxAge: 60 * 60 * 24 * 7,
-  });
+    ...(domain ? { domain } : {}),
+  };
+}
+
+export function setSiteAccessCookie(response: NextResponse): void {
+  response.cookies.set(SITE_ACCESS_COOKIE, SITE_ACCESS_COOKIE_VALUE, getSiteAccessCookieOptions());
 }
 
 export function verifySiteAccessCredentials(username: string, password: string): boolean {
