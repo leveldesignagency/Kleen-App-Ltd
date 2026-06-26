@@ -25,8 +25,6 @@ export async function POST(request: Request) {
   }
 
   const response = NextResponse.json({ ok: true });
-  if (!setSiteAccessCookie(response)) {
-    return NextResponse.json({ error: "Gate not configured" }, { status: 500 });
-  }
+  setSiteAccessCookie(response);
   return response;
 }

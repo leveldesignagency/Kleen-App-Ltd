@@ -16,19 +16,17 @@ export async function middleware(request: NextRequest) {
   if (
     isSiteAccessGateEnabled() &&
     siteAccessGateBlocksPath(pathname) &&
-    !pathname.startsWith("/api/site-access") &&
     !hasSiteAccess(request)
   ) {
     const signIn = new URL("/sign-in", request.url);
     signIn.searchParams.set("next", `${pathname}${request.nextUrl.search || ""}`);
-    signIn.searchParams.set("locked", "1");
     return NextResponse.redirect(signIn);
   }
 
   // On the dashboard subdomain, root "/" should go to the dashboard (not the marketing home)
   if (host === DASHBOARD_HOST && (pathname === "/" || pathname === "")) {
     if (isSiteAccessGateEnabled() && !hasSiteAccess(request)) {
-      return NextResponse.redirect(getMarketingHomeHref());
+      return NextResponse.redirect(new URL(getMarketingHomeHref()));
     }
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
