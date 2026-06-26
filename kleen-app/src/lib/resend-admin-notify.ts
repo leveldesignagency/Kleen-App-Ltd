@@ -1,7 +1,7 @@
-import { Resend } from "resend";
 import { resolveResendFrom, resolveResendReplyTo } from "@/lib/resend-config";
 import { getAdminAppUrl, getAdminNotifyEmail } from "@/lib/admin-notify-email";
 import { hintForResendError, summarizeResendConfig } from "@/lib/resend-diagnostics";
+import { createResendClient } from "@/lib/resend-client";
 
 export type AdminEmailResult = { ok: boolean; error?: string };
 
@@ -17,14 +17,12 @@ export async function sendAdminNewJobEmail(params: {
   postcode: string;
   preferredDate: string;
 }): Promise<AdminEmailResult> {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) {
+  const resend = createResendClient();
+  if (!resend) {
     const error = "RESEND_API_KEY not set";
     console.warn("sendAdminNewJobEmail:", error);
     return { ok: false, error };
   }
-
-  const resend = new Resend(apiKey);
   const adminNotifyEmail = getAdminNotifyEmail();
   const adminJobUrl = `${getAdminAppUrl()}/jobs/${params.jobId}`;
   const html = `
@@ -92,14 +90,12 @@ export async function sendAdminQuoteAcceptedEmail(params: {
   customerEmail: string;
   amountPence: number;
 }): Promise<AdminEmailResult> {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) {
+  const resend = createResendClient();
+  if (!resend) {
     const error = "RESEND_API_KEY not set";
     console.warn("sendAdminQuoteAcceptedEmail:", error);
     return { ok: false, error };
   }
-
-  const resend = new Resend(apiKey);
   const adminNotifyEmail = getAdminNotifyEmail();
   const amount = `£${(params.amountPence / 100).toFixed(2)}`;
   const adminJobUrl = `${getAdminAppUrl()}/jobs/${params.jobId}`;

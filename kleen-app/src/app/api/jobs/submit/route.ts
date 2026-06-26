@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getRequestUser } from "@/lib/supabase/api-auth";
+import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { notifyAdminNewJobEmail } from "@/lib/admin-new-job-email";
+import { markAdminNewJobEmailSent } from "@/lib/mark-admin-new-job-email-sent";
 
 type SubmitBody = {
   serviceId?: string;
@@ -48,14 +50,12 @@ function missingFields(body: SubmitBody): string | null {
   return null;
 }
 
+/** Create job + details + quote server-side, then email admin (Bearer or cookie auth). */
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createServerSupabaseClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { user } = await getRequestUser(request);
     if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized — sign in again and retry" }, { status: 401 });
     }
 
     let body: SubmitBody;
@@ -70,9 +70,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: validationError }, { status: 400 });
     }
 
+    let admin;
+    try {
+      admin = createServiceRoleClient();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Server configuration error";
+      console.error("jobs/submit service role:", msg);
+      return NextResponse.json({ error: "Job service unavailable" }, { status: 503 });
+    }
+
     const { serviceId, cleaningType, address, postcode, preferredDate, preferredTime, notes, detail, estimate } = body;
 
-    const { data: job, error: jobError } = await supabase
+    const { data: job, error: jobError } = await admin
       .from("jobs")
       .insert({
         user_id: user.id,
@@ -92,7 +101,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: jobError?.message || "Could not create job" }, { status: 400 });
     }
 
-    const { error: detailError } = await supabase.from("job_details").insert({
+    const { error: detailError } = await admin.from("job_details").insert({
       job_id: job.id,
       service_id: serviceId,
       size: detail!.size,
@@ -101,9 +110,13 @@ export async function POST(request: NextRequest) {
     });
     if (detailError) {
       console.error("jobs/submit job_details:", detailError);
+      return NextResponse.json(
+        { error: `Job created but details failed: ${detailError.message}`, jobId: job.id, reference: job.reference },
+        { status: 400 },
+      );
     }
 
-    const { error: quoteError } = await supabase.from("quotes").insert({
+    const { error: quoteError } = await admin.from("quotes").insert({
       job_id: job.id,
       min_price_pence: Math.round(estimate!.minPrice! * 100),
       max_price_pence: Math.round(estimate!.maxPrice! * 100),
@@ -112,18 +125,21 @@ export async function POST(request: NextRequest) {
     });
     if (quoteError) {
       console.error("jobs/submit quotes:", quoteError);
+      return NextResponse.json(
+        { error: `Job created but quote failed: ${quoteError.message}`, jobId: job.id, reference: job.reference },
+        { status: 400 },
+      );
     }
 
-    const adminEmail = await notifyAdminNewJobEmail(supabase, {
+    const adminEmail = await notifyAdminNewJobEmail(admin, {
       jobId: job.id,
       userId: user.id,
       userEmail: user.email,
     });
 
     if (!adminEmail.ok) {
-      console.error("jobs/submit admin email failed:", adminEmail.error);
+      console.error("jobs/submit admin email failed:", adminEmail.error, { jobId: job.id });
     } else {
-      const { markAdminNewJobEmailSent } = await import("@/lib/mark-admin-new-job-email-sent");
       await markAdminNewJobEmailSent(job.id);
     }
 

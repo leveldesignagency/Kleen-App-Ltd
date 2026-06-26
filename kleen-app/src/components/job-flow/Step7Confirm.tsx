@@ -80,19 +80,12 @@ export default function Step7Confirm() {
       return;
     }
 
-    let user;
-    try {
-      const { data, error } = await supabase.auth.getUser();
-      if (error) throw error;
-      user = data.user;
-    } catch (e) {
-      console.error("Auth error:", e);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const session = sessionData.session;
+    if (!session?.access_token) {
       setSubmitError(
         buildErrorPresentation(
-          {
-            message: e instanceof Error ? e.message : "Session check failed",
-            code: "42501",
-          },
+          { message: "Your session expired. Please sign out, sign in again, then submit.", code: "42501" },
           createReportId(),
         ),
       );
@@ -100,52 +93,75 @@ export default function Step7Confirm() {
       return;
     }
 
-    if (!user) {
-      setSubmitError(
-        buildErrorPresentation({ message: "Not signed in", code: "42501" }, createReportId()),
-      );
-      setSubmitting(false);
-      return;
-    }
-
-    setUserEmail(user.email || undefined);
+    setUserEmail(session.user.email || undefined);
 
     const serviceName = service.name;
     const priceLabel = `${formatPrice(est.minPrice)}–${formatPrice(est.maxPrice)}`;
-    const preferredTime =
-      /^\d{1,2}:\d{2}$/.test(store.preferredTime.trim()) ? `${store.preferredTime.trim()}:00` : store.preferredTime;
 
-    let job;
+    let job: { id: string; reference: string };
     try {
-      const { data, error: jobError } = await supabase
-        .from("jobs")
-        .insert({
-          user_id: user.id,
-          service_id: store.serviceId,
-          cleaning_type: store.cleaningType,
-          address_line_1: store.address,
+      const res = await fetch("/api/jobs/submit", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          serviceId: store.serviceId,
+          cleaningType: store.cleaningType,
+          address: store.address,
           postcode: store.postcode,
-          preferred_date: store.preferredDate,
-          preferred_time: preferredTime,
+          preferredDate: store.preferredDate,
+          preferredTime: store.preferredTime,
           notes: store.details[0]?.notes || null,
-        })
-        .select("id, reference")
-        .single();
+          detail: {
+            size: detail.size,
+            quantity: detail.quantity,
+            complexity: detail.complexity,
+          },
+          estimate: {
+            minPrice: est.minPrice,
+            maxPrice: est.maxPrice,
+            estimatedDuration: est.estimatedDuration,
+            operativesRequired: est.operativesRequired,
+          },
+        }),
+      });
 
-      if (jobError || !data) {
-        console.error("Job insert error:", jobError);
+      const payload = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        jobId?: string;
+        reference?: string;
+        adminEmailSent?: boolean;
+        adminEmailError?: string;
+      };
+
+      if (!res.ok || !payload.jobId) {
+        console.error("jobs/submit:", res.status, payload);
         setSubmitError(
           buildErrorPresentation(
-            { message: jobError?.message, code: jobError?.code },
+            { message: payload.error || "Could not submit your job", httpStatus: res.status },
             createReportId(),
           ),
         );
         setSubmitting(false);
         return;
       }
-      job = data;
+
+      job = { id: payload.jobId, reference: payload.reference || payload.jobId.slice(0, 8).toUpperCase() };
+
+      if (payload.adminEmailSent === false) {
+        console.warn("Admin email not sent:", payload.adminEmailError);
+        pushNotification({
+          type: "info",
+          title: "Job submitted",
+          message:
+            "Your booking was saved. Admin email alert is delayed — the team will still see your job in the dashboard.",
+        });
+      }
     } catch (e) {
-      console.error("Job insert exception:", e);
+      console.error("Job submit exception:", e);
       setSubmitError(
         buildErrorPresentation(
           { message: e instanceof Error ? e.message : "Job submission failed" },
@@ -154,85 +170,6 @@ export default function Step7Confirm() {
       );
       setSubmitting(false);
       return;
-    }
-
-    const { error: detailsError } = await supabase.from("job_details").insert({
-      job_id: job.id,
-      service_id: store.serviceId,
-      size: detail.size,
-      quantity: detail.quantity,
-      complexity: detail.complexity,
-    });
-
-    if (detailsError) {
-      console.error("Job details insert error:", detailsError);
-      setSubmitError(
-        buildErrorPresentation(
-          {
-            message: `Job was created (${job.reference || job.id}) but details could not be saved: ${detailsError.message}`,
-            code: detailsError.code,
-          },
-          createReportId(),
-        ),
-      );
-      setSubmitting(false);
-      return;
-    }
-
-    const { error: quoteError } = await supabase.from("quotes").insert({
-      job_id: job.id,
-      min_price_pence: Math.round(est.minPrice * 100),
-      max_price_pence: Math.round(est.maxPrice * 100),
-      estimated_duration_min: est.estimatedDuration,
-      operatives_required: est.operativesRequired,
-    });
-
-    if (quoteError) {
-      console.error("Quote insert error:", quoteError);
-      setSubmitError(
-        buildErrorPresentation(
-          {
-            message: `Job was created (${job.reference || job.id}) but the quote could not be saved: ${quoteError.message}`,
-            code: quoteError.code,
-          },
-          createReportId(),
-        ),
-      );
-      setSubmitting(false);
-      return;
-    }
-
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (session?.access_token) {
-        headers.Authorization = `Bearer ${session.access_token}`;
-      }
-      const res = await fetch("/api/jobs/notify-admin-new-job", {
-        method: "POST",
-        headers,
-        credentials: "include",
-        body: JSON.stringify({ jobId: job.id }),
-        keepalive: true,
-      });
-      if (!res.ok) {
-        const body = await res.text().catch(() => "");
-        console.warn("notify-admin-new-job:", res.status, body);
-        pushNotification({
-          type: "info",
-          title: "Job submitted",
-          message:
-            "Your booking was saved. We couldn't send the admin alert email — the Kleen team will still see your job in the dashboard.",
-        });
-      }
-    } catch (e) {
-      console.warn("notify-admin-new-job failed:", e);
-      pushNotification({
-        type: "info",
-        title: "Job submitted",
-        message:
-          "Your booking was saved. Admin email notification may be delayed.",
-      });
     }
 
     // Also keep in local store for dashboard display
