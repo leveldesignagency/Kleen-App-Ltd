@@ -4,7 +4,9 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Loader2, ArrowLeft, ShieldCheck, ShieldOff, FileText } from "lucide-react";
+import { useAdminNotifications } from "@/lib/admin-notifications";
+import { useAdminStore } from "@/lib/admin-store";
+import { Loader2, ArrowLeft, ShieldCheck, ShieldOff, FileText, CheckCircle2 } from "lucide-react";
 
 type OperativeService = {
   id: string;
@@ -51,8 +53,11 @@ export default function ContractorReviewPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const id = params?.id;
+  const toast = useAdminNotifications((s) => s.push);
+  const updateContractor = useAdminStore((s) => s.updateContractor);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<"approve" | "reject" | null>(null);
+  const [completed, setCompleted] = useState<"approve" | "reject" | null>(null);
   const [op, setOp] = useState<Operative | null>(null);
   const [services, setServices] = useState<OperativeService[]>([]);
   const [rejectText, setRejectText] = useState("");
@@ -91,6 +96,12 @@ export default function ContractorReviewPage() {
     return "Draft";
   }, [op]);
 
+  useEffect(() => {
+    if (!completed) return;
+    const t = window.setTimeout(() => router.push("/contractors"), 1400);
+    return () => window.clearTimeout(t);
+  }, [completed, router]);
+
   const run = async (action: "approve" | "reject") => {
     if (!op) return;
     if (action === "reject" && !rejectText.trim()) {
@@ -110,19 +121,59 @@ export default function ContractorReviewPage() {
       }),
     });
     const json = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
       error?: string;
       operative?: Operative;
+      emailWarning?: string;
       dbWarning?: string;
     };
-    setSaving(null);
-    if (!res.ok || !json.operative) {
+
+    if (!res.ok) {
+      setSaving(null);
       setError(json.error || "Could not save review");
       return;
     }
+
+    const updated = json.operative ?? {
+      ...op,
+      is_verified: action === "approve",
+      verified_at: action === "approve" ? new Date().toISOString() : null,
+      submitted_for_review_at: action === "approve" ? null : op.submitted_for_review_at,
+      rejected_at: action === "reject" ? new Date().toISOString() : null,
+      rejection_message: action === "reject" ? rejectText.trim() : null,
+    };
+
+    if (json.dbWarning) {
+      toast({ type: "info", title: "Database", message: json.dbWarning });
+    }
+    if (json.emailWarning) {
+      toast({ type: "info", title: "Saved", message: json.emailWarning });
+    } else {
+      toast({
+        type: "success",
+        title: action === "approve" ? "Approved" : "Declined",
+        message:
+          action === "approve"
+            ? `${op.full_name} is verified. Approval email sent.`
+            : `Email sent to ${op.email}.`,
+      });
+    }
+
     setNotice(json.dbWarning ?? null);
-    setOp(json.operative);
+    setOp(updated);
+    updateContractor(op.id, {
+      is_verified: updated.is_verified,
+      verified_at: updated.verified_at,
+      submitted_for_review_at: updated.submitted_for_review_at,
+      rejected_at: updated.rejected_at,
+      rejection_message: updated.rejection_message,
+    });
     if (action === "reject") setRejectText("");
+    setCompleted(action);
+    setSaving(null);
   };
+
+  const busy = saving !== null || completed !== null;
 
   if (loading) {
     return (
@@ -209,20 +260,34 @@ export default function ContractorReviewPage() {
       </div>
 
       <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+        {completed ? (
+          <div className="flex flex-col items-center py-10 text-center">
+            <CheckCircle2
+              className={`h-12 w-12 ${completed === "approve" ? "text-emerald-400" : "text-amber-400"}`}
+            />
+            <p className="mt-4 text-lg font-semibold text-white">
+              {completed === "approve" ? "Contractor approved" : "Application declined"}
+            </p>
+            <p className="mt-2 text-sm text-slate-400">Returning to contractors…</p>
+            <Loader2 className="mt-4 h-5 w-5 animate-spin text-brand-400" />
+          </div>
+        ) : (
+          <>
         <p className="text-sm font-semibold text-slate-200">Review decision</p>
         <textarea
           value={rejectText}
           onChange={(e) => setRejectText(e.target.value)}
           rows={5}
+          disabled={busy}
           placeholder="If declining, explain what they need to fix…"
-          className="mt-3 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-brand-500"
+          className="mt-3 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-brand-500 disabled:opacity-50"
         />
         {error && <p className="mt-2 text-sm text-red-300">{error}</p>}
         <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
           <button
             type="button"
             onClick={() => run("reject")}
-            disabled={saving !== null}
+            disabled={busy}
             className="inline-flex items-center gap-2 rounded-xl border border-red-500/40 bg-red-500/15 px-4 py-2 text-sm font-medium text-red-300 hover:bg-red-500/25 disabled:opacity-50"
           >
             {saving === "reject" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldOff className="h-4 w-4" />}
@@ -231,7 +296,7 @@ export default function ContractorReviewPage() {
           <button
             type="button"
             onClick={() => run("approve")}
-            disabled={saving !== null}
+            disabled={busy}
             className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
           >
             {saving === "approve" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
@@ -240,12 +305,15 @@ export default function ContractorReviewPage() {
           <button
             type="button"
             onClick={() => router.push("/contractors")}
-            className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-white/10"
+            disabled={busy}
+            className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-white/10 disabled:opacity-50"
           >
             <FileText className="h-4 w-4" />
             Done
           </button>
         </div>
+          </>
+        )}
       </div>
     </div>
   );
