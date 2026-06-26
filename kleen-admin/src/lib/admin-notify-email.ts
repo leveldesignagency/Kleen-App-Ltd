@@ -1,5 +1,8 @@
+import { sanitizeEmailAddress } from "@/lib/resend-config";
+
 export function getAdminNotifyEmail(): string {
-  return process.env.ADMIN_NOTIFY_EMAIL?.trim() || "info@kleenapp.co.uk";
+  const raw = process.env.ADMIN_NOTIFY_EMAIL?.trim() || "info@kleenapp.co.uk";
+  return sanitizeEmailAddress(raw);
 }
 
 export function getAdminAppUrl(): string {
