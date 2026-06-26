@@ -6,6 +6,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAdminStore, AdminJob } from "@/lib/admin-store";
 import { fetchAdminJobsList } from "@/lib/admin-jobs-fetch";
+import { triggerEnsureNewJobEmails } from "@/lib/trigger-ensure-new-job-emails";
 import {
   AlertCircle,
   Briefcase,
@@ -79,6 +80,7 @@ export default function AdminJobsPage() {
       setLoading(false);
     };
 
+    triggerEnsureNewJobEmails();
     load().then(() => {
       channel = supabase
         .channel("admin-jobs-list")
@@ -90,7 +92,10 @@ export default function AdminJobsPage() {
         .on(
           "postgres_changes",
           { event: "INSERT", schema: "public", table: "jobs" },
-          () => load()
+          () => {
+            triggerEnsureNewJobEmails();
+            load();
+          }
         )
         .subscribe();
     });

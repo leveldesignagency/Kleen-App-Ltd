@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAdminStore } from "@/lib/admin-store";
 import { fetchAdminJobsList } from "@/lib/admin-jobs-fetch";
+import { triggerEnsureNewJobEmails } from "@/lib/trigger-ensure-new-job-emails";
 import { fetchAdminContractors } from "@/lib/admin-contractors-fetch";
 import {
   AlertCircle,
@@ -42,6 +43,7 @@ export default function AdminDashboardPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
+    triggerEnsureNewJobEmails();
     const load = async () => {
       setLoadError(null);
       const supabase = createClient();

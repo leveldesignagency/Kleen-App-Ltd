@@ -1,6 +1,7 @@
 import { Resend } from "resend";
 import { resolveResendFrom, resolveResendReplyTo } from "@/lib/resend-config";
 import { getAdminAppUrl, getAdminNotifyEmail } from "@/lib/admin-notify-email";
+import { hintForResendError, summarizeResendConfig } from "@/lib/resend-diagnostics";
 
 export type AdminEmailResult = { ok: boolean; error?: string };
 
@@ -58,8 +59,16 @@ export async function sendAdminNewJobEmail(params: {
       ...(replyTo ? { replyTo } : {}),
     });
     if (error) {
-      console.error("sendAdminNewJobEmail Resend error:", JSON.stringify(error), { from, to: adminNotifyEmail });
-      return { ok: false, error: error.message || JSON.stringify(error) };
+      const msg = error.message || JSON.stringify(error);
+      const hint = hintForResendError(msg);
+      const config = summarizeResendConfig();
+      console.error("sendAdminNewJobEmail Resend error:", msg, {
+        from,
+        to: adminNotifyEmail,
+        mode: config.mode,
+        hint,
+      });
+      return { ok: false, error: hint ? `${msg} — ${hint}` : msg };
     }
     if (data?.id) {
       console.log("sendAdminNewJobEmail sent id:", data.id, "from:", from, "to:", adminNotifyEmail);

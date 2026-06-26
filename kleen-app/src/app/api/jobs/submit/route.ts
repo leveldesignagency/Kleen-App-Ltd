@@ -122,6 +122,9 @@ export async function POST(request: NextRequest) {
 
     if (!adminEmail.ok) {
       console.error("jobs/submit admin email failed:", adminEmail.error);
+    } else {
+      const { markAdminNewJobEmailSent } = await import("@/lib/mark-admin-new-job-email-sent");
+      await markAdminNewJobEmailSent(job.id);
     }
 
     return NextResponse.json({

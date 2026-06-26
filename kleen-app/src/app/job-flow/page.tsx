@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useJobFlowStore } from "@/lib/store";
 import { createClient } from "@/lib/supabase/client";
 import { useUserProfile } from "@/lib/user-profile";
+import { useServiceHealth } from "@/hooks/useServiceHealth";
 import Step1Auth from "@/components/job-flow/Step1Auth";
 import Step2Type from "@/components/job-flow/Step2Type";
 import Step3Service from "@/components/job-flow/Step3Service";
@@ -11,6 +12,8 @@ import Step4Details from "@/components/job-flow/Step4Details";
 import Step5Estimate from "@/components/job-flow/Step5Estimate";
 import Step6Payment from "@/components/job-flow/Step6Payment";
 import Step7Confirm from "@/components/job-flow/Step7Confirm";
+import ServicesUnavailablePanel from "@/components/errors/ServicesUnavailablePanel";
+import ToastContainer from "@/components/ui/Toast";
 import Link from "next/link";
 import Image from "next/image";
 import { X } from "lucide-react";
@@ -22,6 +25,7 @@ export default function JobFlowPage() {
   const setStep = useJobFlowStore((s) => s.setStep);
   const setProfile = useUserProfile((s) => s.setProfile);
   const [authChecked, setAuthChecked] = useState(false);
+  const serviceHealth = useServiceHealth(authChecked);
 
   useEffect(() => {
     const supabase = createClient();
@@ -64,7 +68,9 @@ export default function JobFlowPage() {
     };
   }, [setStep, setProfile]);
 
-  if (!authChecked) return null;
+  if (!authChecked || serviceHealth.loading) return null;
+
+  const showServicesDown = !serviceHealth.ok && step > 1;
 
   return (
     <div className="flex min-h-dvh flex-col bg-gradient-to-br from-slate-900 via-brand-950 to-slate-900">
@@ -102,13 +108,23 @@ export default function JobFlowPage() {
       <main className="relative z-10 flex flex-1 flex-col px-3 pb-24 sm:px-6 lg:px-10">
         <div className="mx-auto w-full max-w-lg flex-1 sm:max-w-2xl lg:max-w-4xl">
           <div className="rounded-3xl bg-white p-5 shadow-2xl shadow-black/20 sm:p-8 lg:p-10">
-            {step === 1 && <Step1Auth />}
-            {step === 2 && <Step2Type />}
-            {step === 3 && <Step3Service />}
-            {step === 4 && <Step4Details />}
-            {step === 5 && <Step5Estimate />}
-            {step === 6 && <Step6Payment />}
-            {step === 7 && <Step7Confirm />}
+            {showServicesDown ? (
+              <ServicesUnavailablePanel
+                onRetry={serviceHealth.recheck}
+                checking={serviceHealth.loading}
+                errorDetail={serviceHealth.error}
+              />
+            ) : (
+              <>
+                {step === 1 && <Step1Auth />}
+                {step === 2 && <Step2Type />}
+                {step === 3 && <Step3Service />}
+                {step === 4 && <Step4Details />}
+                {step === 5 && <Step5Estimate />}
+                {step === 6 && <Step6Payment />}
+                {step === 7 && <Step7Confirm />}
+              </>
+            )}
           </div>
         </div>
       </main>
@@ -134,6 +150,7 @@ export default function JobFlowPage() {
           );
         })}
       </nav>
+      <ToastContainer />
     </div>
   );
 }

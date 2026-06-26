@@ -1,30 +1,66 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getService } from "@/lib/services";
 import { sendAdminNewJobEmail, type AdminEmailResult } from "@/lib/resend-admin-notify";
+import { createServiceRoleClient } from "@/lib/supabase/service-role";
 
-/** Load job + customer context and send admin new-job email. Uses session client only (no service role). */
+/** Load job + customer context and send admin new-job email. */
 export async function notifyAdminNewJobEmail(
   supabase: SupabaseClient,
   params: { jobId: string; userId: string; userEmail?: string | null },
 ): Promise<AdminEmailResult> {
-  const { data: job, error: jobErr } = await supabase
-    .from("jobs")
-    .select("id, reference, postcode, preferred_date, service_id")
-    .eq("id", params.jobId)
-    .eq("user_id", params.userId)
-    .single();
+  let job: {
+    id: string;
+    reference: string;
+    postcode: string | null;
+    preferred_date: string;
+    service_id: string;
+    user_id: string;
+  } | null = null;
+  let jobErr: { message: string } | null = null;
+
+  try {
+    const admin = createServiceRoleClient();
+    const { data, error } = await admin
+      .from("jobs")
+      .select("id, reference, postcode, preferred_date, service_id, user_id")
+      .eq("id", params.jobId)
+      .maybeSingle();
+    if (error) jobErr = error;
+    else if (!data || data.user_id !== params.userId) {
+      jobErr = { message: "Job not found for this user" };
+    } else {
+      job = data;
+    }
+  } catch (e) {
+    const { data, error } = await supabase
+      .from("jobs")
+      .select("id, reference, postcode, preferred_date, service_id, user_id")
+      .eq("id", params.jobId)
+      .eq("user_id", params.userId)
+      .single();
+    if (error || !data) jobErr = error || { message: "Job not found" };
+    else job = data;
+  }
 
   if (jobErr || !job) {
     return { ok: false, error: jobErr?.message || "Job not found" };
   }
 
-  const { data: profile } = await supabase
+  const db = (() => {
+    try {
+      return createServiceRoleClient();
+    } catch {
+      return supabase;
+    }
+  })();
+
+  const { data: profile } = await db
     .from("profiles")
     .select("full_name, email")
     .eq("id", params.userId)
     .maybeSingle();
 
-  const { data: svc } = await supabase
+  const { data: svc } = await db
     .from("services")
     .select("name")
     .eq("id", job.service_id)

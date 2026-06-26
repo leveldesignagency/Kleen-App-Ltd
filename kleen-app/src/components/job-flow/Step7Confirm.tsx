@@ -11,6 +11,12 @@ import { createClient } from "@/lib/supabase/client";
 import { getService, getCategory } from "@/lib/services";
 import { formatPrice, formatDuration } from "@/lib/pricing";
 import {
+  buildErrorPresentation,
+  createReportId,
+  type AppErrorPresentation,
+} from "@/lib/app-errors";
+import AppErrorModal from "@/components/errors/AppErrorModal";
+import {
   ArrowLeft,
   MapPin,
   Calendar,
@@ -30,6 +36,8 @@ export default function Step7Confirm() {
   const addAddressIfNew = useAddressStore((s) => s.addIfNew);
   const addPaymentIfNew = usePaymentMethodStore((s) => s.addIfNew);
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<AppErrorPresentation | null>(null);
+  const [userEmail, setUserEmail] = useState<string | undefined>();
 
   const service = getService(store.serviceId || "");
   const category = store.categoryId ? getCategory(store.categoryId) : null;
@@ -45,50 +53,110 @@ export default function Step7Confirm() {
     return null;
   }
 
+  const errorContext = {
+    step: 7,
+    serviceId: store.serviceId,
+    serviceName: service.name,
+    postcode: store.postcode,
+    preferredDate: store.preferredDate,
+  };
+
   const handleSubmit = async () => {
     setSubmitting(true);
+    setSubmitError(null);
 
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      pushNotification({ type: "error", title: "Not signed in", message: "Please sign in to submit a job." });
+    let supabase;
+    try {
+      supabase = createClient();
+    } catch (e) {
+      console.error("Supabase client error:", e);
+      setSubmitError(
+        buildErrorPresentation(
+          { message: e instanceof Error ? e.message : "Could not connect to Kleen" },
+          createReportId(),
+        ),
+      );
       setSubmitting(false);
       return;
     }
+
+    let user;
+    try {
+      const { data, error } = await supabase.auth.getUser();
+      if (error) throw error;
+      user = data.user;
+    } catch (e) {
+      console.error("Auth error:", e);
+      setSubmitError(
+        buildErrorPresentation(
+          {
+            message: e instanceof Error ? e.message : "Session check failed",
+            code: "42501",
+          },
+          createReportId(),
+        ),
+      );
+      setSubmitting(false);
+      return;
+    }
+
+    if (!user) {
+      setSubmitError(
+        buildErrorPresentation({ message: "Not signed in", code: "42501" }, createReportId()),
+      );
+      setSubmitting(false);
+      return;
+    }
+
+    setUserEmail(user.email || undefined);
 
     const serviceName = service.name;
     const priceLabel = `${formatPrice(est.minPrice)}–${formatPrice(est.maxPrice)}`;
     const preferredTime =
       /^\d{1,2}:\d{2}$/.test(store.preferredTime.trim()) ? `${store.preferredTime.trim()}:00` : store.preferredTime;
 
-    const { data: job, error: jobError } = await supabase
-      .from("jobs")
-      .insert({
-        user_id: user.id,
-        service_id: store.serviceId,
-        cleaning_type: store.cleaningType,
-        address_line_1: store.address,
-        postcode: store.postcode,
-        preferred_date: store.preferredDate,
-        preferred_time: preferredTime,
-        notes: store.details[0]?.notes || null,
-      })
-      .select("id, reference")
-      .single();
+    let job;
+    try {
+      const { data, error: jobError } = await supabase
+        .from("jobs")
+        .insert({
+          user_id: user.id,
+          service_id: store.serviceId,
+          cleaning_type: store.cleaningType,
+          address_line_1: store.address,
+          postcode: store.postcode,
+          preferred_date: store.preferredDate,
+          preferred_time: preferredTime,
+          notes: store.details[0]?.notes || null,
+        })
+        .select("id, reference")
+        .single();
 
-    if (jobError || !job) {
-      console.error("Job insert error:", jobError);
-      pushNotification({
-        type: "error",
-        title: "Submission failed",
-        message: jobError?.message || "Please try again.",
-      });
+      if (jobError || !data) {
+        console.error("Job insert error:", jobError);
+        setSubmitError(
+          buildErrorPresentation(
+            { message: jobError?.message, code: jobError?.code },
+            createReportId(),
+          ),
+        );
+        setSubmitting(false);
+        return;
+      }
+      job = data;
+    } catch (e) {
+      console.error("Job insert exception:", e);
+      setSubmitError(
+        buildErrorPresentation(
+          { message: e instanceof Error ? e.message : "Job submission failed" },
+          createReportId(),
+        ),
+      );
       setSubmitting(false);
       return;
     }
 
-    await supabase.from("job_details").insert({
+    const { error: detailsError } = await supabase.from("job_details").insert({
       job_id: job.id,
       service_id: store.serviceId,
       size: detail.size,
@@ -96,7 +164,22 @@ export default function Step7Confirm() {
       complexity: detail.complexity,
     });
 
-    await supabase.from("quotes").insert({
+    if (detailsError) {
+      console.error("Job details insert error:", detailsError);
+      setSubmitError(
+        buildErrorPresentation(
+          {
+            message: `Job was created (${job.reference || job.id}) but details could not be saved: ${detailsError.message}`,
+            code: detailsError.code,
+          },
+          createReportId(),
+        ),
+      );
+      setSubmitting(false);
+      return;
+    }
+
+    const { error: quoteError } = await supabase.from("quotes").insert({
       job_id: job.id,
       min_price_pence: Math.round(est.minPrice * 100),
       max_price_pence: Math.round(est.maxPrice * 100),
@@ -104,19 +187,52 @@ export default function Step7Confirm() {
       operatives_required: est.operativesRequired,
     });
 
+    if (quoteError) {
+      console.error("Quote insert error:", quoteError);
+      setSubmitError(
+        buildErrorPresentation(
+          {
+            message: `Job was created (${job.reference || job.id}) but the quote could not be saved: ${quoteError.message}`,
+            code: quoteError.code,
+          },
+          createReportId(),
+        ),
+      );
+      setSubmitting(false);
+      return;
+    }
+
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (session?.access_token) {
+        headers.Authorization = `Bearer ${session.access_token}`;
+      }
       const res = await fetch("/api/jobs/notify-admin-new-job", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         credentials: "include",
         body: JSON.stringify({ jobId: job.id }),
         keepalive: true,
       });
       if (!res.ok) {
-        console.warn("notify-admin-new-job:", res.status, await res.text().catch(() => ""));
+        const body = await res.text().catch(() => "");
+        console.warn("notify-admin-new-job:", res.status, body);
+        pushNotification({
+          type: "info",
+          title: "Job submitted",
+          message:
+            "Your booking was saved. We couldn't send the admin alert email — the Kleen team will still see your job in the dashboard.",
+        });
       }
     } catch (e) {
       console.warn("notify-admin-new-job failed:", e);
+      pushNotification({
+        type: "info",
+        title: "Job submitted",
+        message:
+          "Your booking was saved. Admin email notification may be delayed.",
+      });
     }
 
     // Also keep in local store for dashboard display
@@ -149,6 +265,16 @@ export default function Step7Confirm() {
   };
 
   return (
+    <>
+    <AppErrorModal
+      open={!!submitError}
+      error={submitError}
+      onClose={() => setSubmitError(null)}
+      onRetry={handleSubmit}
+      context={errorContext}
+      userEmail={userEmail}
+      page="/job-flow"
+    />
     <div>
       <button
         onClick={() => store.setStep(6)}
@@ -283,5 +409,6 @@ export default function Step7Confirm() {
         </div>
       </div>
     </div>
+    </>
   );
 }

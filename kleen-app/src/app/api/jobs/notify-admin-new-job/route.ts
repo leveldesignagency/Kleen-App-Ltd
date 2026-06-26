@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getRequestUser } from "@/lib/supabase/api-auth";
 import { notifyAdminNewJobEmail } from "@/lib/admin-new-job-email";
+import { markAdminNewJobEmailSent } from "@/lib/mark-admin-new-job-email-sent";
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createServerSupabaseClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { user, supabase } = await getRequestUser(request);
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -30,9 +28,18 @@ export async function POST(request: NextRequest) {
     });
 
     if (!result.ok) {
-      console.error("notify-admin-new-job:", result.error, { jobId });
-      return NextResponse.json({ error: result.error || "Email not sent" }, { status: 503 });
+      console.error("notify-admin-new-job:", result.error, {
+        jobId,
+        userId: user.id,
+        userEmail: user.email,
+      });
+      return NextResponse.json(
+        { error: result.error || "Email not sent", jobId },
+        { status: 503 },
+      );
     }
+
+    await markAdminNewJobEmailSent(jobId);
 
     return NextResponse.json({ ok: true });
   } catch (e) {
