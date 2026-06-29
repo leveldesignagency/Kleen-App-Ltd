@@ -17,7 +17,8 @@ import {
   X,
 } from "lucide-react";
 import { useAdminNotifications } from "@/lib/admin-notifications";
-import { useAdminStaff, roleLabel, staffInitials } from "@/components/admin/AdminStaffProvider";
+import { useAdminStaff, roleLabel } from "@/components/admin/AdminStaffProvider";
+import { staffInitials } from "@/lib/admin-staff";
 import type { SearchResultItem } from "@/app/api/admin/search/route";
 
 const TYPE_ICON = {

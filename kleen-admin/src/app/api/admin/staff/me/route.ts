@@ -72,8 +72,8 @@ export async function PATCH(request: NextRequest) {
     .single();
 
   const patch: Record<string, unknown> = {};
-  if body.full_name !== undefined) patch.full_name = body.full_name.trim() || null;
-  if body.phone !== undefined) patch.phone = body.phone.trim() || null;
+  if (body.full_name !== undefined) patch.full_name = body.full_name.trim() || null;
+  if (body.phone !== undefined) patch.phone = body.phone.trim() || null;
 
   if (body.admin_preferences) {
     const merged = {
