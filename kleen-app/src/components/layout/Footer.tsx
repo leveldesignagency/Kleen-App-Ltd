@@ -125,8 +125,23 @@ export default function Footer({ user = null }: FooterProps) {
           can trust.
         </p>
 
-        <div className="mt-8 border-t border-slate-100 pt-6 text-center text-xs text-slate-400 sm:text-left">
-          &copy; {new Date().getFullYear()} KLEEN. All rights reserved.
+        <div className="mt-8 flex flex-col gap-4 border-t border-slate-100 pt-6 sm:flex-row sm:items-start sm:justify-between">
+          <address className="not-italic text-xs leading-relaxed text-slate-500">
+            <span className="font-medium text-slate-600">Registered office</span>
+            <br />
+            167 - 169 Great Portland Street
+            <br />
+            5th Floor
+            <br />
+            London
+            <br />
+            W1W 5PF
+            <br />
+            England
+          </address>
+          <p className="text-xs text-slate-400 sm:text-right">
+            &copy; {new Date().getFullYear()} KLEEN. All rights reserved.
+          </p>
         </div>
       </div>
     </footer>

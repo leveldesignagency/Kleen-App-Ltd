@@ -10,7 +10,6 @@ import {
   Users,
   MessageSquare,
   UserSearch,
-  Settings,
   LogOut,
   Menu,
   X,
@@ -24,7 +23,6 @@ const NAV_ITEMS = [
   { href: "/contractors", label: "Contractors", icon: Users },
   { href: "/disputes", label: "Disputes", icon: MessageSquare },
   { href: "/customers", label: "Customers", icon: UserSearch },
-  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export default function AdminSidebar() {

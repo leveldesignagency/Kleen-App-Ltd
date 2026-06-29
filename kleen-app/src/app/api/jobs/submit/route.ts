@@ -3,6 +3,7 @@ import { getRequestUser } from "@/lib/supabase/api-auth";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { notifyAdminNewJobEmail } from "@/lib/admin-new-job-email";
 import { markAdminNewJobEmailSent } from "@/lib/mark-admin-new-job-email-sent";
+import { broadcastJobToMatchingContractors } from "@/lib/broadcast-job-to-contractors";
 
 type SubmitBody = {
   serviceId?: string;
@@ -143,12 +144,19 @@ export async function POST(request: NextRequest) {
       await markAdminNewJobEmailSent(job.id);
     }
 
+    const broadcast = await broadcastJobToMatchingContractors(admin, job.id);
+    if (!broadcast.ok) {
+      console.error("jobs/submit marketplace broadcast failed:", broadcast.error, { jobId: job.id });
+    }
+
     return NextResponse.json({
       ok: true,
       jobId: job.id,
       reference: job.reference,
       adminEmailSent: adminEmail.ok,
       adminEmailError: adminEmail.error,
+      marketplaceInvited: broadcast.invitedCount,
+      marketplaceEmailsSent: broadcast.emailsSent,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Job submit failed";
