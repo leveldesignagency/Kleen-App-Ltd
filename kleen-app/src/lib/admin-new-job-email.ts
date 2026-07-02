@@ -31,7 +31,7 @@ export async function notifyAdminNewJobEmail(
     } else {
       job = data;
     }
-  } catch (e) {
+  } catch {
     const { data, error } = await supabase
       .from("jobs")
       .select("id, reference, postcode, preferred_date, service_id, user_id")

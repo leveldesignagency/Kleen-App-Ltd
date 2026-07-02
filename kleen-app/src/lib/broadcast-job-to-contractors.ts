@@ -62,7 +62,7 @@ export async function broadcastJobToMatchingContractors(
     return { ok: false, invitedCount: 0, emailsSent: 0, skippedAlreadyBroadcast: false, error: osErr.message };
   }
 
-  const operativeIds = [...new Set((operativeServices || []).map((r) => r.operative_id as string))];
+  const operativeIds = Array.from(new Set((operativeServices || []).map((r) => r.operative_id as string)));
   if (!operativeIds.length) {
     await admin
       .from("jobs")

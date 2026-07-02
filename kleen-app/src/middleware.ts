@@ -1,17 +1,34 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
+import { getOptionalUserId } from "@/lib/supabase/request-user";
 import {
   hasSiteAccess,
   isSiteAccessGateEnabled,
   siteAccessGateBlocksPath,
 } from "@/lib/site-access-gate";
 import { getMarketingHomeHref } from "@/lib/customer-app-url";
+import { enforceApiRateLimit } from "@/lib/security/middleware-api";
+import { applyPrivateResourceHeaders, applySecurityHeaders } from "@/lib/security/headers";
+import { isPrivateApiPath } from "@/lib/security/route-buckets";
 
 const DASHBOARD_HOST = "dashboard.kleenapp.co.uk";
+
+function finalizeResponse(response: NextResponse, pathname: string): NextResponse {
+  if (isPrivateApiPath(pathname)) {
+    return applyPrivateResourceHeaders(response);
+  }
+  return applySecurityHeaders(response);
+}
 
 export async function middleware(request: NextRequest) {
   const host = request.headers.get("host") ?? "";
   const pathname = request.nextUrl.pathname;
+
+  if (pathname.startsWith("/api/")) {
+    const userId = await getOptionalUserId(request);
+    const limited = enforceApiRateLimit(request, userId);
+    if (limited) return limited;
+  }
 
   if (
     isSiteAccessGateEnabled() &&
@@ -20,18 +37,24 @@ export async function middleware(request: NextRequest) {
   ) {
     const signIn = new URL("/sign-in", request.url);
     signIn.searchParams.set("next", `${pathname}${request.nextUrl.search || ""}`);
-    return NextResponse.redirect(signIn);
+    return finalizeResponse(NextResponse.redirect(signIn), pathname);
   }
 
-  // On the dashboard subdomain, root "/" should go to the dashboard (not the marketing home)
   if (host === DASHBOARD_HOST && (pathname === "/" || pathname === "")) {
     if (isSiteAccessGateEnabled() && !hasSiteAccess(request)) {
-      return NextResponse.redirect(new URL(getMarketingHomeHref()));
+      return finalizeResponse(
+        NextResponse.redirect(new URL(getMarketingHomeHref())),
+        pathname,
+      );
     }
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    return finalizeResponse(
+      NextResponse.redirect(new URL("/dashboard", request.url)),
+      pathname,
+    );
   }
 
-  return await updateSession(request);
+  const response = await updateSession(request);
+  return finalizeResponse(response, pathname);
 }
 
 export const config = {

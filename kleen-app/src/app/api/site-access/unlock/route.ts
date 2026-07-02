@@ -1,11 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import {
   isSiteAccessGateEnabled,
   setSiteAccessCookie,
   verifySiteAccessCredentials,
 } from "@/lib/site-access-gate";
+import { withSecureApiRoute } from "@/lib/security/with-secure-api-route";
 
-export async function POST(request: Request) {
+async function unlockHandler(request: NextRequest) {
   if (!isSiteAccessGateEnabled()) {
     return NextResponse.json({ ok: true, disabled: true });
   }
@@ -28,3 +29,5 @@ export async function POST(request: Request) {
   setSiteAccessCookie(response);
   return response;
 }
+
+export const POST = withSecureApiRoute("auth", unlockHandler);

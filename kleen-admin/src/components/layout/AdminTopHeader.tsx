@@ -108,9 +108,10 @@ export default function AdminTopHeader() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-white/10 bg-slate-950/95 backdrop-blur-md">
-      <div className="flex h-14 items-center gap-3 px-4 sm:px-6 lg:px-8">
+      <div className="flex h-14 w-full items-center px-4 sm:px-6 lg:px-8">
+        <div className="ml-auto flex min-w-0 items-center gap-3">
         {/* Search */}
-        <div ref={searchRef} className="relative min-w-0 flex-1 max-w-xl">
+        <div ref={searchRef} className="relative w-56 min-w-0 sm:w-72 lg:w-80">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             <input
@@ -336,6 +337,7 @@ export default function AdminTopHeader() {
               </div>
             )}
           </div>
+        </div>
         </div>
       </div>
 

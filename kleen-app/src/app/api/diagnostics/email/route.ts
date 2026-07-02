@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { summarizeResendConfig, testResendSend } from "@/lib/resend-diagnostics";
+import { withSecureApiRoute } from "@/lib/security/with-secure-api-route";
 
 export const dynamic = "force-dynamic";
 
 function authorized(request: NextRequest): boolean {
-  const secret = process.env.CRON_SECRET?.trim();
+  const secret = process.env.CRON_SECRET?.trim() || process.env.ADMIN_SECRET?.trim();
   if (!secret) return false;
   const auth = request.headers.get("authorization");
   return auth === `Bearer ${secret}`;
 }
 
-/** POST with Authorization: Bearer CRON_SECRET — sends a test email and returns Resend config diagnostics. */
-export async function POST(request: NextRequest) {
+async function diagnosticsPostHandler(request: NextRequest) {
   if (!authorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -26,8 +26,7 @@ export async function POST(request: NextRequest) {
   });
 }
 
-/** GET — config only (no send), still requires CRON_SECRET. */
-export async function GET(request: NextRequest) {
+async function diagnosticsGetHandler(request: NextRequest) {
   if (!authorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -37,3 +36,6 @@ export async function GET(request: NextRequest) {
     config: summarizeResendConfig(),
   });
 }
+
+export const POST = withSecureApiRoute("sensitive", diagnosticsPostHandler);
+export const GET = withSecureApiRoute("sensitive", diagnosticsGetHandler);

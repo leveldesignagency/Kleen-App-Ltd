@@ -25,6 +25,8 @@
 - `ADMIN_NOTIFY_EMAIL`
 - `ADMIN_APP_URL`
 - `CRON_SECRET`
+- `ADMIN_SECRET` (optional — staff diagnostics; falls back to `CRON_SECRET`)
+- `SHARE_LINK_SECRET` (optional — future signed links)
 - `DATABASE_URL`
 - `VERCEL_URL` (Vercel injects)
 
@@ -50,3 +52,4 @@
 - `CONTRACTOR_PORTAL_BASE_URL`
 - `ADMIN_NOTIFY_EMAIL` (optional — BCC-style notify on funds released)
 - `CRON_SECRET` — same pattern as kleen-app: set on the **kleen-admin** Vercel project for `GET /api/cron/release-due-funds` (see `kleen-admin/vercel.json`). You can reuse the same secret value as kleen-app or use a separate one.
+- `ADMIN_SECRET` (optional — security diagnostics API)

@@ -7,13 +7,29 @@ import { useAdminStaff, roleLabel } from "@/components/admin/AdminStaffProvider"
 import { Settings, User, Monitor, Users, Loader2, Shield, Trash2 } from "lucide-react";
 import type { AdminStaffRole } from "@/lib/admin-staff";
 
-type Tab = "profile" | "display" | "team";
+type Tab = "profile" | "display" | "team" | "security";
+
+type SecuritySnapshot = {
+  production: boolean;
+  service: string;
+  securityHeadersEnabled: boolean;
+  rateLimitEnabled: boolean;
+  rateLimitBlockedHits: number;
+  siteAccessGateEnabled: boolean;
+  devAuthBypassEnabled: boolean;
+  headerEmailBypassEnabled: boolean;
+  cronSecretConfigured: boolean;
+  adminSecretConfigured: boolean;
+  shareLinkSecretConfigured: boolean;
+  authProvider: string;
+  notes: string[];
+};
 
 function SettingsContent() {
   const searchParams = useSearchParams();
   const tabParam = searchParams.get("tab");
   const [tab, setTab] = useState<Tab>(
-    tabParam === "display" || tabParam === "team" ? tabParam : "profile",
+    tabParam === "display" || tabParam === "team" || tabParam === "security" ? tabParam : "profile",
   );
   const { profile, loading, updateProfile, isSuperadmin, preferences } = useAdminStaff();
   const toast = useAdminNotifications((s) => s.push);
@@ -35,9 +51,11 @@ function SettingsContent() {
   const [newEmail, setNewEmail] = useState("");
   const [newRole, setNewRole] = useState<AdminStaffRole>("staff");
   const [addingTeam, setAddingTeam] = useState(false);
+  const [security, setSecurity] = useState<SecuritySnapshot | null>(null);
+  const [securityLoading, setSecurityLoading] = useState(false);
 
   useEffect(() => {
-    if (tabParam === "profile" || tabParam === "display" || tabParam === "team") {
+    if (tabParam === "profile" || tabParam === "display" || tabParam === "team" || tabParam === "security") {
       setTab(tabParam);
     }
   }, [tabParam]);
@@ -72,6 +90,23 @@ function SettingsContent() {
   useEffect(() => {
     if (tab === "team" && isSuperadmin) void loadTeam();
   }, [tab, isSuperadmin, loadTeam]);
+
+  const loadSecurity = useCallback(async () => {
+    setSecurityLoading(true);
+    try {
+      const res = await fetch("/api/admin/security", { credentials: "include" });
+      if (res.ok) {
+        const json = (await res.json()) as { security: SecuritySnapshot };
+        setSecurity(json.security);
+      }
+    } finally {
+      setSecurityLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tab === "security") void loadSecurity();
+  }, [tab, loadSecurity]);
 
   const saveProfile = async () => {
     setSaving(true);
@@ -135,6 +170,7 @@ function SettingsContent() {
   const tabs: { id: Tab; label: string; icon: typeof User; superOnly?: boolean }[] = [
     { id: "profile", label: "Profile", icon: User },
     { id: "display", label: "Display", icon: Monitor },
+    { id: "security", label: "Security", icon: Shield },
     ...(isSuperadmin ? [{ id: "team" as Tab, label: "Team", icon: Users, superOnly: true }] : []),
   ];
 
@@ -364,6 +400,61 @@ function SettingsContent() {
                   </ul>
                 </div>
               </>
+            )}
+          </div>
+        )}
+
+        {tab === "security" && (
+          <div className="space-y-4">
+            {securityLoading ? (
+              <div className="flex justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-brand-400" />
+              </div>
+            ) : security ? (
+              <>
+                {security.notes.length > 0 && (
+                  <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 text-sm text-amber-100">
+                    <p className="font-semibold text-amber-200">Warnings</p>
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-xs">
+                      {security.notes.map((n) => (
+                        <li key={n}>{n}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+                  <h2 className="text-sm font-semibold text-white">Security posture</h2>
+                  <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+                    {[
+                      ["Environment", security.production ? "Production" : "Non-production"],
+                      ["Rate limiting", security.rateLimitEnabled ? "On" : "Off"],
+                      ["Blocked requests", String(security.rateLimitBlockedHits)],
+                      ["Security headers", security.securityHeadersEnabled ? "On" : "Off"],
+                      ["Preview gate (customer app)", security.siteAccessGateEnabled ? "On" : "Off"],
+                      ["Dev auth bypass", security.devAuthBypassEnabled ? "ON — fix" : "Off"],
+                      ["Header email bypass", security.headerEmailBypassEnabled ? "ON — fix" : "Off"],
+                      ["CRON_SECRET", security.cronSecretConfigured ? "Set" : "Missing"],
+                      ["ADMIN_SECRET", security.adminSecretConfigured ? "Set" : "Missing"],
+                      ["SHARE_LINK_SECRET", security.shareLinkSecretConfigured ? "Set" : "Not set"],
+                      ["Auth", security.authProvider],
+                    ].map(([label, value]) => (
+                      <div key={label} className="flex justify-between gap-4 border-b border-white/5 pb-2">
+                        <dt className="text-slate-500">{label}</dt>
+                        <dd className="font-medium text-white">{value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <button
+                    type="button"
+                    onClick={() => void loadSecurity()}
+                    className="mt-6 rounded-xl border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5"
+                  >
+                    Refresh
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-slate-500">Could not load security snapshot.</p>
             )}
           </div>
         )}

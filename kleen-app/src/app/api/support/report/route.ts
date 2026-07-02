@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { sendSupportReportEmail } from "@/lib/resend-support-report";
+import { withSecureApiRoute } from "@/lib/security/with-secure-api-route";
+import { redactEmail } from "@/lib/security/redact";
+import { isProduction } from "@/lib/security/env";
 
 type ReportBody = {
   reportId?: string;
@@ -13,7 +16,7 @@ type ReportBody = {
   context?: Record<string, unknown>;
 };
 
-export async function POST(request: NextRequest) {
+async function reportHandler(request: NextRequest) {
   try {
     let body: ReportBody;
     try {
@@ -40,6 +43,10 @@ export async function POST(request: NextRequest) {
         .eq("id", user.id)
         .maybeSingle();
       userEmail = profile?.email || undefined;
+    }
+
+    if (isProduction()) {
+      console.info("support/report", reportId.trim(), kind || "unknown", redactEmail(userEmail));
     }
 
     const result = await sendSupportReportEmail({
@@ -69,3 +76,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
+
+export const POST = withSecureApiRoute("write", reportHandler);

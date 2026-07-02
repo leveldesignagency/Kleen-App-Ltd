@@ -1,8 +1,20 @@
+import { type NextRequest, NextResponse } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
-import { type NextRequest } from "next/server";
+import { getOptionalUserId } from "@/lib/supabase/request-user";
+import { enforceApiRateLimit } from "@/lib/security/middleware-api";
+import { applySecurityHeaders } from "@/lib/security/headers";
 
 export async function middleware(request: NextRequest) {
-  return await updateSession(request);
+  const pathname = request.nextUrl.pathname;
+
+  if (pathname.startsWith("/api/")) {
+    const userId = await getOptionalUserId(request);
+    const limited = enforceApiRateLimit(request, userId);
+    if (limited) return limited;
+  }
+
+  const response = await updateSession(request);
+  return applySecurityHeaders(response);
 }
 
 export const config = {

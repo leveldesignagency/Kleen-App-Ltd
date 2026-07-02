@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { runContractorFieldAction, type FieldActionName } from "@/lib/contractor-field-job";
+import { withSecureApiRoute } from "@/lib/security/with-secure-api-route";
 
-export async function GET(
+async function portalGetHandler(
   _request: NextRequest,
-  { params }: { params: Promise<{ token: string }> }
+  context?: unknown,
 ) {
+  const { params } = context as { params: Promise<{ token: string }> };
   const { token } = await params;
   if (!token || token.length < 16) {
     return NextResponse.json({ error: "Invalid link" }, { status: 400 });
@@ -15,7 +17,7 @@ export async function GET(
   const { data: job, error } = await supabase
     .from("jobs")
     .select(
-      "id, reference, status, service_id, operative_en_route_at, operative_arrived_at, operative_marked_complete_at, operative_marked_incomplete_at, operative_incomplete_reason"
+      "id, reference, status, service_id, operative_en_route_at, operative_arrived_at, operative_marked_complete_at, operative_marked_incomplete_at, operative_incomplete_reason",
     )
     .eq("operative_portal_token", token)
     .maybeSingle();
@@ -49,10 +51,11 @@ export async function GET(
   });
 }
 
-export async function POST(
+async function portalPostHandler(
   request: NextRequest,
-  { params }: { params: Promise<{ token: string }> }
+  context?: unknown,
 ) {
+  const { params } = context as { params: Promise<{ token: string }> };
   const { token } = await params;
   if (!token || token.length < 16) {
     return NextResponse.json({ error: "Invalid link" }, { status: 400 });
@@ -92,3 +95,6 @@ export async function POST(
 
   return NextResponse.json({ ok: true });
 }
+
+export const GET = withSecureApiRoute("sensitive", portalGetHandler, { private: true });
+export const POST = withSecureApiRoute("sensitive", portalPostHandler, { private: true });

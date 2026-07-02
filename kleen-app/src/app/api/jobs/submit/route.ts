@@ -4,6 +4,7 @@ import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { notifyAdminNewJobEmail } from "@/lib/admin-new-job-email";
 import { markAdminNewJobEmailSent } from "@/lib/mark-admin-new-job-email-sent";
 import { broadcastJobToMatchingContractors } from "@/lib/broadcast-job-to-contractors";
+import { withSecureApiRoute } from "@/lib/security/with-secure-api-route";
 
 type SubmitBody = {
   serviceId?: string;
@@ -52,7 +53,7 @@ function missingFields(body: SubmitBody): string | null {
 }
 
 /** Create job + details + quote server-side, then email admin (Bearer or cookie auth). */
-export async function POST(request: NextRequest) {
+async function submitHandler(request: NextRequest) {
   try {
     const { user } = await getRequestUser(request);
     if (!user) {
@@ -164,3 +165,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const POST = withSecureApiRoute("write", submitHandler);
