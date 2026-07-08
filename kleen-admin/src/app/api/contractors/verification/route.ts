@@ -15,7 +15,7 @@ function escapeHtml(s: string) {
 function contractorPortalBaseUrl() {
   return (
     process.env.CONTRACTOR_PORTAL_BASE_URL?.replace(/\/$/, "") ||
-    "https://driver.kleenapp.co.uk"
+    "https://contractor.kleenapp.co.uk"
   );
 }
 

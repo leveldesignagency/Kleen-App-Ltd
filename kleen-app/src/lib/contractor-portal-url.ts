@@ -1,10 +1,10 @@
 import { normalizeSiteOrigin } from "@/lib/customer-app-url";
 
-/** Dedicated contractor app — kleen-contractor (local dev :3101, prod driver subdomain). */
+/** Dedicated contractor app — kleen-contractor (local :3101, prod contractor.kleenapp.co.uk). */
 export const DEFAULT_CONTRACTOR_PORTAL_ORIGIN =
   process.env.NODE_ENV === "development"
     ? "http://localhost:3101"
-    : "https://driver.kleenapp.co.uk";
+    : "https://contractor.kleenapp.co.uk";
 
 /** Absolute origin for the contractor portal (no trailing slash). */
 export function contractorPortalOrigin(): string {

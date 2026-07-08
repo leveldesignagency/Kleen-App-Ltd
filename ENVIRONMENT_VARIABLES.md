@@ -32,6 +32,7 @@
 
 **kleen-contractor**
 
+- `NEXT_PUBLIC_SITE_URL` (contractor portal origin, e.g. `https://contractor.kleenapp.co.uk` — OAuth callbacks)
 - `NEXT_PUBLIC_CUSTOMER_APP_URL` (customer app links)
 - `NEXT_PUBLIC_MARKETING_URL` (optional)
 - `NEXT_PUBLIC_AUTH_COOKIE_DOMAIN` (optional, shared auth across subdomains)

@@ -6,7 +6,7 @@ function contractorPortalBase() {
   }
   return process.env.NODE_ENV === "development"
     ? "http://localhost:3101"
-    : "https://driver.kleenapp.co.uk";
+    : "https://contractor.kleenapp.co.uk";
 }
 
 const nextConfig = {
