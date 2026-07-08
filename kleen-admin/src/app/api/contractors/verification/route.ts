@@ -230,7 +230,7 @@ export async function POST(request: NextRequest) {
     }
     const resend = new Resend(apiKey);
     const base = contractorPortalBaseUrl();
-    const profileUrl = `${base}/contractor/profile`;
+    const profileUrl = `${base}/contractor`;
     const htmlBody = `
       <p>Hi ${escapeHtml(before?.full_name || "there")},</p>
       <p>Thanks for applying to work with Kleen as a contractor. After reviewing your application, we are not able to approve your profile at this time.</p>

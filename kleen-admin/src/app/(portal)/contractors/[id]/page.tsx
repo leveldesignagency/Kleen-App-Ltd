@@ -14,7 +14,15 @@ type OperativeService = {
   contract_title: string | null;
   contract_content: string | null;
   contract_content_preview: string | null;
+  default_price_pence: number | null;
   services: { name: string } | { name: string }[] | null;
+};
+
+type Personnel = {
+  id: string;
+  full_name: string;
+  role: string;
+  id_document_storage_path: string | null;
 };
 
 type Operative = {
@@ -40,6 +48,7 @@ type Operative = {
   company_number: string | null;
   vat_number: string | null;
   utr_number: string | null;
+  id_document_storage_path: string | null;
 };
 
 function mask(s: string | null) {
@@ -47,6 +56,26 @@ function mask(s: string | null) {
   if (!v) return "—";
   if (v.length < 4) return "••••";
   return `••••${v.slice(-4)}`;
+}
+
+function formatGbp(pence: number | null | undefined) {
+  if (pence == null || pence <= 0) return "—";
+  return `£${(pence / 100).toFixed(2)}`;
+}
+
+async function openDocument(path: string) {
+  const res = await fetch("/api/contractors/document-url", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+  const json = (await res.json().catch(() => ({}))) as { signedUrl?: string; error?: string };
+  if (!res.ok || !json.signedUrl) {
+    alert(json.error || "Could not open document");
+    return;
+  }
+  window.open(json.signedUrl, "_blank", "noopener,noreferrer");
 }
 
 export default function ContractorReviewPage() {
@@ -60,6 +89,7 @@ export default function ContractorReviewPage() {
   const [completed, setCompleted] = useState<"approve" | "reject" | null>(null);
   const [op, setOp] = useState<Operative | null>(null);
   const [services, setServices] = useState<OperativeService[]>([]);
+  const [personnel, setPersonnel] = useState<Personnel[]>([]);
   const [rejectText, setRejectText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -69,20 +99,23 @@ export default function ContractorReviewPage() {
     const load = async () => {
       setError(null);
       const supabase = createClient();
-      const [{ data: opRow, error: opErr }, { data: svcRows, error: svcErr }] = await Promise.all([
+      const [{ data: opRow, error: opErr }, { data: svcRows, error: svcErr }, { data: persRows, error: persErr }] =
+        await Promise.all([
         supabase.from("operatives").select("*").eq("id", id).maybeSingle(),
         supabase
           .from("operative_services")
-          .select("id, service_id, contract_title, contract_content, contract_content_preview, services(name)")
+          .select("id, service_id, contract_title, contract_content, contract_content_preview, default_price_pence, services(name)")
           .eq("operative_id", id),
+        supabase.from("operative_personnel").select("id, full_name, role, id_document_storage_path").eq("operative_id", id),
       ]);
-      if (opErr || svcErr || !opRow) {
-        setError(opErr?.message || svcErr?.message || "Contractor not found");
+      if (opErr || svcErr || persErr || !opRow) {
+        setError(opErr?.message || svcErr?.message || persErr?.message || "Contractor not found");
         setLoading(false);
         return;
       }
       setOp(opRow as Operative);
       setServices((svcRows as OperativeService[]) || []);
+      setPersonnel((persRows as Personnel[]) || []);
       setLoading(false);
     };
     load();
@@ -237,6 +270,47 @@ export default function ContractorReviewPage() {
       </div>
 
       <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+        <p className="text-sm font-semibold text-slate-200">Verification documents</p>
+        <div className="mt-3 space-y-2 text-sm text-slate-300">
+          {op.contractor_type === "sole_trader" ? (
+            op.id_document_storage_path ? (
+              <button
+                type="button"
+                onClick={() => openDocument(op.id_document_storage_path!)}
+                className="text-brand-400 hover:underline"
+              >
+                View sole trader photo ID
+              </button>
+            ) : (
+              <p className="text-slate-500">No ID document uploaded.</p>
+            )
+          ) : personnel.length === 0 ? (
+            <p className="text-slate-500">No key personnel listed.</p>
+          ) : (
+            <ul className="space-y-2">
+              {personnel.map((p) => (
+                <li key={p.id} className="rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2">
+                  <p className="font-medium text-slate-100">{p.full_name}</p>
+                  <p className="text-xs text-slate-500">{p.role}</p>
+                  {p.id_document_storage_path ? (
+                    <button
+                      type="button"
+                      onClick={() => openDocument(p.id_document_storage_path!)}
+                      className="mt-1 text-xs text-brand-400 hover:underline"
+                    >
+                      View ID document
+                    </button>
+                  ) : (
+                    <p className="mt-1 text-xs text-slate-500">No ID uploaded</p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
         <p className="text-sm font-semibold text-slate-200">Services & contracts</p>
         <div className="mt-3 space-y-3">
           {services.length === 0 && <p className="text-sm text-slate-500">No services linked.</p>}
@@ -245,6 +319,9 @@ export default function ContractorReviewPage() {
             return (
               <div key={s.id} className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
                 <p className="font-medium text-slate-100">{svc?.name || s.service_id}</p>
+                <p className="mt-1 text-xs text-emerald-300/90">
+                  Default price per job: {formatGbp(s.default_price_pence)} (ex VAT)
+                </p>
                 <p className="mt-1 text-xs text-slate-500">{s.contract_title || "Untitled contract"}</p>
                 {s.contract_content_preview && <p className="mt-2 text-xs text-slate-400">{s.contract_content_preview}</p>}
                 {s.contract_content && (
