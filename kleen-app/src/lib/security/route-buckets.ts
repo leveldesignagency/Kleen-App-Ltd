@@ -32,6 +32,23 @@ export function isPrivateApiPath(pathname: string): boolean {
   return pathname.startsWith("/api/contractor/portal/");
 }
 
+const MARKETING_PATHS = new Set([
+  "/",
+  "/about",
+  "/contact",
+  "/contractors",
+  "/faq",
+  "/services",
+  "/terms",
+  "/privacy",
+  "/sign-in",
+]);
+
+/** Public marketing pages that may be embedded in an agency iframe. */
+export function isMarketingPath(pathname: string): boolean {
+  return MARKETING_PATHS.has(pathname);
+}
+
 export function isTestApiPath(pathname: string): boolean {
   return pathname.startsWith("/api/test");
 }

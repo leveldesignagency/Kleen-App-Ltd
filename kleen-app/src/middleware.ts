@@ -17,7 +17,7 @@ function finalizeResponse(response: NextResponse, pathname: string): NextRespons
   if (isPrivateApiPath(pathname)) {
     return applyPrivateResourceHeaders(response);
   }
-  return applySecurityHeaders(response);
+  return applySecurityHeaders(response, pathname);
 }
 
 export async function middleware(request: NextRequest) {
