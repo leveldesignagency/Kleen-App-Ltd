@@ -1,5 +1,6 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { contractorPortalHref } from "@/lib/contractor-portal-url";
 import { getSupabaseAuthCookieOptions } from "@/lib/supabase/auth-cookie-options";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { hasSiteAccess, isSiteAccessGateEnabled } from "@/lib/site-access-gate";
@@ -29,7 +30,10 @@ export async function GET(request: NextRequest) {
   }
 
   const nextPath = next.startsWith("/") ? next : `/${next}`;
-  const redirectTarget = new URL(nextPath, sameOrigin);
+  const redirectTarget =
+    nextPath === "/contractor" || nextPath.startsWith("/contractor/")
+      ? new URL(contractorPortalHref(nextPath))
+      : new URL(nextPath, sameOrigin);
 
   const response = NextResponse.redirect(redirectTarget);
 

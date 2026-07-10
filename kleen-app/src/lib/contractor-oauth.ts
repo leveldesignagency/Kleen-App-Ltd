@@ -1,11 +1,12 @@
+import { contractorPortalHref } from "@/lib/contractor-portal-url";
+
 /**
- * OAuth redirect for contractor join / sign-in (Google).
- * `intent=contractor` lets /auth/callback upgrade brand-new profiles from customer → operative.
+ * OAuth redirect for contractor join / sign-in (Google) on the contractor portal host.
+ * Never use the marketing/dashboard origin — session cookies must be set on contractor.kleenapp.co.uk.
  */
 export function getContractorGoogleRedirectTo(): string {
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
-  if (!origin) return "";
+  const callback = contractorPortalHref("/auth/callback");
   const next = encodeURIComponent("/contractor");
   const intent = encodeURIComponent("contractor");
-  return `${origin}/auth/callback?next=${next}&intent=${intent}`;
+  return `${callback}?next=${next}&intent=${intent}`;
 }
