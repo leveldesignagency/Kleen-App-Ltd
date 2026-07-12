@@ -260,7 +260,6 @@ export default function ContractorReviewPage() {
           <p className="mt-1"><span className="text-slate-500">Account:</span> {mask(op.bank_account_number)}</p>
           <p className="mt-1"><span className="text-slate-500">Company no:</span> {op.company_number || "—"}</p>
           <p className="mt-1"><span className="text-slate-500">VAT:</span> {op.vat_number || "—"}</p>
-          <p className="mt-1"><span className="text-slate-500">UTR:</span> {op.utr_number || "—"}</p>
           {op.rejection_message && (
             <p className="mt-3 whitespace-pre-wrap rounded-lg border border-red-500/30 bg-red-500/10 p-2 text-red-200">
               <span className="font-medium text-red-300">Previous decline:</span> {op.rejection_message}

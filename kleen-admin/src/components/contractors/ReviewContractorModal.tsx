@@ -219,9 +219,6 @@ export default function ReviewContractorModal({ contractor, onClose, onUpdated, 
                   <p>
                     <span className="text-slate-500">VAT</span> {contractor.vat_number || "—"}
                   </p>
-                  <p className="col-span-2">
-                    <span className="text-slate-500">UTR</span> {contractor.utr_number || "—"}
-                  </p>
                 </div>
                 {contractor.notes && (
                   <div className="flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">

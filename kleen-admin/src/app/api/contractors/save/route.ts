@@ -51,7 +51,6 @@ function buildOperativeUpdatePayload(data: OperativePayload) {
     bank_account_number: data.bank_account_number?.replace(/\D/g, "").slice(0, 8) || null,
     company_number: data.company_number?.trim() || null,
     vat_number: data.vat_number?.trim() || null,
-    utr_number: data.utr_number?.replace(/\D/g, "").slice(0, 10) || null,
     trading_name: data.trading_name?.trim() || null,
     registered_address: data.registered_address?.trim() || null,
   };

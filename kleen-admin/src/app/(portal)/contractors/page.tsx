@@ -79,7 +79,6 @@ export interface OperativeServiceRow {
   is_active?: boolean;
 }
 const ACCOUNT_NUMBER_LENGTH = 8;
-const UTR_LENGTH = 10;
 const COMPANY_NUMBER_LENGTH = 8;
 
 /** Format 6 digits as XX-XX-XX */
@@ -225,7 +224,6 @@ export default function AdminContractorsPage() {
           bank_account_number: data.bank_account_number || null,
           company_number: data.company_number || null,
           vat_number: data.vat_number || null,
-          utr_number: data.utr_number || null,
           trading_name: data.trading_name || null,
           registered_address: data.registered_address || null,
         },
@@ -996,22 +994,12 @@ function ContractorModal({
                   placeholder={data.contractor_type === "business" ? "e.g. 12345678" : "N/A for sole traders"}
                   maxLength={COMPANY_NUMBER_LENGTH}
                 />
-                <div className="grid grid-cols-2 gap-3">
-                  <InputField
-                    label="VAT Number"
-                    value={data.vat_number}
-                    onChange={(v) => onChange({ vat_number: v })}
-                    placeholder="GB 123 4567 89"
-                  />
-                  <InputField
-                    label="UTR Number"
-                    value={data.utr_number}
-                    onChange={(v) => onChange({ utr_number: v.replace(/\D/g, "").slice(0, UTR_LENGTH) })}
-                    placeholder="10 digits"
-                    maxLength={UTR_LENGTH}
-                    inputMode="numeric"
-                  />
-                </div>
+                <InputField
+                  label="VAT Number"
+                  value={data.vat_number}
+                  onChange={(v) => onChange({ vat_number: v })}
+                  placeholder="GB 123 4567 89"
+                />
               </div>
             </div>
 
