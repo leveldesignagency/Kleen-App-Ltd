@@ -106,6 +106,23 @@ export async function applyQuoteAcceptAuthorized(params: {
     return "Database update failed";
   }
 
+  // Belt-and-suspenders: ensure assignment even if DB trigger 017 is missing.
+  const { data: acceptedQr } = await supabase
+    .from("quote_requests")
+    .select("operative_id")
+    .eq("id", quoteRequestId)
+    .maybeSingle();
+  if (acceptedQr?.operative_id) {
+    await supabase.from("job_assignments").upsert(
+      {
+        job_id: jobId,
+        operative_id: acceptedQr.operative_id,
+        assigned_at: now,
+      },
+      { onConflict: "job_id,operative_id" },
+    );
+  }
+
   const { data: job } = await supabase.from("jobs").select("user_id").eq("id", jobId).single();
   if (job?.user_id) {
     const { data: existingPay } = await supabase.from("payments").select("id").eq("job_id", jobId).limit(1).maybeSingle();
@@ -216,12 +233,20 @@ export async function applyQuoteAcceptAuthorized(params: {
     if (toEmail) {
       const { data: refRow } = await supabase.from("jobs").select("reference").eq("id", jobId).single();
       const ref = refRow?.reference || jobId.slice(0, 8).toUpperCase();
+      const { data: qresp } = await supabase
+        .from("quote_responses")
+        .select("price_pence")
+        .eq("quote_request_id", quoteRequestId)
+        .maybeSingle();
+      // Prefer contractor quote; fall back to customer total only if quote missing.
+      const payoutPence =
+        qresp?.price_pence != null && qresp.price_pence > 0 ? qresp.price_pence : amountPence;
       await sendContractorJobBookedEmail({
         toEmail,
         contractorName: op?.full_name?.trim() || "there",
         jobReference: ref,
         jobId,
-        amountPence,
+        payoutPence,
       });
     }
   }
@@ -290,6 +315,23 @@ export async function applyLegacyImmediateCapture(
     console.error("applyLegacyImmediateCapture job update failed:", jobUpdateErr);
     return "Database update failed";
   }
+
+  const { data: acceptedQr } = await supabase
+    .from("quote_requests")
+    .select("operative_id")
+    .eq("id", quoteRequestId)
+    .maybeSingle();
+  if (acceptedQr?.operative_id) {
+    await supabase.from("job_assignments").upsert(
+      {
+        job_id: jobId,
+        operative_id: acceptedQr.operative_id,
+        assigned_at: now,
+      },
+      { onConflict: "job_id,operative_id" },
+    );
+  }
+
   const { data: job } = await supabase.from("jobs").select("user_id").eq("id", jobId).single();
   if (job?.user_id) {
     const { data: existingPay } = await supabase.from("payments").select("id").eq("job_id", jobId).limit(1).maybeSingle();
@@ -396,12 +438,19 @@ export async function applyLegacyImmediateCapture(
     if (toEmail) {
       const { data: refRow } = await supabase.from("jobs").select("reference").eq("id", jobId).single();
       const ref = refRow?.reference || jobId.slice(0, 8).toUpperCase();
+      const { data: qresp } = await supabase
+        .from("quote_responses")
+        .select("price_pence")
+        .eq("quote_request_id", quoteRequestId)
+        .maybeSingle();
+      const payoutPence =
+        qresp?.price_pence != null && qresp.price_pence > 0 ? qresp.price_pence : amountPence;
       await sendContractorJobBookedEmail({
         toEmail,
         contractorName: op?.full_name?.trim() || "there",
         jobReference: ref,
         jobId,
-        amountPence,
+        payoutPence,
       });
     }
   }

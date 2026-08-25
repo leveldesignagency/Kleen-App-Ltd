@@ -32,14 +32,18 @@ export const usePaymentMethodStore = create<PaymentMethodStore>()((set, get) => 
   syncFromSupabase: async (supabase) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
-      set({ methods: [] });
+      // Keep any in-memory methods; a brief auth blip must not wipe cards mid-checkout.
       return;
     }
-    const { data: rows } = await supabase
+    const { data: rows, error } = await supabase
       .from("payment_methods")
       .select("id, type, label, last_four, brand, is_default, stripe_payment_method_id")
       .eq("user_id", user.id)
       .order("is_default", { ascending: false });
+    if (error) {
+      console.error("syncFromSupabase payment_methods:", error);
+      return;
+    }
     set({ methods: (rows ?? []).map(rowToMethod) });
   },
 

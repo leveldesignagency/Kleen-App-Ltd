@@ -93,6 +93,8 @@ export interface QuoteRequest {
   sent_at: string;
   viewed_at?: string;
   responded_at?: string;
+  /** Set when the customer declines this quote on Choose Your Quote */
+  customer_declined_at?: string | null;
   quote_response?: QuoteResponse;
 }
 

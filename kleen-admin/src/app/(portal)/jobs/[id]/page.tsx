@@ -8,6 +8,7 @@ import { useAdminStore, Contractor, QuoteRequest, QuoteResponse } from "@/lib/ad
 import { useAdminNotifications } from "@/lib/admin-notifications";
 import { fetchAdminJobById, fetchAdminJobsList } from "@/lib/admin-jobs-fetch";
 import { contractorOffersService, contractorServiceTags, fetchAdminContractors } from "@/lib/admin-contractors-fetch";
+import { quoteCustomerStatusBadge } from "@/lib/quote-customer-status";
 import {
   ArrowLeft,
   Loader2,
@@ -193,7 +194,15 @@ export default function AdminJobDetailPage() {
   const [showComparison, setShowComparison] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [showAddQuoteModal, setShowAddQuoteModal] = useState(false);
-  const [addQuoteForm, setAddQuoteForm] = useState({ contractorId: "", pricePounds: "", hours: "", arrivalTime: "", notes: "" });
+  const [addQuoteForm, setAddQuoteForm] = useState({
+    contractorId: "",
+    pricePounds: "",
+    hours: "",
+    arrivalTime: "",
+    notes: "",
+    /** Early ops: put the job on the contractor Assigned tab immediately */
+    assignDirectly: true,
+  });
   const [addQuoteContractorSearch, setAddQuoteContractorSearch] = useState("");
   const [addQuoteOnlyMatchingService, setAddQuoteOnlyMatchingService] = useState(true);
   const [refundPounds, setRefundPounds] = useState("");
@@ -259,7 +268,7 @@ export default function AdminJobDetailPage() {
         .order("created_at", { ascending: false });
 
       if (qrData) {
-        const mapped: QuoteRequest[] = qrData.map((qr: { id: string; job_id: string; operative_id: string; operatives?: { full_name?: string } | { full_name?: string }[]; status: string; deadline: string; message?: string; sent_at: string; viewed_at?: string; responded_at?: string; quote_responses?: Array<{ price_pence: number }> }) => {
+        const mapped: QuoteRequest[] = qrData.map((qr: { id: string; job_id: string; operative_id: string; operatives?: { full_name?: string } | { full_name?: string }[]; status: string; deadline: string; message?: string; sent_at: string; viewed_at?: string; responded_at?: string; customer_declined_at?: string | null; quote_responses?: Array<{ price_pence: number }> }) => {
           const op = Array.isArray(qr.operatives) ? qr.operatives[0] : qr.operatives;
           return {
             id: qr.id,
@@ -272,6 +281,7 @@ export default function AdminJobDetailPage() {
             sent_at: qr.sent_at,
             viewed_at: qr.viewed_at,
             responded_at: qr.responded_at,
+            customer_declined_at: qr.customer_declined_at ?? null,
             quote_response: (qr.quote_responses?.[0] as QuoteResponse | undefined) || undefined,
           };
         });
@@ -312,7 +322,7 @@ export default function AdminJobDetailPage() {
     }
 
     if (qrData) {
-      const mapped: QuoteRequest[] = qrData.map((qr: { id: string; job_id: string; operative_id: string; operatives?: { full_name?: string } | { full_name?: string }[]; status: string; deadline: string; message?: string; sent_at: string; viewed_at?: string; responded_at?: string; quote_responses?: Array<{ id: string; quote_request_id: string; price_pence: number; customer_price_pence?: number; estimated_hours: number; available_date?: string; notes?: string; created_at: string }> }) => {
+      const mapped: QuoteRequest[] = qrData.map((qr: { id: string; job_id: string; operative_id: string; operatives?: { full_name?: string } | { full_name?: string }[]; status: string; deadline: string; message?: string; sent_at: string; viewed_at?: string; responded_at?: string; customer_declined_at?: string | null; quote_responses?: Array<{ id: string; quote_request_id: string; price_pence: number; customer_price_pence?: number; estimated_hours: number; available_date?: string; notes?: string; created_at: string }> }) => {
         const op = Array.isArray(qr.operatives) ? qr.operatives[0] : qr.operatives;
         return {
           id: qr.id,
@@ -325,6 +335,7 @@ export default function AdminJobDetailPage() {
           sent_at: qr.sent_at,
           viewed_at: qr.viewed_at,
           responded_at: qr.responded_at,
+          customer_declined_at: qr.customer_declined_at ?? null,
           quote_response: (qr.quote_responses?.[0] as QuoteResponse | undefined) || undefined,
         };
       });
@@ -342,6 +353,11 @@ export default function AdminJobDetailPage() {
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "jobs", filter: `id=eq.${id}` },
+        () => refreshJobData()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "quote_requests", filter: `job_id=eq.${id}` },
         () => refreshJobData()
       )
       .subscribe();
@@ -619,15 +635,68 @@ export default function AdminJobDetailPage() {
       },
     });
 
-    const newStatus = job.status === "pending" ? "quotes_received" : job.status;
-    if (newStatus !== job.status) {
+    const newStatus = addQuoteForm.assignDirectly
+      ? "awaiting_completion"
+      : job.status === "pending"
+        ? "quotes_received"
+        : job.status;
+
+    if (addQuoteForm.assignDirectly) {
+      const nowIso = new Date().toISOString();
+      const { error: assignJobErr } = await supabase
+        .from("jobs")
+        .update({
+          status: "awaiting_completion",
+          accepted_quote_request_id: qr.id,
+          customer_accepted_at: nowIso,
+          actual_start: nowIso,
+        })
+        .eq("id", job.id);
+      if (assignJobErr) {
+        toast({
+          type: "warning",
+          title: "Quote saved",
+          message: `Quote added but could not assign job: ${assignJobErr.message}`,
+        });
+      } else {
+        const { error: assignErr } = await supabase.from("job_assignments").upsert(
+          {
+            job_id: job.id,
+            operative_id: operativeId,
+            assigned_at: nowIso,
+          },
+          { onConflict: "job_id,operative_id" },
+        );
+        if (assignErr) {
+          toast({
+            type: "warning",
+            title: "Quote saved",
+            message: `Job marked accepted but assignment row failed: ${assignErr.message}`,
+          });
+        }
+        updateJob(job.id, { status: "awaiting_completion" });
+      }
+    } else if (newStatus !== job.status) {
       await supabase.from("jobs").update({ status: newStatus }).eq("id", job.id);
       updateJob(job.id, { status: newStatus });
     }
 
     setShowAddQuoteModal(false);
-    setAddQuoteForm({ contractorId: "", pricePounds: "", hours: "", arrivalTime: "", notes: "" });
-    toast({ type: "success", title: "Quote added", message: `${operativeName}'s quote has been added.` });
+    setAddQuoteForm({
+      contractorId: "",
+      pricePounds: "",
+      hours: "",
+      arrivalTime: "",
+      notes: "",
+      assignDirectly: true,
+    });
+    toast({
+      type: "success",
+      title: addQuoteForm.assignDirectly ? "Contractor assigned" : "Quote added",
+      message: addQuoteForm.assignDirectly
+        ? `${operativeName} can see this job under Assigned in their dashboard.`
+        : `${operativeName}'s quote has been added.`,
+    });
     setActionLoading(false);
   };
 
@@ -1019,7 +1088,7 @@ export default function AdminJobDetailPage() {
               className="flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-500"
             >
               <Plus className="h-4 w-4" />
-              Add Quote
+              Add & assign
             </button>
           )}
         </div>
@@ -1286,17 +1355,25 @@ export default function AdminJobDetailPage() {
               <div className="mt-3 space-y-2">
                 {jobQuotes.map((qr) => {
                   const qrBadge = QR_STATUS_BADGE[qr.status] ?? QR_STATUS_BADGE.sent;
+                  const customerBadge = quoteCustomerStatusBadge(qr, job);
                   return (
                     <Link
                       key={qr.id}
                       href={`/jobs/${job.id}/quotes/${qr.id}`}
                       className="block rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 transition-colors hover:bg-white/[0.06]"
                     >
-                      <div className="flex items-center justify-between">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="text-sm font-medium">{qr.operative_name}</p>
-                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${qrBadge.cls}`}>
-                          {qrBadge.label}
-                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${qrBadge.cls}`}>
+                            {qrBadge.label}
+                          </span>
+                          {customerBadge && (
+                            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${customerBadge.cls}`}>
+                              {customerBadge.label}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <p className="mt-1 text-xs text-slate-500">
                         Sent {new Date(qr.sent_at).toLocaleDateString("en-GB")}
@@ -1374,7 +1451,9 @@ export default function AdminJobDetailPage() {
             <h2 className="text-lg font-semibold text-white">
               Add quote for: {job?.service || "this job"}
             </h2>
-            <p className="mt-1 text-sm text-slate-400">Add a contractor quote manually. They will appear in the list and can be sent to the customer individually or all at once.</p>
+            <p className="mt-1 text-sm text-slate-400">
+              Add a contractor quote. For early ops, leave “Assign directly” on so the job appears on their Assigned tab immediately.
+            </p>
             <div className="mt-4 space-y-3">
               <div>
                 <label className="block text-[11px] text-slate-400">Contractor</label>
@@ -1485,6 +1564,20 @@ export default function AdminJobDetailPage() {
                   placeholder="Contractor notes…"
                 />
               </div>
+              <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-brand-500/30 bg-brand-500/10 px-3 py-2.5 text-xs text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={addQuoteForm.assignDirectly}
+                  onChange={(e) => setAddQuoteForm((f) => ({ ...f, assignDirectly: e.target.checked }))}
+                  className="mt-0.5 rounded border-slate-500"
+                />
+                <span>
+                  <span className="font-semibold text-white">Assign directly to contractor</span>
+                  <span className="mt-0.5 block text-slate-400">
+                    Puts the job on their Assigned tab now (early ops). Untick to only add a quote for the customer to choose later.
+                  </span>
+                </span>
+              </label>
             </div>
             <div className="mt-5 flex gap-2">
               <button
@@ -1493,12 +1586,19 @@ export default function AdminJobDetailPage() {
                 className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-brand-600 py-2.5 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
               >
                 {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                Add Quote
+                {addQuoteForm.assignDirectly ? "Add & assign" : "Add Quote"}
               </button>
               <button
                 onClick={() => {
                   setShowAddQuoteModal(false);
-                  setAddQuoteForm({ contractorId: "", pricePounds: "", hours: "", arrivalTime: "", notes: "" });
+                  setAddQuoteForm({
+                    contractorId: "",
+                    pricePounds: "",
+                    hours: "",
+                    arrivalTime: "",
+                    notes: "",
+                    assignDirectly: true,
+                  });
                   setAddQuoteContractorSearch("");
                   setAddQuoteOnlyMatchingService(true);
                 }}
@@ -1778,17 +1878,26 @@ function WorkflowActions({
         {quotedResponses.length > 0 && (
           <div className="mt-3 space-y-2">
             <p className="text-xs font-medium text-slate-400">Quotes sent to customer:</p>
-            {quotedResponses.map((qr) => (
+            {quotedResponses.map((qr) => {
+              const customerBadge = quoteCustomerStatusBadge(qr, job as { accepted_quote_request_id?: string | null; status: string });
+              return (
               <div
                 key={qr.id}
                 className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2"
               >
-                <p className="text-sm font-medium">{qr.operative_name}</p>
+                <div>
+                  <p className="text-sm font-medium">{qr.operative_name}</p>
+                  {customerBadge && (
+                    <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${customerBadge.cls}`}>
+                      {customerBadge.label}
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-slate-500">
                   £{(Math.round((qr.quote_response?.price_pence || 0) * (1 + SERVICE_FEE_RATE)) / 100).toFixed(2)} customer price
                 </p>
               </div>
-            ))}
+            );})}
           </div>
         )}
         <div className="mt-3">
@@ -1866,14 +1975,38 @@ function WorkflowActions({
   }
 
   if (status === "customer_accepted" || status === "accepted" || status === "awaiting_completion" || status === "in_progress") {
+    const acceptedId = (job as { accepted_quote_request_id?: string | null }).accepted_quote_request_id;
+    const acceptedQr = acceptedId ? quotedResponses.find((qr) => qr.id === acceptedId) : undefined;
+    const showForward = acceptedQr?.quote_response;
     return (
       <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-5">
         <div className="flex items-center gap-2 text-cyan-400">
           <Clock className="h-5 w-5" />
-          <h2 className="text-sm font-semibold">Job in Progress</h2>
+          <h2 className="text-sm font-semibold">
+            {status === "awaiting_completion" || status === "in_progress" ? "Job in Progress" : "Customer Accepted a Quote"}
+          </h2>
         </div>
+        {acceptedQr && (
+          <p className="mt-2 text-sm text-slate-400">
+            Chosen contractor: <span className="font-medium text-slate-200">{acceptedQr.operative_name}</span>
+            {acceptedQr.quote_response && (
+              <> · payout £{(acceptedQr.quote_response.price_pence / 100).toFixed(2)}</>
+            )}
+          </p>
+        )}
+        {showForward && (
+          <button
+            type="button"
+            onClick={() => onForwardToContractor(acceptedQr!)}
+            disabled={actionLoading}
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-brand-500/40 bg-brand-500/10 py-2.5 text-sm font-medium text-brand-300 hover:bg-brand-500/20 disabled:opacity-50"
+          >
+            {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Forward className="h-4 w-4" />}
+            Email job details to contractor
+          </button>
+        )}
         <p className="mt-2 text-sm text-slate-400">
-          Contractor is completing the work. Record completion confirmations when they come in.
+          Record completion confirmations when they come in.
         </p>
         <div className="mt-3 space-y-2">
           <button

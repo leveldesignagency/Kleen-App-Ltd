@@ -96,7 +96,16 @@ export function AcceptQuoteFlowModal({
   const [postcode, setPostcode] = useState("");
   const [stripeTimedOut, setStripeTimedOut] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
-  const savedCards = pmMethods.filter((m) => m.type === "card" && m.stripePaymentMethodId);
+  const [pmLoading, setPmLoading] = useState(true);
+  /** All card rows on file; payable ones need a Stripe pm_ id to charge. */
+  const savedCards = useMemo(
+    () => pmMethods.filter((m) => m.type === "card"),
+    [pmMethods]
+  );
+  const payableCards = useMemo(
+    () => savedCards.filter((m) => !!m.stripePaymentMethodId),
+    [savedCards]
+  );
 
   useEffect(() => {
     if (step !== 4) {
@@ -112,6 +121,11 @@ export function AcceptQuoteFlowModal({
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+
+      // Prefetch cards so step 4 can default to the preferred card immediately.
+      setPmLoading(true);
+      await syncPaymentMethods(supabase);
+      setPmLoading(false);
 
       if (quote.operative_service_id) {
         const { data: os } = await supabase
@@ -140,7 +154,7 @@ export function AcceptQuoteFlowModal({
       if (existingTerms) setTermsAccepted(true);
     };
     load();
-  }, [jobId, quote.quote_request_id, quote.operative_service_id]);
+  }, [jobId, quote.quote_request_id, quote.operative_service_id, syncPaymentMethods]);
 
   useEffect(() => {
     if (!contractLoaded) return;
@@ -156,20 +170,39 @@ export function AcceptQuoteFlowModal({
   }, [contractLoaded, contractSigned, termsAccepted, contract, quote.operative_service_id]);
 
   useEffect(() => {
-    if (step === 4) {
-      syncPaymentMethods(createClient());
-    }
+    if (step !== 4) return;
+    let cancelled = false;
+    (async () => {
+      setPmLoading(true);
+      await syncPaymentMethods(createClient());
+      if (!cancelled) setPmLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [step, syncPaymentMethods]);
 
   useEffect(() => {
-    if (step === 4 && savedCards.length > 0 && !selectedSavedPmId) {
-      const defaultCard = savedCards.find((m) => m.isDefault) || savedCards[0];
-      setSelectedSavedPmId(defaultCard.id);
-      setPayOption("saved");
-    } else if (step === 4 && savedCards.length === 0) {
-      setPayOption("new");
+    if (step !== 4 || pmLoading) return;
+    // Prefer default/preferred card that can actually be charged.
+    if (payableCards.length > 0) {
+      const preferred =
+        payableCards.find((m) => m.isDefault) ||
+        payableCards[0];
+      const selectionValid = selectedSavedPmId
+        ? payableCards.some((m) => m.id === selectedSavedPmId)
+        : false;
+      if (!selectionValid) {
+        setSelectedSavedPmId(preferred.id);
+        setPayOption((prev) => (prev === "paypal" || prev === "klarna" ? prev : "saved"));
+      }
+      return;
     }
-  }, [step, savedCards, selectedSavedPmId]);
+    if (payOption === "saved") {
+      setPayOption("new");
+      setSelectedSavedPmId("");
+    }
+  }, [step, pmLoading, payableCards, selectedSavedPmId, payOption]);
 
   // If pay loading is stuck for 90s, clear it and show a message
   const payLoadingStartedAt = useRef<number | null>(null);
@@ -703,10 +736,15 @@ export function AcceptQuoteFlowModal({
               {stripe && elements ? (
                 <>
                   <div className="space-y-2">
-                      {savedCards.length > 0 ? (
+                      {pmLoading ? (
+                        <div className="flex items-center gap-2 py-2 text-xs text-slate-500">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Loading your saved cards…
+                        </div>
+                      ) : payableCards.length > 0 ? (
                         <>
-                          <p className="text-xs font-medium text-slate-500">Your saved cards</p>
-                          {savedCards.map((m) => (
+                          <p className="text-xs font-medium text-slate-500">Your cards on file</p>
+                          {payableCards.map((m) => (
                             <button
                               key={m.id}
                               type="button"
@@ -717,12 +755,27 @@ export function AcceptQuoteFlowModal({
                                   : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50"
                               }`}
                             >
-                              <span className="font-medium">{m.label}</span>
+                              <span className="font-medium">
+                                {m.label}
+                                {m.isDefault ? (
+                                  <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-brand-600">
+                                    Preferred
+                                  </span>
+                                ) : null}
+                              </span>
                               {payOption === "saved" && selectedSavedPmId === m.id && <Check className="h-5 w-5 text-brand-600" />}
                             </button>
                           ))}
                           <p className="py-1 text-center text-xs text-slate-400">or</p>
                         </>
+                      ) : savedCards.length > 0 ? (
+                        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                          You have a card saved, but it can’t be charged yet. Re-add it under{" "}
+                          <Link href="/dashboard/payment-methods" className="font-medium text-brand-700 hover:underline">
+                            Payment Methods
+                          </Link>{" "}
+                          (or enter it below) so it can be used at checkout.
+                        </p>
                       ) : (
                         <p className="text-xs text-slate-500">
                           No saved cards. Add one in{" "}

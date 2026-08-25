@@ -6,6 +6,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAdminNotifications } from "@/lib/admin-notifications";
 import type { QuoteRequest } from "@/lib/admin-store";
+import { quoteCustomerStatusBadge } from "@/lib/quote-customer-status";
 import CustomDropdown from "@/components/ui/CustomDropdown";
 import {
   ArrowLeft,
@@ -20,6 +21,7 @@ import {
   Plus,
   ChevronDown,
   ChevronUp,
+  RefreshCw,
 } from "lucide-react";
 
 const SERVICE_FEE_RATE = 0.175;
@@ -38,6 +40,7 @@ type JobInfo = {
   reference: string;
   service: string;
   status: string;
+  accepted_quote_request_id?: string | null;
   cancelled_reason?: string;
   customer_name: string;
   customer_email: string;
@@ -97,7 +100,15 @@ export default function JobQuotesPage() {
   const [sendAllListExpanded, setSendAllListExpanded] = useState(false);
   const [showAddQuoteModal, setShowAddQuoteModal] = useState(false);
   const [addQuoteLoading, setAddQuoteLoading] = useState(false);
-  const [addQuoteForm, setAddQuoteForm] = useState({ contractorId: "", pricePounds: "", hours: "", arrivalTime: "", notes: "" });
+  const [addQuoteForm, setAddQuoteForm] = useState({
+    contractorId: "",
+    pricePounds: "",
+    hours: "",
+    arrivalTime: "",
+    notes: "",
+    assignDirectly: true,
+  });
+  const [forwardLoading, setForwardLoading] = useState(false);
   const quoteRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const loadJobAndQuotes = useCallback(async () => {
@@ -105,7 +116,7 @@ export default function JobQuotesPage() {
     const supabase = createClient();
     const { data: j, error: jobErr } = await supabase
       .from("jobs")
-      .select("id, reference, status, cancelled_reason, address_line_1, address_line_2, city, postcode, preferred_date, preferred_time, notes, user_id, services(name)")
+      .select("id, reference, status, accepted_quote_request_id, cancelled_reason, address_line_1, address_line_2, city, postcode, preferred_date, preferred_time, notes, user_id, services(name)")
       .eq("id", jobId)
       .single();
 
@@ -133,6 +144,7 @@ export default function JobQuotesPage() {
         reference: jj.reference || jj.id?.slice(0, 8).toUpperCase(),
         service: jj.services?.name || "Cleaning",
         status: jj.status || "pending",
+        accepted_quote_request_id: (jj as { accepted_quote_request_id?: string | null }).accepted_quote_request_id ?? null,
         cancelled_reason: (jj as { cancelled_reason?: string }).cancelled_reason,
         customer_name: prof?.full_name || "Unknown",
         customer_email: prof?.email || "",
@@ -174,6 +186,7 @@ export default function JobQuotesPage() {
         sent_at: string;
         viewed_at?: string;
         responded_at?: string;
+        customer_declined_at?: string | null;
       }) => {
         const resp = responsesByRequestId[qr.id];
         return {
@@ -187,6 +200,7 @@ export default function JobQuotesPage() {
           sent_at: qr.sent_at,
           viewed_at: qr.viewed_at,
           responded_at: qr.responded_at,
+          customer_declined_at: qr.customer_declined_at ?? null,
           quote_response: resp
             ? {
                 id: resp.id,
@@ -218,6 +232,29 @@ export default function JobQuotesPage() {
       setLoading(false);
     };
     run();
+  }, [jobId, loadJobAndQuotes]);
+
+  useEffect(() => {
+    if (!jobId) return;
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`admin-job-quotes-${jobId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "jobs", filter: `id=eq.${jobId}` },
+        () => loadJobAndQuotes(),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "quote_requests", filter: `job_id=eq.${jobId}` },
+        () => loadJobAndQuotes(),
+      )
+      .subscribe();
+    const interval = setInterval(loadJobAndQuotes, 20000);
+    return () => {
+      channel.unsubscribe();
+      clearInterval(interval);
+    };
   }, [jobId, loadJobAndQuotes]);
 
   useEffect(() => {
@@ -349,14 +386,95 @@ export default function JobQuotesPage() {
       },
       ...prev,
     ]);
-    if (job.status === "pending") {
+    if (job.status === "pending" && !addQuoteForm.assignDirectly) {
       await supabase.from("jobs").update({ status: "quotes_received" }).eq("id", jobId);
       setJob((p) => (p ? { ...p, status: "quotes_received" } : null));
     }
+
+    if (addQuoteForm.assignDirectly) {
+      const nowIso = new Date().toISOString();
+      await supabase
+        .from("jobs")
+        .update({
+          status: "awaiting_completion",
+          accepted_quote_request_id: qr.id,
+          customer_accepted_at: nowIso,
+          actual_start: nowIso,
+        })
+        .eq("id", jobId);
+      await supabase.from("job_assignments").upsert(
+        { job_id: jobId, operative_id: operativeId, assigned_at: nowIso },
+        { onConflict: "job_id,operative_id" },
+      );
+      setJob((p) =>
+        p
+          ? { ...p, status: "awaiting_completion", accepted_quote_request_id: qr.id }
+          : null,
+      );
+    }
+
     setShowAddQuoteModal(false);
-    setAddQuoteForm({ contractorId: "", pricePounds: "", hours: "", arrivalTime: "", notes: "" });
-    toast({ type: "success", title: "Quote added", message: `${operativeName}'s quote has been added.` });
+    setAddQuoteForm({
+      contractorId: "",
+      pricePounds: "",
+      hours: "",
+      arrivalTime: "",
+      notes: "",
+      assignDirectly: true,
+    });
+    toast({
+      type: "success",
+      title: addQuoteForm.assignDirectly ? "Contractor assigned" : "Quote added",
+      message: addQuoteForm.assignDirectly
+        ? `${operativeName} can see this job under Assigned in their dashboard.`
+        : `${operativeName}'s quote has been added.`,
+    });
     setAddQuoteLoading(false);
+  };
+
+  const handleForwardToContractor = async (qr: QuoteRequest) => {
+    if (!jobId || !qr.quote_response) return;
+    setForwardLoading(true);
+    try {
+      const emailRes = await fetch("/api/jobs/send-contractor-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId }),
+      });
+      const emailData = await emailRes.json().catch(() => ({}));
+      if (!emailRes.ok) {
+        toast({
+          type: "warning",
+          title: "Email not sent",
+          message: emailData.error || "Could not email contractor. Check RESEND_API_KEY.",
+        });
+      }
+    } catch {
+      toast({ type: "warning", title: "Email not sent", message: "Could not email contractor." });
+    }
+
+    const supabase = createClient();
+    const now = new Date().toISOString();
+    await supabase
+      .from("jobs")
+      .update({
+        status: "awaiting_completion",
+        accepted_quote_request_id: qr.id,
+        customer_accepted_at: now,
+        actual_start: now,
+      })
+      .eq("id", jobId);
+    await supabase.from("job_assignments").upsert(
+      { job_id: jobId, operative_id: qr.operative_id, assigned_at: now },
+      { onConflict: "job_id,operative_id" },
+    );
+    await loadJobAndQuotes();
+    toast({
+      type: "success",
+      title: "Forwarded to contractor",
+      message: `${qr.operative_name} has been assigned and emailed the job details.`,
+    });
+    setForwardLoading(false);
   };
 
   const handleRemoveAllQuotes = async () => {
@@ -490,7 +608,20 @@ export default function JobQuotesPage() {
     );
   }
 
-  const terminalOrAccepted = ["customer_accepted", "accepted", "completed", "funds_released"];
+  const terminalOrAccepted = [
+    "customer_accepted",
+    "accepted",
+    "awaiting_completion",
+    "in_progress",
+    "completed",
+    "funds_released",
+  ];
+  const acceptedQuote = job.accepted_quote_request_id
+    ? quotes.find((q) => q.id === job.accepted_quote_request_id)
+    : null;
+  const canForward =
+    acceptedQuote?.quote_response &&
+    ["customer_accepted", "accepted", "awaiting_completion", "in_progress", "sent_to_customer"].includes(job.status);
   const canSend = !terminalOrAccepted.includes(job.status) && quotes.some((q) => q.quote_response);
   const hasQuotesToSend = quotes.some(
     (q) => q.quote_response && (q.quote_response.sent_to_customer_at == null)
@@ -546,7 +677,16 @@ export default function JobQuotesPage() {
               className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-500"
             >
               <Plus className="h-4 w-4" />
-              Create quote
+              Add & assign contractor
+            </button>
+            <button
+              type="button"
+              onClick={() => loadJobAndQuotes()}
+              className="flex items-center gap-1.5 rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-white/10"
+              title="Refresh quote status"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Refresh
             </button>
             {showSendAllButton && (
               <button
@@ -572,6 +712,27 @@ export default function JobQuotesPage() {
 
           <div>
             <h2 className="mb-3 text-sm font-semibold text-slate-300">Quote tracking</h2>
+            {acceptedQuote && (
+              <div className="mb-4 rounded-xl border border-brand-500/30 bg-brand-500/10 p-4">
+                <p className="text-sm font-medium text-brand-200">
+                  Customer accepted: {acceptedQuote.operative_name}
+                </p>
+                <p className="mt-1 text-xs text-slate-400">
+                  Payout £{((acceptedQuote.quote_response?.price_pence || 0) / 100).toFixed(2)} · Job status: {job.status}
+                </p>
+                {canForward && (
+                  <button
+                    type="button"
+                    onClick={() => handleForwardToContractor(acceptedQuote)}
+                    disabled={forwardLoading}
+                    className="mt-3 flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
+                  >
+                    {forwardLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Forward className="h-4 w-4" />}
+                    Email job details to contractor
+                  </button>
+                )}
+              </div>
+            )}
             {job.status === "cancelled" && job.cancelled_reason === "quotes_declined" && (
               <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
                 Customer declined all quotes. All quotes below show as rejected.
@@ -592,9 +753,18 @@ export default function JobQuotesPage() {
               <div className="space-y-4">
                 {quotes.map((qr) => {
                   const customerRejected = job.status === "cancelled" && job.cancelled_reason === "quotes_declined";
-                  const badge = customerRejected ? QR_STATUS_BADGE.rejected_by_customer : (QR_STATUS_BADGE[qr.status] ?? QR_STATUS_BADGE.sent);
+                  const contractorBadge = customerRejected
+                    ? QR_STATUS_BADGE.rejected_by_customer
+                    : (QR_STATUS_BADGE[qr.status] ?? QR_STATUS_BADGE.sent);
+                  const customerBadge = !customerRejected
+                    ? quoteCustomerStatusBadge(qr, job)
+                    : QR_STATUS_BADGE.rejected_by_customer;
                   const notYetSent = qr.quote_response?.sent_to_customer_at == null;
                   const canSendOne = qr.quote_response && !terminalOrAccepted.includes(job.status) && notYetSent;
+                  const canForwardOne =
+                    qr.quote_response &&
+                    !qr.customer_declined_at &&
+                    ["sent_to_customer", "customer_accepted", "accepted", "awaiting_completion"].includes(job.status);
                   return (
                     <div
                       key={qr.id}
@@ -603,9 +773,16 @@ export default function JobQuotesPage() {
                     >
                       <div className="flex flex-wrap items-start justify-between gap-4">
                         <div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <p className="font-semibold text-slate-200">{qr.operative_name}</p>
-                            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${badge.cls}`}>{badge.label}</span>
+                            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${contractorBadge.cls}`}>
+                              {contractorBadge.label}
+                            </span>
+                            {customerBadge && (
+                              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${customerBadge.cls}`}>
+                                {customerBadge.label}
+                              </span>
+                            )}
                           </div>
                           <p className="mt-1 text-xs text-slate-500">
                             Sent {new Date(qr.sent_at).toLocaleDateString("en-GB")} · Deadline {new Date(qr.deadline).toLocaleDateString("en-GB")}
@@ -640,6 +817,17 @@ export default function JobQuotesPage() {
                               Send to customer
                             </button>
                           )}
+                          {canForwardOne && job.accepted_quote_request_id !== qr.id && (
+                            <button
+                              type="button"
+                              onClick={() => handleForwardToContractor(qr)}
+                              disabled={forwardLoading}
+                              className="flex items-center gap-1.5 rounded-xl border border-brand-500/40 bg-brand-500/10 px-4 py-2 text-sm font-medium text-brand-300 transition-colors hover:bg-brand-500/20 disabled:opacity-50"
+                            >
+                              {forwardLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Forward className="h-4 w-4" />}
+                              Assign & email
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -669,8 +857,10 @@ export default function JobQuotesPage() {
       {showAddQuoteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setShowAddQuoteModal(false)}>
           <div className="w-full max-w-md rounded-2xl border border-white/10 bg-slate-900 p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-semibold text-white">Create quote</h2>
-            <p className="mt-1 text-sm text-slate-400">Add a contractor quote. You can edit and send to the customer from the list.</p>
+            <h2 className="text-lg font-semibold text-white">Add contractor quote</h2>
+            <p className="mt-1 text-sm text-slate-400">
+              Add a quote and optionally assign the contractor immediately (early ops). They will see the job under Assigned in their dashboard.
+            </p>
             <div className="mt-4 space-y-3">
               <div>
                 <label className="block text-[11px] text-slate-400">Contractor</label>
@@ -725,6 +915,20 @@ export default function JobQuotesPage() {
                   placeholder="Contractor notes…"
                 />
               </div>
+              <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-brand-500/30 bg-brand-500/10 px-3 py-2.5 text-xs text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={addQuoteForm.assignDirectly}
+                  onChange={(e) => setAddQuoteForm((f) => ({ ...f, assignDirectly: e.target.checked }))}
+                  className="mt-0.5 rounded border-slate-500"
+                />
+                <span>
+                  <span className="font-semibold text-white">Assign directly to contractor</span>
+                  <span className="mt-0.5 block text-slate-400">
+                    Skips customer choice — use for early development bookings. Untick to only add a quote for the customer to pick.
+                  </span>
+                </span>
+              </label>
             </div>
             <div className="mt-5 flex gap-2">
               <button
@@ -733,10 +937,20 @@ export default function JobQuotesPage() {
                 className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-brand-600 py-2.5 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
               >
                 {addQuoteLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                Create quote
+                {addQuoteForm.assignDirectly ? "Add & assign" : "Add quote only"}
               </button>
               <button
-                onClick={() => { setShowAddQuoteModal(false); setAddQuoteForm({ contractorId: "", pricePounds: "", hours: "", arrivalTime: "", notes: "" }); }}
+                onClick={() => {
+                  setShowAddQuoteModal(false);
+                  setAddQuoteForm({
+                    contractorId: "",
+                    pricePounds: "",
+                    hours: "",
+                    arrivalTime: "",
+                    notes: "",
+                    assignDirectly: true,
+                  });
+                }}
                 className="rounded-xl border border-white/10 px-4 py-2.5 text-sm font-medium text-slate-300 hover:bg-white/10"
               >
                 Cancel

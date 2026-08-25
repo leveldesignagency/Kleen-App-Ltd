@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
 
   const { data: resp } = await supabase
     .from("quote_responses")
-    .select("customer_price_pence, estimated_hours, available_date")
+    .select("price_pence, customer_price_pence, estimated_hours, available_date")
     .eq("quote_request_id", quoteRequestId)
     .single();
 
@@ -99,9 +99,13 @@ export async function POST(request: NextRequest) {
   const address = addressParts.length ? addressParts.join(", ") : "—";
   const serviceName = (job as { services?: { name?: string } }).services?.name || "Cleaning";
   const ref = (job as { reference?: string }).reference || jobId.slice(0, 8).toUpperCase();
-  const customerPrice = resp?.customer_price_pence
-    ? `£${(resp.customer_price_pence / 100).toFixed(2)}`
-    : "—";
+  // Contractor emails show their payout (quoted price), not the customer total incl. fee.
+  const payoutLabel =
+    resp?.price_pence != null && resp.price_pence > 0
+      ? `£${(resp.price_pence / 100).toFixed(2)}`
+      : resp?.customer_price_pence
+        ? `£${(resp.customer_price_pence / 100).toFixed(2)}`
+        : "—";
   const estimatedHours = resp?.estimated_hours ?? "—";
   const availableDate = resp?.available_date
     ? new Date(resp.available_date).toLocaleDateString("en-GB", { dateStyle: "medium" })
@@ -141,7 +145,7 @@ export async function POST(request: NextRequest) {
     <tr><td style="padding: 8px 0; border-bottom: 1px solid #e2e8f0; font-weight: 600;">Address</td><td style="padding: 8px 0; border-bottom: 1px solid #e2e8f0;">${address}</td></tr>
     <tr><td style="padding: 8px 0; border-bottom: 1px solid #e2e8f0; font-weight: 600;">Preferred date</td><td style="padding: 8px 0; border-bottom: 1px solid #e2e8f0;">${preferredDate}</td></tr>
     <tr><td style="padding: 8px 0; border-bottom: 1px solid #e2e8f0; font-weight: 600;">Preferred time</td><td style="padding: 8px 0; border-bottom: 1px solid #e2e8f0;">${preferredTime}</td></tr>
-    <tr><td style="padding: 8px 0; border-bottom: 1px solid #e2e8f0; font-weight: 600;">Customer price</td><td style="padding: 8px 0; border-bottom: 1px solid #e2e8f0;">${customerPrice}</td></tr>
+    <tr><td style="padding: 8px 0; border-bottom: 1px solid #e2e8f0; font-weight: 600;">Your payout</td><td style="padding: 8px 0; border-bottom: 1px solid #e2e8f0;">${payoutLabel}</td></tr>
     <tr><td style="padding: 8px 0; border-bottom: 1px solid #e2e8f0; font-weight: 600;">Est. hours</td><td style="padding: 8px 0; border-bottom: 1px solid #e2e8f0;">${estimatedHours}</td></tr>
     <tr><td style="padding: 8px 0; border-bottom: 1px solid #e2e8f0; font-weight: 600;">Your available date</td><td style="padding: 8px 0; border-bottom: 1px solid #e2e8f0;">${availableDate}</td></tr>
     <tr><td style="padding: 8px 0; border-bottom: 1px solid #e2e8f0; font-weight: 600;">Notes</td><td style="padding: 8px 0; border-bottom: 1px solid #e2e8f0;">${notes}</td></tr>
