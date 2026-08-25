@@ -495,21 +495,64 @@ export default function CustomerQuotesView({
                 {availableQuotes.map((q, i) =>
                   quoteCard(q, {
                     isBestPrice: i === 0,
-                    showActions: canChoose && !undoState,
+                    // Keep Accept/Decline on remaining quotes while undo banner is up
+                    showActions: canChoose,
                   })
                 )}
               </div>
             </section>
           )}
 
-          {/* Declined quotes — own section below */}
+          {/* Declined quotes — table below active offers */}
           {declinedQuotes.length > 0 && (
             <section>
               <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
-                Declined
+                Declined offers
               </h2>
-              <div className="space-y-4">
-                {declinedQuotes.map((q) => quoteCard(q, { isDeclined: true }))}
+              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3">Contractor</th>
+                      <th className="px-4 py-3">Est. hours</th>
+                      <th className="px-4 py-3">Available</th>
+                      <th className="px-4 py-3 text-right">Price</th>
+                      <th className="px-4 py-3 text-right">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {declinedQuotes.map((q) => (
+                      <tr key={q.id} className="bg-slate-50/80 text-slate-600">
+                        <td className="px-4 py-3">
+                          <div className="font-medium text-slate-800">{q.contractor_label}</div>
+                          {q.contractor_rating > 0 && (
+                            <div className="mt-0.5 flex items-center gap-1 text-xs text-amber-600">
+                              <Star className="h-3 w-3 fill-current" />
+                              {q.contractor_rating.toFixed(1)}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">{q.estimated_hours}h</td>
+                        <td className="px-4 py-3">
+                          {q.available_date
+                            ? new Date(q.available_date).toLocaleDateString("en-GB", {
+                                day: "numeric",
+                                month: "short",
+                              })
+                            : "—"}
+                        </td>
+                        <td className="px-4 py-3 text-right font-semibold text-slate-800">
+                          {formatPrice(q.customer_price_pence)}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <span className="inline-flex rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600">
+                            Declined
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </section>
           )}
