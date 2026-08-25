@@ -10,7 +10,6 @@ import {
 } from "react";
 import { Loader2, Lock } from "lucide-react";
 import { isSiteAccessGateEnabledPublic } from "@/lib/site-access-gate-public";
-import { neutralizeAuthStorm } from "@/lib/supabase/client";
 
 const SESSION_UNLOCK_KEY = "kleen_preview_session_ok";
 
@@ -73,8 +72,6 @@ export function SiteAccessProvider({ children }: { children: React.ReactNode }) 
   const statusReadyRef = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
-    // Kill corrupt refresh tokens as early as possible (before job-flow mounts).
-    void neutralizeAuthStorm();
     setUnlocked(readSessionUnlocked());
   }, []);
 
