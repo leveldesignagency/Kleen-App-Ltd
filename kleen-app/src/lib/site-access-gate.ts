@@ -4,8 +4,9 @@ export const SITE_ACCESS_COOKIE = "kleen_site_access";
 /** Cookie value set after successful unlock (edge-safe — no Node crypto in middleware). */
 export const SITE_ACCESS_COOKIE_VALUE = "1";
 
-/** Paths blocked server-side when gate is on (sign-in uses client modal instead). */
-const MIDDLEWARE_GATED_PREFIXES = ["/dashboard", "/auth/callback", "/job-flow"];
+/** Paths blocked server-side when gate is on (sign-in uses client modal instead).
+ * Do NOT include `/auth/callback` — OAuth must complete or the one-time code is lost. */
+const MIDDLEWARE_GATED_PREFIXES = ["/dashboard", "/job-flow"];
 
 export function isSiteAccessGateEnabled(): boolean {
   return process.env.SITE_ACCESS_GATE_ENABLED === "true";

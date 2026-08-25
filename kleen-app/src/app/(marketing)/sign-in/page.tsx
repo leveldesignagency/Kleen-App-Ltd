@@ -17,6 +17,8 @@ function SignInContent() {
   const searchParams = useSearchParams();
   const nextPath = searchParams.get("next") || "/dashboard";
   const safeNext = nextPath.startsWith("/") ? nextPath : "/dashboard";
+  const authError = searchParams.get("error");
+  const authReason = searchParams.get("reason");
 
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
@@ -24,7 +26,21 @@ function SignInContent() {
   const [fullName, setFullName] = useState("");
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(() => {
+    if (authError === "auth") {
+      if (authReason === "pkce") {
+        return "Google sign-in was interrupted (browser cookies). Try again in a normal window — not Incognito — and only click Continue with Google once.";
+      }
+      if (authReason === "expired") {
+        return "That sign-in link expired. Please try Continue with Google again.";
+      }
+      return "Google sign-in failed. Please try again. If it keeps failing, clear cookies for kleenapp.co.uk and retry.";
+    }
+    if (authError === "locked" || searchParams.get("locked") === "1") {
+      return "Private preview unlock is required before signing in.";
+    }
+    return "";
+  });
 
   const handleGoogleSignIn = async () => {
     setError("");
@@ -197,6 +213,7 @@ function SignInContent() {
                       placeholder="••••••••"
                       required
                       minLength={6}
+                      autoComplete={mode === "signin" ? "current-password" : "new-password"}
                     />
                   </div>
                 </div>

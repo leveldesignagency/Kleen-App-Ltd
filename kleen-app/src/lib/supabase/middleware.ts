@@ -3,6 +3,14 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseAuthCookieOptions } from "@/lib/supabase/auth-cookie-options";
 
 export async function updateSession(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+
+  // Let the auth callback route exchange the OAuth code untouched — getUser() here
+  // can race with PKCE cookies and break Google sign-in.
+  if (pathname === "/auth/callback" || pathname.startsWith("/auth/callback/")) {
+    return NextResponse.next({ request: { headers: request.headers } });
+  }
+
   const response = NextResponse.next({ request: { headers: request.headers } });
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -32,7 +40,6 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const pathname = request.nextUrl.pathname;
   const needsCustomerSession =
     pathname === "/dashboard" ||
     pathname.startsWith("/dashboard/");

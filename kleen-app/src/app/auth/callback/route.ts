@@ -3,7 +3,6 @@ import { NextResponse, type NextRequest } from "next/server";
 import { contractorPortalHref } from "@/lib/contractor-portal-url";
 import { getSupabaseAuthCookieOptions } from "@/lib/supabase/auth-cookie-options";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
-import { hasSiteAccess, isSiteAccessGateEnabled } from "@/lib/site-access-gate";
 import { maybeSendWelcomeEmail } from "@/lib/maybe-send-welcome";
 
 /**
@@ -22,9 +21,8 @@ export async function GET(request: NextRequest) {
   /** Keep post-login redirect on the same host that received the OAuth callback (session cookies are host-scoped). */
   const sameOrigin = url.origin;
 
-  if (isSiteAccessGateEnabled() && !hasSiteAccess(request)) {
-    return NextResponse.redirect(new URL("/sign-in?locked=1", sameOrigin));
-  }
+  // Do not gate the OAuth callback — preview cookie flakiness must not burn the one-time code.
+  // Dashboard remains gated after session is established.
 
   if (!code) {
     return NextResponse.redirect(new URL("/sign-in", sameOrigin));
@@ -60,8 +58,20 @@ export async function GET(request: NextRequest) {
 
   const { data: exchanged, error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) {
-    console.error("auth callback exchangeCodeForSession:", error.message);
-    return NextResponse.redirect(new URL("/sign-in?error=auth", sameOrigin));
+    console.error("auth callback exchangeCodeForSession:", error.message, {
+      hasCode: Boolean(code),
+      cookieNames: request.cookies.getAll().map((c) => c.name),
+    });
+    const fail = new URL("/sign-in", sameOrigin);
+    fail.searchParams.set("error", "auth");
+    // Short hint for support — not a secret
+    const hint = error.message.toLowerCase().includes("code verifier")
+      ? "pkce"
+      : error.message.toLowerCase().includes("expired")
+        ? "expired"
+        : "exchange";
+    fail.searchParams.set("reason", hint);
+    return NextResponse.redirect(fail);
   }
 
   const user = exchanged?.session?.user;
