@@ -35,9 +35,12 @@ export function useSiteAccess() {
 }
 
 export function SiteAccessProvider({ children }: { children: React.ReactNode }) {
-  const gateEnabled = isSiteAccessGateEnabledPublic();
-  const [unlocked, setUnlocked] = useState(!gateEnabled);
-  const [checking, setChecking] = useState(gateEnabled);
+  // Prefer server SITE_ACCESS_GATE_ENABLED via /api/site-access/status (runtime).
+  // NEXT_PUBLIC_ is only an optimistic hint until status loads.
+  const publicHint = isSiteAccessGateEnabledPublic();
+  const [gateEnabled, setGateEnabled] = useState(publicHint);
+  const [unlocked, setUnlocked] = useState(!publicHint);
+  const [checking, setChecking] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [pendingHref, setPendingHref] = useState<string | null>(null);
   const [username, setUsername] = useState("");
@@ -47,21 +50,25 @@ export function SiteAccessProvider({ children }: { children: React.ReactNode }) 
   const resolveRef = useRef<((ok: boolean) => void) | null>(null);
 
   const refreshStatus = useCallback(async () => {
-    if (!gateEnabled) {
-      setUnlocked(true);
-      setChecking(false);
-      return;
-    }
     try {
-      const res = await fetch("/api/site-access/status");
-      const data = (await res.json()) as { unlocked?: boolean };
-      setUnlocked(Boolean(data.unlocked));
+      const res = await fetch("/api/site-access/status", { credentials: "include", cache: "no-store" });
+      const data = (await res.json()) as { unlocked?: boolean; enabled?: boolean; disabled?: boolean };
+      const enabled =
+        typeof data.enabled === "boolean" ? data.enabled : data.disabled === true ? false : publicHint;
+      setGateEnabled(enabled);
+      if (!enabled) {
+        setUnlocked(true);
+      } else {
+        setUnlocked(Boolean(data.unlocked));
+      }
     } catch {
-      setUnlocked(false);
+      // If status fails, fall back to public build flag so preview still works when configured.
+      setGateEnabled(publicHint);
+      setUnlocked(!publicHint);
     } finally {
       setChecking(false);
     }
-  }, [gateEnabled]);
+  }, [publicHint]);
 
   useEffect(() => {
     void refreshStatus();
@@ -104,6 +111,7 @@ export function SiteAccessProvider({ children }: { children: React.ReactNode }) 
       const res = await fetch("/api/site-access/unlock", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ username, password }),
       });
       const data = (await res.json()) as { error?: string };

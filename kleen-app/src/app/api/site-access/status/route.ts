@@ -7,10 +7,14 @@ import {
 } from "@/lib/site-access-gate";
 
 export async function GET() {
-  if (!isSiteAccessGateEnabled()) {
-    return NextResponse.json({ unlocked: true, disabled: true });
+  const enabled = isSiteAccessGateEnabled();
+  if (!enabled) {
+    return NextResponse.json({ unlocked: true, enabled: false, disabled: true });
   }
   const cookieStore = await cookies();
   const value = cookieStore.get(SITE_ACCESS_COOKIE)?.value;
-  return NextResponse.json({ unlocked: isValidSiteAccessCookie(value) });
+  return NextResponse.json({
+    unlocked: isValidSiteAccessCookie(value),
+    enabled: true,
+  });
 }

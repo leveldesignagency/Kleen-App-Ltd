@@ -37,6 +37,7 @@ export async function middleware(request: NextRequest) {
   ) {
     const signIn = new URL("/sign-in", request.url);
     signIn.searchParams.set("next", `${pathname}${request.nextUrl.search || ""}`);
+    signIn.searchParams.set("preview", "1");
     return finalizeResponse(NextResponse.redirect(signIn), pathname);
   }
 
