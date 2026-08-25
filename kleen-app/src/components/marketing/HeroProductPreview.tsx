@@ -15,16 +15,16 @@ const STEPS = [
 
 export default function HeroProductPreview() {
   return (
-    <div className="relative ml-auto w-full max-w-lg lg:max-w-none">
+    <div className="relative w-full">
       <div
-        className="pointer-events-none absolute -right-4 top-8 hidden rounded-2xl border border-white/80 bg-white px-4 py-3 shadow-lg ring-1 ring-slate-200/60 sm:block"
+        className="pointer-events-none absolute right-3 top-14 z-20 hidden rounded-2xl border border-white/80 bg-white px-4 py-3 shadow-lg ring-1 ring-slate-200/60 sm:block sm:right-5 sm:top-12"
         aria-hidden="true"
       >
         <p className="text-xs font-medium text-slate-500">Quote ready</p>
         <p className="text-lg font-bold text-brand-600">£124 – £148</p>
       </div>
 
-      <div className="overflow-hidden rounded-[1.25rem] border border-slate-200/80 bg-white ring-1 ring-white/80 sm:rounded-[1.5rem] lg:-mb-16">
+      <div className="overflow-hidden rounded-[1.25rem] border border-slate-200/80 bg-white shadow-xl shadow-brand-950/20 ring-1 ring-white/80 sm:rounded-[1.5rem] lg:-mb-10">
         <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50/90 px-4 py-3">
           <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
           <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />

@@ -60,8 +60,8 @@ export default function MarketingHero({ jobFlowHref }: MarketingHeroProps) {
             </div>
           </div>
 
-          <div className="relative z-10 flex justify-center lg:justify-end lg:-mr-8 lg:translate-x-14 xl:-mr-12 xl:translate-x-24 2xl:-mr-16 2xl:translate-x-[9rem]">
-            <div className="w-full max-w-md lg:max-w-none lg:translate-y-6 lg:pb-4">
+          <div className="relative z-10 flex min-w-0 justify-center lg:justify-end">
+            <div className="w-full max-w-md lg:max-w-xl lg:translate-y-4 lg:pb-2 xl:max-w-2xl">
               <HeroProductPreview />
             </div>
           </div>

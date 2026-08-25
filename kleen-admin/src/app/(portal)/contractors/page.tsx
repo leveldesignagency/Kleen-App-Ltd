@@ -406,7 +406,7 @@ export default function AdminContractorsPage() {
       {/* Table */}
       <div className="mt-4 overflow-hidden rounded-2xl border border-white/10">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
+          <table className="w-full min-w-[1080px] text-left text-sm">
             <thead>
               <tr className="border-b border-white/10 bg-white/[0.03]">
                 <th className="px-4 py-3 font-medium text-slate-400">Name</th>
@@ -414,7 +414,9 @@ export default function AdminContractorsPage() {
                 <th className="hidden px-4 py-3 font-medium text-slate-400 md:table-cell">Company</th>
                 <th className="hidden px-4 py-3 font-medium text-slate-400 lg:table-cell">Services</th>
                 <th className="px-4 py-3 font-medium text-slate-400">Rating</th>
-                <th className="px-4 py-3 font-medium text-slate-400">Status</th>
+                <th className="min-w-[11.5rem] whitespace-nowrap px-4 py-3 font-medium text-slate-400">
+                  Status
+                </th>
                 <th className="px-4 py-3 font-medium text-slate-400">Actions</th>
               </tr>
             </thead>
@@ -483,10 +485,10 @@ export default function AdminContractorsPage() {
                         <span className="text-sm">{c.rating.toFixed(1)}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-col gap-1">
+                    <td className="min-w-[11.5rem] whitespace-nowrap px-4 py-3">
+                      <div className="flex flex-nowrap items-center gap-1.5">
                         <span
-                          className={`inline-flex w-fit rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                          className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
                             c.is_active
                               ? "bg-emerald-500/20 text-emerald-400"
                               : "bg-slate-500/20 text-slate-400"
@@ -495,7 +497,7 @@ export default function AdminContractorsPage() {
                           {c.is_active ? "Active" : "Inactive"}
                         </span>
                         <span
-                          className={`inline-flex w-fit rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                          className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
                             c.is_verified
                               ? "bg-emerald-500/15 text-emerald-300"
                               : c.rejected_at
