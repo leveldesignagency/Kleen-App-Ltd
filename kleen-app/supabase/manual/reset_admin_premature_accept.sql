@@ -1,7 +1,8 @@
--- Reset jobs with stale admin assign fields (accepted / in-progress) before customer paid.
--- Run in Supabase SQL editor. Adjust reference as needed.
+-- Reset jobs with FAKE admin accept (customer_accepted_at / actual_start set but no payment).
+-- Safe: only touches rows where payment_authorized_at IS NULL.
+-- Run preview first, then the DO block.
 
--- Preview
+-- (1) Preview — jobs that look accepted/in-progress but customer never paid
 select
   j.reference,
   j.status,
@@ -13,23 +14,25 @@ select
 from public.jobs j
 left join public.quote_requests qr on qr.id = j.accepted_quote_request_id
 left join public.quote_responses resp on resp.quote_request_id = qr.id
-where j.reference = 'KLN-00CA90';
+where j.accepted_quote_request_id is not null
+  and j.payment_authorized_at is null
+  and j.customer_accepted_at is not null
+order by j.reference;
 
--- Fix KLN-00CA90 (clears fake accept / in-progress; keeps sent quotes if already sent)
+-- (2) Fix KLN-00CA90 (or change reference below)
 do $$
 declare
   v_job_id uuid;
-  v_op_id uuid;
+  v_ref text := 'KLN-00CA90';
 begin
-  select j.id, qr.operative_id
-  into v_job_id, v_op_id
+  select j.id into v_job_id
   from public.jobs j
-  left join public.quote_requests qr on qr.id = j.accepted_quote_request_id
-  where j.reference = 'KLN-00CA90'
+  where j.reference = v_ref
+    and j.payment_authorized_at is null
   limit 1;
 
   if v_job_id is null then
-    raise notice 'Job KLN-00CA90 not found.';
+    raise notice 'Nothing to reset for % (not found or customer already paid).', v_ref;
     return;
   end if;
 
@@ -54,7 +57,19 @@ begin
     payment_authorized_at = null,
     payment_captured_at = null,
     stripe_payment_intent_id = null
-  where id = v_job_id;
+  where id = v_job_id
+    and payment_authorized_at is null;
 
-  raise notice 'Reset job % — customer should see Quotes Available only until they accept and pay.', v_job_id;
+  raise notice 'Reset % — status set from quotes; customer can choose and pay.', v_ref;
 end $$;
+
+-- (3) Verify
+select
+  j.reference,
+  j.status,
+  j.accepted_quote_request_id,
+  j.customer_accepted_at,
+  j.actual_start,
+  j.payment_authorized_at
+from public.jobs j
+where j.reference = 'KLN-00CA90';
