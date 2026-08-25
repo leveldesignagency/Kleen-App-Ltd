@@ -78,6 +78,55 @@ export interface OperativeServiceRow {
   contract_file_url?: string | null;
   is_active?: boolean;
 }
+
+/** Prefill step-3 contract rows from specialist service tags chosen on step 1. */
+function syncOperativeServicesFromSpecialisations(
+  specialisations: string[],
+  catalog: { id: string; name: string }[],
+  existing: OperativeServiceRow[],
+): OperativeServiceRow[] {
+  const selectedNames = new Set(
+    (specialisations || []).map((s) => s.trim().toLowerCase()).filter(Boolean),
+  );
+  const selectedCatalog = catalog.filter((s) => selectedNames.has(s.name.toLowerCase()));
+  const selectedIds = new Set(selectedCatalog.map((s) => s.id));
+
+  const result: OperativeServiceRow[] = [];
+  const seen = new Set<string>();
+
+  for (const os of existing) {
+    // Keep selected tags; keep rows with real contract text or a DB id.
+    // Drop empty auto-prefill stubs when their specialist tag is removed
+    // (default titles alone must not keep a stub).
+    const keep =
+      selectedIds.has(os.service_id) ||
+      Boolean(os.id) ||
+      Boolean(os.contract_content?.trim());
+    if (!keep) continue;
+    if (seen.has(os.service_id)) continue;
+    seen.add(os.service_id);
+    const cat = catalog.find((c) => c.id === os.service_id);
+    result.push({
+      ...os,
+      service_name: os.service_name || cat?.name,
+    });
+  }
+
+  for (const s of selectedCatalog) {
+    if (seen.has(s.id)) continue;
+    seen.add(s.id);
+    result.push({
+      service_id: s.id,
+      service_name: s.name,
+      contract_title: `${s.name} Agreement`,
+      contract_content: "",
+      contract_content_preview: null,
+    });
+  }
+
+  return result;
+}
+
 const ACCOUNT_NUMBER_LENGTH = 8;
 const COMPANY_NUMBER_LENGTH = 8;
 
@@ -658,6 +707,38 @@ function ContractorModal({
   const [addContractPreview, setAddContractPreview] = useState("");
   const operativeServices: OperativeServiceRow[] = Array.isArray(data.operative_services) ? data.operative_services : [];
   const availableToAdd = servicesCatalog.filter((s) => !operativeServices.some((os) => os.service_id === s.id));
+  const specialisations: string[] = Array.isArray(data.specialisations) ? data.specialisations : [];
+
+  const applySpecialisationServiceSync = () => {
+    const next = syncOperativeServicesFromSpecialisations(
+      specialisations,
+      servicesCatalog,
+      operativeServices,
+    );
+    const prevIds = new Set(operativeServices.map((r) => r.service_id));
+    const nextIds = new Set(next.map((r) => r.service_id));
+    const same =
+      prevIds.size === nextIds.size && Array.from(prevIds).every((id) => nextIds.has(id));
+    if (!same) {
+      onChange({ operative_services: next });
+    }
+  };
+
+  const goToStep3 = () => {
+    const next = syncOperativeServicesFromSpecialisations(
+      specialisations,
+      servicesCatalog,
+      operativeServices,
+    );
+    onChange({ operative_services: next });
+    setStep(3);
+  };
+
+  useEffect(() => {
+    if (step !== 3) return;
+    applySpecialisationServiceSync();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync when tags/catalog/step change
+  }, [step, specialisations.join("|"), servicesCatalog.map((s) => s.id).join("|")]);
 
   const patchOperativeServiceRow = (row: OperativeServiceRow, patch: Partial<OperativeServiceRow>) => {
     const k = row.id || row.service_id;
@@ -741,7 +822,7 @@ function ContractorModal({
             <>
               <ChevronRight className="h-3.5 w-3.5 text-slate-600" />
               <button
-                onClick={() => canProceed && setStep(3)}
+                onClick={() => canProceed && goToStep3()}
                 className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
                   step === 3
                     ? "bg-brand-500/20 text-brand-400"
@@ -1044,6 +1125,14 @@ function ContractorModal({
                 <strong>full contract</strong> for the long text emailed after escrow. Use <strong>preview</strong> only
                 for a brief contractor addendum (optional) shown under the standard agreement — not the full legal text.
               </p>
+              {specialisations.length > 0 && (
+                <p className="mt-2 text-xs text-brand-300/90">
+                  Pre-filled from specialist services on Details: fill in each contract below
+                  {operativeServices.some((os) => !os.contract_content?.trim())
+                    ? " (empty contracts still need content before you rely on them in production)."
+                    : "."}
+                </p>
+              )}
               {operativeServices.length > 0 && (
                 <ul className="mt-4 space-y-4">
                   {operativeServices.map((os) => (
@@ -1056,10 +1145,18 @@ function ContractorModal({
                         <button
                           type="button"
                           onClick={() => {
+                            const removedName = os.service_name || servicesCatalog.find((s) => s.id === os.service_id)?.name;
                             onChange({
                               operative_services: operativeServices.filter(
                                 (x) => (x.id || x.service_id) !== (os.id || os.service_id)
                               ),
+                              ...(removedName
+                                ? {
+                                    specialisations: specialisations.filter(
+                                      (s) => s.toLowerCase() !== removedName.toLowerCase(),
+                                    ),
+                                  }
+                                : {}),
                             });
                           }}
                           className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-red-500/20 hover:text-red-400"
@@ -1069,7 +1166,8 @@ function ContractorModal({
                         </button>
                       </div>
                       <p className="mt-2 text-xs text-slate-500">
-                        Edit the contract copy below, then save the contractor with <strong>Save Changes</strong>.
+                        Edit the contract copy below, then save the contractor with{" "}
+                        <strong>{mode === "add" ? "Add Contractor" : "Save Changes"}</strong>.
                       </p>
                       <label className="mt-3 block">
                         <span className="text-xs font-medium text-slate-400">Contract title</span>
@@ -1124,12 +1222,16 @@ function ContractorModal({
                 </ul>
               )}
               {operativeServices.length === 0 && (
-                <p className="mt-3 text-xs text-slate-500">No services added. Add a service and its contract below.</p>
+                <p className="mt-3 text-xs text-slate-500">
+                  {specialisations.length === 0
+                    ? "No specialist services selected on Details yet. Add tags there, or add a service below."
+                    : "No matching catalogue services for those tags. Add a service below, or check the specialist names match the catalogue."}
+                </p>
               )}
             </div>
             {availableToAdd.length > 0 && (
               <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
-                <p className="text-xs font-medium text-slate-400">Add service &amp; contract</p>
+                <p className="text-xs font-medium text-slate-400">Add another service &amp; contract</p>
                 <div className="mt-3 space-y-3">
                   <div ref={addServiceRef} className="relative">
                     <div className="relative">
@@ -1208,17 +1310,21 @@ function ContractorModal({
                     onClick={() => {
                       if (!addServiceId) return;
                       const service = servicesCatalog.find((s) => s.id === addServiceId);
+                      const name = service?.name;
                       onChange({
                         operative_services: [
                           ...operativeServices,
                           {
                             service_id: addServiceId,
-                            service_name: service?.name,
-                            contract_title: addContractTitle.trim(),
+                            service_name: name,
+                            contract_title: addContractTitle.trim() || (name ? `${name} Agreement` : ""),
                             contract_content: addContractContent.trim(),
                             contract_content_preview: addContractPreview.trim() || null,
                           },
                         ],
+                        ...(name && !specialisations.some((s) => s.toLowerCase() === name.toLowerCase())
+                          ? { specialisations: [...specialisations, name] }
+                          : {}),
                       });
                       setAddServiceId("");
                       setAddServiceSearch("");
@@ -1278,7 +1384,7 @@ function ContractorModal({
               </button>
             ) : step === 2 && showServicesStep ? (
               <button
-                onClick={() => setStep(3)}
+                onClick={goToStep3}
                 className="flex items-center gap-1 rounded-xl bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500"
               >
                 Next
