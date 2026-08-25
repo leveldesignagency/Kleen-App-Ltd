@@ -21,7 +21,16 @@ import { X } from "lucide-react";
 
 const STEPS = ["Sign In", "Type", "Service", "Details", "Quote", "Payment", "Confirm"];
 
+/** Preview gate first — never call Supabase until unlocked (prevents refresh_token storms). */
 export default function JobFlowPage() {
+  return (
+    <SiteAccessGate>
+      <JobFlowInner />
+    </SiteAccessGate>
+  );
+}
+
+function JobFlowInner() {
   const step = useJobFlowStore((s) => s.step);
   const setStep = useJobFlowStore((s) => s.setStep);
   const setProfile = useUserProfile((s) => s.setProfile);
@@ -57,12 +66,19 @@ export default function JobFlowPage() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event: string, session: { user?: { email?: string | null; user_metadata?: Record<string, unknown> } } | null) => {
-      if (cancelled) return;
-      if (event === "SIGNED_IN" && session?.user) {
-        applyUser(session.user);
-      }
-    });
+    } = supabase.auth.onAuthStateChange(
+      (
+        event: string,
+        session: {
+          user?: { email?: string | null; user_metadata?: Record<string, unknown> };
+        } | null,
+      ) => {
+        if (cancelled) return;
+        if (event === "SIGNED_IN" && session?.user) {
+          applyUser(session.user);
+        }
+      },
+    );
 
     return () => {
       cancelled = true;
@@ -81,12 +97,10 @@ export default function JobFlowPage() {
   const showServicesDown = !serviceHealth.ok && step > 1;
 
   return (
-    <SiteAccessGate>
     <div className="flex min-h-dvh flex-col bg-gradient-to-br from-slate-900 via-brand-950 to-slate-900">
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(6,182,212,0.12),_transparent_60%)] pointer-events-none" />
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_left,_rgba(16,185,129,0.08),_transparent_60%)] pointer-events-none" />
 
-      {/* Minimal header */}
       <header className="relative z-10 flex items-center justify-between px-5 pt-4 pb-2 sm:px-8">
         <Link href="/" className="flex items-center">
           <Image
@@ -106,14 +120,12 @@ export default function JobFlowPage() {
         </Link>
       </header>
 
-      {/* Step title */}
       <div className="relative z-10 px-5 pb-4 pt-2 sm:px-8">
         <p className="text-xs font-medium uppercase tracking-widest text-brand-400/80">
           Step {step} of {STEPS.length}
         </p>
       </div>
 
-      {/* Content area */}
       <main className="relative z-10 flex flex-1 flex-col px-3 pb-24 sm:px-6 lg:px-10">
         <div className="mx-auto w-full max-w-lg flex-1 sm:max-w-2xl lg:max-w-4xl">
           <div className="rounded-3xl bg-white p-5 shadow-2xl shadow-black/20 sm:p-8 lg:p-10">
@@ -138,7 +150,6 @@ export default function JobFlowPage() {
         </div>
       </main>
 
-      {/* Bottom step dots */}
       <nav className="fixed bottom-0 left-0 right-0 z-20 flex items-center justify-center gap-2 bg-gradient-to-t from-slate-900/90 to-transparent pb-5 pt-8">
         {STEPS.map((label, i) => {
           const num = i + 1;
@@ -151,8 +162,8 @@ export default function JobFlowPage() {
                   current
                     ? "h-2.5 w-2.5 bg-brand-400 shadow-md shadow-brand-400/50"
                     : done
-                    ? "h-2 w-2 bg-brand-400/60"
-                    : "h-2 w-2 bg-white/20"
+                      ? "h-2 w-2 bg-brand-400/60"
+                      : "h-2 w-2 bg-white/20"
                 }`}
               />
             </div>
@@ -161,6 +172,5 @@ export default function JobFlowPage() {
       </nav>
       <ToastContainer />
     </div>
-    </SiteAccessGate>
   );
 }

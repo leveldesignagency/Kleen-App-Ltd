@@ -40,6 +40,7 @@ export function SiteAccessProvider({ children }: { children: React.ReactNode }) 
   const [gateEnabled, setGateEnabled] = useState(true);
   const [unlocked, setUnlocked] = useState(false);
   const [checking, setChecking] = useState(true);
+  const [credentialsConfigured, setCredentialsConfigured] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [pendingHref, setPendingHref] = useState<string | null>(null);
   const [username, setUsername] = useState("");
@@ -59,6 +60,7 @@ export function SiteAccessProvider({ children }: { children: React.ReactNode }) 
         unlocked?: boolean;
         enabled?: boolean;
         disabled?: boolean;
+        credentialsConfigured?: boolean;
       };
       const enabled =
         typeof data.enabled === "boolean"
@@ -68,6 +70,9 @@ export function SiteAccessProvider({ children }: { children: React.ReactNode }) 
             : publicHint;
       setGateEnabled(enabled);
       setUnlocked(enabled ? Boolean(data.unlocked) : true);
+      if (typeof data.credentialsConfigured === "boolean") {
+        setCredentialsConfigured(data.credentialsConfigured);
+      }
     } catch {
       // Network failure: keep gate on if public flag says so, else open
       setGateEnabled(publicHint);
@@ -115,6 +120,7 @@ export function SiteAccessProvider({ children }: { children: React.ReactNode }) 
           unlocked?: boolean;
           enabled?: boolean;
           disabled?: boolean;
+          credentialsConfigured?: boolean;
         };
         enabled =
           typeof data.enabled === "boolean"
@@ -125,6 +131,9 @@ export function SiteAccessProvider({ children }: { children: React.ReactNode }) 
         isUnlocked = enabled ? Boolean(data.unlocked) : true;
         setGateEnabled(enabled);
         setUnlocked(isUnlocked);
+        if (typeof data.credentialsConfigured === "boolean") {
+          setCredentialsConfigured(data.credentialsConfigured);
+        }
       } catch {
         /* keep state */
       }
@@ -197,6 +206,15 @@ export function SiteAccessProvider({ children }: { children: React.ReactNode }) 
               Kleen is not open to the public yet. Enter the preview password to continue —
               you will still sign in with Google after this.
             </p>
+            {!credentialsConfigured && gateEnabled ? (
+              <p className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-center text-xs text-amber-200">
+                Preview credentials are not configured on this server. Set{" "}
+                <code className="text-amber-100">SITE_ACCESS_GATE_ENABLED</code>,{" "}
+                <code className="text-amber-100">SITE_ACCESS_USERNAME</code> and{" "}
+                <code className="text-amber-100">SITE_ACCESS_PASSWORD</code> on the Vercel
+                project that serves dashboard.kleenapp.co.uk, then redeploy.
+              </p>
+            ) : null}
             <form onSubmit={handleUnlock} className="mt-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-300">

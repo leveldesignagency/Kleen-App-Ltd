@@ -10,9 +10,16 @@ const MIDDLEWARE_GATED_PREFIXES = ["/dashboard", "/job-flow"];
 
 export function isSiteAccessGateEnabled(): boolean {
   const flag = process.env.SITE_ACCESS_GATE_ENABLED?.trim().toLowerCase();
-  if (flag === "true") return true;
+  // Explicit off only when set to false (allows public launch)
   if (flag === "false") return false;
-  // Failsafe: credentials in env mean private preview should stay on
+  if (flag === "true") return true;
+  // Credentials present → private preview stays on even if the boolean was forgotten
+  return Boolean(
+    process.env.SITE_ACCESS_USERNAME?.trim() && process.env.SITE_ACCESS_PASSWORD?.trim(),
+  );
+}
+
+export function siteAccessCredentialsConfigured(): boolean {
   return Boolean(
     process.env.SITE_ACCESS_USERNAME?.trim() && process.env.SITE_ACCESS_PASSWORD?.trim(),
   );

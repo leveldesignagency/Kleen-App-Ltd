@@ -5,22 +5,52 @@ import { getSupabaseAuthCookieOptions } from "@/lib/supabase/auth-cookie-options
 let browserClient: SupabaseClient | null = null;
 let clearingCorruptSession = false;
 
-/** Drop a broken refresh token so the client stops hammering /auth/v1/token. */
+/** Remove Supabase auth cookies on this host (stops refresh_token 400 loops). */
+function wipeSupabaseAuthCookies() {
+  if (typeof document === "undefined") return;
+  const cookies = document.cookie.split(";").map((c) => c.trim()).filter(Boolean);
+  const expire = "Thu, 01 Jan 1970 00:00:00 GMT";
+  const domains = ["", ".kleenapp.co.uk", window.location.hostname];
+  for (const raw of cookies) {
+    const name = raw.split("=")[0]?.trim();
+    if (!name) continue;
+    if (!name.startsWith("sb-") && !name.includes("auth-token")) continue;
+    document.cookie = `${name}=; expires=${expire}; path=/`;
+    for (const domain of domains) {
+      if (!domain) continue;
+      document.cookie = `${name}=; expires=${expire}; path=/; domain=${domain}`;
+    }
+  }
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith("sb-") || key.includes("supabase"))) {
+        localStorage.removeItem(key);
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 async function clearCorruptSession(client: SupabaseClient) {
   if (clearingCorruptSession) return;
   clearingCorruptSession = true;
   try {
+    wipeSupabaseAuthCookies();
     await client.auth.signOut({ scope: "local" });
   } catch (e) {
     console.warn("clearCorruptSession:", e);
+    wipeSupabaseAuthCookies();
   } finally {
     clearingCorruptSession = false;
   }
 }
 
 /**
- * Singleton browser client — multiple createBrowserClient() instances each run
- * auto-refresh and can 429 Supabase when a refresh token is invalid.
+ * Singleton browser client.
+ * autoRefreshToken is OFF — a bad refresh token was causing unbounded /auth/v1/token 400 storms.
+ * Call getBrowserUser() / getSession when you need auth; it will clear corrupt sessions once.
  */
 export function createClient() {
   if (browserClient) return browserClient;
@@ -35,7 +65,8 @@ export function createClient() {
         flowType: "pkce",
         detectSessionInUrl: true,
         persistSession: true,
-        autoRefreshToken: true,
+        // CRITICAL: do not auto-loop refresh on bad tokens
+        autoRefreshToken: false,
       },
     },
   );
@@ -43,13 +74,13 @@ export function createClient() {
   return browserClient;
 }
 
-/** Safe session probe — never leave callers hanging on a refresh storm. */
+/** Safe session probe — clears corrupt tokens instead of retrying forever. */
 export async function getBrowserUser(): Promise<User | null> {
   const client = createClient();
   try {
     const result = await Promise.race([
       client.auth.getUser(),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000)),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000)),
     ]);
     if (!result) {
       await clearCorruptSession(client);
@@ -57,20 +88,7 @@ export async function getBrowserUser(): Promise<User | null> {
     }
     const { data, error } = result;
     if (error) {
-      const msg = (error.message || "").toLowerCase();
-      const status = typeof (error as { status?: number }).status === "number"
-        ? (error as { status?: number }).status
-        : undefined;
-      if (
-        msg.includes("refresh") ||
-        msg.includes("session") ||
-        msg.includes("jwt") ||
-        msg.includes("rate") ||
-        status === 429 ||
-        status === 400
-      ) {
-        await clearCorruptSession(client);
-      }
+      await clearCorruptSession(client);
       return null;
     }
     return data.user ?? null;
@@ -78,4 +96,10 @@ export async function getBrowserUser(): Promise<User | null> {
     await clearCorruptSession(client);
     return null;
   }
+}
+
+/** Call once on gated app entry to kill a stuck refresh loop from prior deploys. */
+export async function neutralizeAuthStorm() {
+  const client = createClient();
+  await clearCorruptSession(client);
 }
