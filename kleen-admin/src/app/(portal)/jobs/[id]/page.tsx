@@ -200,8 +200,6 @@ export default function AdminJobDetailPage() {
     hours: "",
     arrivalTime: "",
     notes: "",
-    /** Early ops: put the job on the contractor Assigned tab immediately */
-    assignDirectly: true,
   });
   const [addQuoteContractorSearch, setAddQuoteContractorSearch] = useState("");
   const [addQuoteOnlyMatchingService, setAddQuoteOnlyMatchingService] = useState(true);
@@ -635,50 +633,9 @@ export default function AdminJobDetailPage() {
       },
     });
 
-    const newStatus = addQuoteForm.assignDirectly
-      ? "awaiting_completion"
-      : job.status === "pending"
-        ? "quotes_received"
-        : job.status;
-
-    if (addQuoteForm.assignDirectly) {
-      const nowIso = new Date().toISOString();
-      const { error: assignJobErr } = await supabase
-        .from("jobs")
-        .update({
-          status: "awaiting_completion",
-          accepted_quote_request_id: qr.id,
-          customer_accepted_at: nowIso,
-          actual_start: nowIso,
-        })
-        .eq("id", job.id);
-      if (assignJobErr) {
-        toast({
-          type: "warning",
-          title: "Quote saved",
-          message: `Quote added but could not assign job: ${assignJobErr.message}`,
-        });
-      } else {
-        const { error: assignErr } = await supabase.from("job_assignments").upsert(
-          {
-            job_id: job.id,
-            operative_id: operativeId,
-            assigned_at: nowIso,
-          },
-          { onConflict: "job_id,operative_id" },
-        );
-        if (assignErr) {
-          toast({
-            type: "warning",
-            title: "Quote saved",
-            message: `Job marked accepted but assignment row failed: ${assignErr.message}`,
-          });
-        }
-        updateJob(job.id, { status: "awaiting_completion" });
-      }
-    } else if (newStatus !== job.status) {
-      await supabase.from("jobs").update({ status: newStatus }).eq("id", job.id);
-      updateJob(job.id, { status: newStatus });
+    if (job.status === "pending" || job.status === "awaiting_quotes") {
+      await supabase.from("jobs").update({ status: "quotes_received" }).eq("id", job.id);
+      updateJob(job.id, { status: "quotes_received" });
     }
 
     setShowAddQuoteModal(false);
@@ -688,14 +645,11 @@ export default function AdminJobDetailPage() {
       hours: "",
       arrivalTime: "",
       notes: "",
-      assignDirectly: true,
     });
     toast({
       type: "success",
-      title: addQuoteForm.assignDirectly ? "Contractor assigned" : "Quote added",
-      message: addQuoteForm.assignDirectly
-        ? `${operativeName} can see this job under Assigned in their dashboard.`
-        : `${operativeName}'s quote has been added.`,
+      title: "Quote added",
+      message: `${operativeName}'s quote is saved. Send to customer when ready.`,
     });
     setActionLoading(false);
   };
@@ -1088,7 +1042,7 @@ export default function AdminJobDetailPage() {
               className="flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-500"
             >
               <Plus className="h-4 w-4" />
-              Add & assign
+              Add quote
             </button>
           )}
         </div>
@@ -1564,20 +1518,9 @@ export default function AdminJobDetailPage() {
                   placeholder="Contractor notes…"
                 />
               </div>
-              <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-brand-500/30 bg-brand-500/10 px-3 py-2.5 text-xs text-slate-200">
-                <input
-                  type="checkbox"
-                  checked={addQuoteForm.assignDirectly}
-                  onChange={(e) => setAddQuoteForm((f) => ({ ...f, assignDirectly: e.target.checked }))}
-                  className="mt-0.5 rounded border-slate-500"
-                />
-                <span>
-                  <span className="font-semibold text-white">Assign directly to contractor</span>
-                  <span className="mt-0.5 block text-slate-400">
-                    Puts the job on their Assigned tab now (early ops). Untick to only add a quote for the customer to choose later.
-                  </span>
-                </span>
-              </label>
+              <p className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5 text-xs text-slate-400">
+                Saves the quote on the contractor&apos;s account. Send to customer when you&apos;re ready.
+              </p>
             </div>
             <div className="mt-5 flex gap-2">
               <button
@@ -1586,7 +1529,7 @@ export default function AdminJobDetailPage() {
                 className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-brand-600 py-2.5 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
               >
                 {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                {addQuoteForm.assignDirectly ? "Add & assign" : "Add Quote"}
+                Add quote
               </button>
               <button
                 onClick={() => {
@@ -1597,7 +1540,6 @@ export default function AdminJobDetailPage() {
                     hours: "",
                     arrivalTime: "",
                     notes: "",
-                    assignDirectly: true,
                   });
                   setAddQuoteContractorSearch("");
                   setAddQuoteOnlyMatchingService(true);

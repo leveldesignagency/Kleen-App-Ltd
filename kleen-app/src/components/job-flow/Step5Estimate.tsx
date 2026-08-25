@@ -4,14 +4,13 @@ import { useState, useEffect } from "react";
 import { useJobFlowStore } from "@/lib/store";
 import { getService, getCategory } from "@/lib/services";
 import PriceEstimateCard from "@/components/ui/PriceEstimateCard";
-import { ArrowLeft, ArrowRight, MapPin, Calendar, Clock, AlertCircle, Home, Building2, User } from "lucide-react";
+import { ArrowLeft, ArrowRight, Calendar, Clock, AlertCircle, Home, Building2, User } from "lucide-react";
 import { useAddressStore, type SavedAddress } from "@/lib/addresses";
+import { UK_POSTCODE_RE } from "@/lib/format-uk-address";
 import { createClient } from "@/lib/supabase/client";
 import CustomDropdown from "@/components/ui/CustomDropdown";
+import UkAddressAutocomplete from "@/components/ui/UkAddressAutocomplete";
 import Link from "next/link";
-
-const UK_POSTCODE_RE =
-  /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i;
 
 interface FieldErrors {
   address?: string;
@@ -294,56 +293,26 @@ export default function Step5Estimate() {
             </div>
           )}
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700">
-              Address <span className="text-red-400">*</span>
-            </label>
-            <div className="relative mt-1">
-              <MapPin className="absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
-              <input
-                type="text"
-                value={address}
-                onChange={(e) => {
-                  setSelectedAddressId("");
-                  setAddress(e.target.value);
-                  clearError("address");
-                }}
-                onBlur={() => handleBlur("address")}
-                className={`input-field pl-10 ${fieldError("address") ? "border-red-400 focus:border-red-400 focus:ring-red-400/20" : ""}`}
-                placeholder="123 High Street, London"
-              />
-            </div>
-            {fieldError("address") && (
-              <p className="mt-1 flex items-center gap-1 text-xs text-red-500">
-                <AlertCircle className="h-3 w-3" />
-                {fieldError("address")}
-              </p>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700">
-              Postcode <span className="text-red-400">*</span>
-            </label>
-            <input
-              type="text"
-              value={postcode}
-              onChange={(e) => {
-                setSelectedAddressId("");
-                setPostcode(e.target.value.toUpperCase());
-                clearError("postcode");
-              }}
-              onBlur={() => handleBlur("postcode")}
-              className={`input-field mt-1 ${fieldError("postcode") ? "border-red-400 focus:border-red-400 focus:ring-red-400/20" : ""}`}
-              placeholder="SW1A 1AA"
-            />
-            {fieldError("postcode") && (
-              <p className="mt-1 flex items-center gap-1 text-xs text-red-500">
-                <AlertCircle className="h-3 w-3" />
-                {fieldError("postcode")}
-              </p>
-            )}
-          </div>
+          <UkAddressAutocomplete
+            address={address}
+            postcode={postcode}
+            onAddressChange={(value) => {
+              setSelectedAddressId("");
+              setAddress(value);
+              clearError("address");
+            }}
+            onPostcodeChange={(value) => {
+              setSelectedAddressId("");
+              setPostcode(value);
+              clearError("postcode");
+            }}
+            onBlur={() => {
+              handleBlur("address");
+              handleBlur("postcode");
+            }}
+            addressError={fieldError("address")}
+            postcodeError={fieldError("postcode")}
+          />
 
           <div>
             <label className="block text-sm font-medium text-slate-700">

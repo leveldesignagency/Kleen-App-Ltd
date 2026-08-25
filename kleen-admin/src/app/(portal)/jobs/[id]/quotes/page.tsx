@@ -6,7 +6,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAdminNotifications } from "@/lib/admin-notifications";
 import type { QuoteRequest } from "@/lib/admin-store";
-import { quoteCustomerStatusBadge } from "@/lib/quote-customer-status";
+import { quoteCustomerStatusBadge, findCustomerAcceptedQuote } from "@/lib/quote-customer-status";
 import CustomDropdown from "@/components/ui/CustomDropdown";
 import {
   ArrowLeft,
@@ -41,6 +41,7 @@ type JobInfo = {
   service: string;
   status: string;
   accepted_quote_request_id?: string | null;
+  customer_accepted_at?: string | null;
   cancelled_reason?: string;
   customer_name: string;
   customer_email: string;
@@ -106,7 +107,6 @@ export default function JobQuotesPage() {
     hours: "",
     arrivalTime: "",
     notes: "",
-    assignDirectly: true,
   });
   const [forwardLoading, setForwardLoading] = useState(false);
   const quoteRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -116,7 +116,7 @@ export default function JobQuotesPage() {
     const supabase = createClient();
     const { data: j, error: jobErr } = await supabase
       .from("jobs")
-      .select("id, reference, status, accepted_quote_request_id, cancelled_reason, address_line_1, address_line_2, city, postcode, preferred_date, preferred_time, notes, user_id, services(name)")
+      .select("id, reference, status, accepted_quote_request_id, customer_accepted_at, cancelled_reason, address_line_1, address_line_2, city, postcode, preferred_date, preferred_time, notes, user_id, services(name)")
       .eq("id", jobId)
       .single();
 
@@ -145,6 +145,7 @@ export default function JobQuotesPage() {
         service: jj.services?.name || "Cleaning",
         status: jj.status || "pending",
         accepted_quote_request_id: (jj as { accepted_quote_request_id?: string | null }).accepted_quote_request_id ?? null,
+        customer_accepted_at: (jj as { customer_accepted_at?: string | null }).customer_accepted_at ?? null,
         cancelled_reason: (jj as { cancelled_reason?: string }).cancelled_reason,
         customer_name: prof?.full_name || "Unknown",
         customer_email: prof?.email || "",
@@ -386,31 +387,9 @@ export default function JobQuotesPage() {
       },
       ...prev,
     ]);
-    if (job.status === "pending" && !addQuoteForm.assignDirectly) {
+    if (job.status === "pending" || job.status === "awaiting_quotes") {
       await supabase.from("jobs").update({ status: "quotes_received" }).eq("id", jobId);
       setJob((p) => (p ? { ...p, status: "quotes_received" } : null));
-    }
-
-    if (addQuoteForm.assignDirectly) {
-      const nowIso = new Date().toISOString();
-      await supabase
-        .from("jobs")
-        .update({
-          status: "awaiting_completion",
-          accepted_quote_request_id: qr.id,
-          customer_accepted_at: nowIso,
-          actual_start: nowIso,
-        })
-        .eq("id", jobId);
-      await supabase.from("job_assignments").upsert(
-        { job_id: jobId, operative_id: operativeId, assigned_at: nowIso },
-        { onConflict: "job_id,operative_id" },
-      );
-      setJob((p) =>
-        p
-          ? { ...p, status: "awaiting_completion", accepted_quote_request_id: qr.id }
-          : null,
-      );
     }
 
     setShowAddQuoteModal(false);
@@ -420,14 +399,11 @@ export default function JobQuotesPage() {
       hours: "",
       arrivalTime: "",
       notes: "",
-      assignDirectly: true,
     });
     toast({
       type: "success",
-      title: addQuoteForm.assignDirectly ? "Contractor assigned" : "Quote added",
-      message: addQuoteForm.assignDirectly
-        ? `${operativeName} can see this job under Assigned in their dashboard.`
-        : `${operativeName}'s quote has been added.`,
+      title: "Quote added",
+      message: `${operativeName}'s quote is saved. Use Send to customer when ready.`,
     });
     setAddQuoteLoading(false);
   };
@@ -616,9 +592,7 @@ export default function JobQuotesPage() {
     "completed",
     "funds_released",
   ];
-  const acceptedQuote = job.accepted_quote_request_id
-    ? quotes.find((q) => q.id === job.accepted_quote_request_id)
-    : null;
+  const acceptedQuote = findCustomerAcceptedQuote(quotes, job);
   const canForward =
     acceptedQuote?.quote_response &&
     ["customer_accepted", "accepted", "awaiting_completion", "in_progress", "sent_to_customer"].includes(job.status);
@@ -677,7 +651,7 @@ export default function JobQuotesPage() {
               className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-500"
             >
               <Plus className="h-4 w-4" />
-              Add & assign contractor
+              Add contractor quote
             </button>
             <button
               type="button"
@@ -915,20 +889,10 @@ export default function JobQuotesPage() {
                   placeholder="Contractor notes…"
                 />
               </div>
-              <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-brand-500/30 bg-brand-500/10 px-3 py-2.5 text-xs text-slate-200">
-                <input
-                  type="checkbox"
-                  checked={addQuoteForm.assignDirectly}
-                  onChange={(e) => setAddQuoteForm((f) => ({ ...f, assignDirectly: e.target.checked }))}
-                  className="mt-0.5 rounded border-slate-500"
-                />
-                <span>
-                  <span className="font-semibold text-white">Assign directly to contractor</span>
-                  <span className="mt-0.5 block text-slate-400">
-                    Skips customer choice — use for early development bookings. Untick to only add a quote for the customer to pick.
-                  </span>
-                </span>
-              </label>
+              <p className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5 text-xs text-slate-400">
+                Saves the quote on the contractor&apos;s account. Send to customer when you&apos;re ready — the
+                customer chooses and accepts in their dashboard.
+              </p>
             </div>
             <div className="mt-5 flex gap-2">
               <button
@@ -937,7 +901,7 @@ export default function JobQuotesPage() {
                 className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-brand-600 py-2.5 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
               >
                 {addQuoteLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                {addQuoteForm.assignDirectly ? "Add & assign" : "Add quote only"}
+                Add quote
               </button>
               <button
                 onClick={() => {
@@ -948,7 +912,6 @@ export default function JobQuotesPage() {
                     hours: "",
                     arrivalTime: "",
                     notes: "",
-                    assignDirectly: true,
                   });
                 }}
                 className="rounded-xl border border-white/10 px-4 py-2.5 text-sm font-medium text-slate-300 hover:bg-white/10"
