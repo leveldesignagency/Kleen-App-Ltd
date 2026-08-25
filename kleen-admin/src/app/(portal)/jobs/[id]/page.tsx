@@ -8,7 +8,7 @@ import { useAdminStore, Contractor, QuoteRequest, QuoteResponse } from "@/lib/ad
 import { useAdminNotifications } from "@/lib/admin-notifications";
 import { fetchAdminJobById, fetchAdminJobsList } from "@/lib/admin-jobs-fetch";
 import { contractorOffersService, contractorServiceTags, fetchAdminContractors } from "@/lib/admin-contractors-fetch";
-import { quoteCustomerStatusBadge } from "@/lib/quote-customer-status";
+import { quoteCustomerStatusBadge, canAdminSendQuotesToCustomer } from "@/lib/quote-customer-status";
 import {
   ArrowLeft,
   Loader2,
@@ -1692,9 +1692,12 @@ function WorkflowActions({
   onReinstateJob,
 }: {
   job: {
+    id?: string;
     status: string;
     reference: string;
     cancelled_reason?: string;
+    accepted_quote_request_id?: string | null;
+    customer_accepted_at?: string | null;
     escrow_release_date?: string | null;
     funds_released_at?: string | null;
     contractor_confirmed_complete_at?: string | null;
@@ -1747,6 +1750,46 @@ function WorkflowActions({
             Reinstate job
           </button>
         )}
+      </div>
+    );
+  }
+
+  if (canAdminSendQuotesToCustomer(job, quotedResponses)) {
+    const unsentCount = quotedResponses.filter((q) => q.quote_response?.sent_to_customer_at == null).length;
+    return (
+      <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-5">
+        <div className="flex items-center gap-2 text-violet-400">
+          <Send className="h-5 w-5" />
+          <h2 className="text-sm font-semibold">Send Quotes to Customer</h2>
+        </div>
+        <p className="mt-2 text-sm text-slate-400">
+          {unsentCount} quote(s) ready. Send all with 17.5% fee, or send individually from View quotes.
+        </p>
+        <button
+          onClick={onSendToCustomer}
+          disabled={actionLoading}
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 py-2.5 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+        >
+          {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Forward className="h-4 w-4" />}
+          Send All to Customer
+        </button>
+        <div className="mt-2 space-y-2">
+          <button
+            onClick={onAddQuote}
+            className="flex w-full min-w-[12rem] items-center justify-center gap-2 rounded-xl bg-brand-600 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-500"
+          >
+            <Plus className="h-4 w-4" />
+            Add Quote
+          </button>
+          {job.id && (
+            <Link
+              href={`/jobs/${job.id}/quotes`}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 py-2.5 text-sm font-medium text-slate-300 transition-colors hover:bg-white/10"
+            >
+              View quotes — send individually
+            </Link>
+          )}
+        </div>
       </div>
     );
   }

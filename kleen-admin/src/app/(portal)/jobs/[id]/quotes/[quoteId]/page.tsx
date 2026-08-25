@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAdminNotifications } from "@/lib/admin-notifications";
 import type { QuoteRequest } from "@/lib/admin-store";
+import { canAdminSendOneQuoteToCustomer } from "@/lib/quote-customer-status";
 import {
   ArrowLeft,
   Loader2,
@@ -38,7 +39,14 @@ export default function QuoteEditPage() {
   const quoteId = (Array.isArray(params.quoteId) ? params.quoteId[0] : params.quoteId) as string;
   const toast = useAdminNotifications((s) => s.push);
 
-  const [job, setJob] = useState<{ id: string; reference: string; service: string; status: string } | null>(null);
+  const [job, setJob] = useState<{
+    id: string;
+    reference: string;
+    service: string;
+    status: string;
+    accepted_quote_request_id?: string | null;
+    customer_accepted_at?: string | null;
+  } | null>(null);
   const [quote, setQuote] = useState<QuoteRequest | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -55,7 +63,7 @@ export default function QuoteEditPage() {
       const [jobRes, quoteRequestRes, quoteResponseRes] = await Promise.all([
         supabase
           .from("jobs")
-          .select("id, reference, status, services(name)")
+          .select("id, reference, status, accepted_quote_request_id, customer_accepted_at, services(name)")
           .eq("id", jobId)
           .single(),
         supabase
@@ -72,12 +80,21 @@ export default function QuoteEditPage() {
       ]);
 
       if (jobRes.data) {
-        const j = jobRes.data as { id: string; reference: string; status: string; services?: { name?: string } };
+        const j = jobRes.data as {
+          id: string;
+          reference: string;
+          status: string;
+          accepted_quote_request_id?: string | null;
+          customer_accepted_at?: string | null;
+          services?: { name?: string };
+        };
         setJob({
           id: j.id,
           reference: j.reference || j.id?.slice(0, 8).toUpperCase(),
           service: j.services?.name || "Cleaning",
           status: j.status || "pending",
+          accepted_quote_request_id: j.accepted_quote_request_id ?? null,
+          customer_accepted_at: j.customer_accepted_at ?? null,
         });
       }
 
@@ -335,8 +352,7 @@ export default function QuoteEditPage() {
   }
 
   const badge = QR_STATUS_BADGE[quote.status] ?? QR_STATUS_BADGE.sent;
-  const terminalStatuses = ["customer_accepted", "accepted", "completed", "funds_released"];
-  const canSend = quote.quote_response && !terminalStatuses.includes(job.status) && quote.quote_response.sent_to_customer_at == null;
+  const canSend = quote && job && canAdminSendOneQuoteToCustomer(quote, job, [quote]);
   const canAddResponse = (quote.status === "sent" || quote.status === "viewed") && !quote.quote_response;
 
   return (
