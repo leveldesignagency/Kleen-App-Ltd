@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAdminNotifications } from "@/lib/admin-notifications";
 import { useAdminStore } from "@/lib/admin-store";
-import { Loader2, ArrowLeft, ShieldCheck, ShieldOff, FileText, CheckCircle2 } from "lucide-react";
+import { Loader2, ArrowLeft, ShieldCheck, ShieldOff, FileText, CheckCircle2, Mail } from "lucide-react";
 
 type OperativeService = {
   id: string;
@@ -93,6 +93,7 @@ export default function ContractorReviewPage() {
   const [rejectText, setRejectText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [inviting, setInviting] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -208,6 +209,30 @@ export default function ContractorReviewPage() {
 
   const busy = saving !== null || completed !== null;
 
+  const resendInvite = async () => {
+    if (!op) return;
+    setInviting(true);
+    setError(null);
+    const res = await fetch("/api/contractors/invite", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: op.id }),
+    });
+    const json = (await res.json().catch(() => ({}))) as { error?: string };
+    setInviting(false);
+    if (!res.ok) {
+      setError(json.error || "Could not send invite");
+      toast({ type: "error", title: "Invite failed", message: json.error || "Could not send invite" });
+      return;
+    }
+    toast({
+      type: "success",
+      title: "Invite sent",
+      message: `Confirm-details email sent to ${op.email}`,
+    });
+  };
+
   if (loading) {
     return (
       <div className="flex h-72 items-center justify-center">
@@ -231,7 +256,7 @@ export default function ContractorReviewPage() {
           {notice}
         </div>
       )}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <div>
           <Link href="/contractors" className="inline-flex items-center gap-1 text-sm text-brand-400 hover:underline">
             <ArrowLeft className="h-4 w-4" />
@@ -240,7 +265,20 @@ export default function ContractorReviewPage() {
           <h1 className="mt-2 text-2xl font-bold">{op.full_name}</h1>
           <p className="mt-1 text-sm text-slate-400">{op.email}</p>
         </div>
-        <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-slate-200">{statusLabel}</span>
+        <div className="flex flex-col items-end gap-2">
+          <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-slate-200">{statusLabel}</span>
+          {!op.is_verified && (
+            <button
+              type="button"
+              disabled={inviting || busy}
+              onClick={resendInvite}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-white/10 disabled:opacity-50"
+            >
+              {inviting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
+              Resend confirm invite
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">

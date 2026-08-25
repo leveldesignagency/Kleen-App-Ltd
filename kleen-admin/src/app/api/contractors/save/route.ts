@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { requireAdminApi } from "@/lib/require-admin-api";
+import { sendContractorAdminInviteEmail } from "@/lib/resend-contractor-lifecycle";
 
 type OperativeServicePayload = {
   id?: string;
@@ -56,6 +57,56 @@ function buildOperativeUpdatePayload(data: OperativePayload) {
   };
 }
 
+async function replaceOperativeServices(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  operativeId: string,
+  osList: OperativeServicePayload[],
+  mode: "replace_all" | "sync",
+) {
+  if (mode === "replace_all") {
+    for (const row of osList) {
+      const ins = await supabase.from("operative_services").insert({
+        operative_id: operativeId,
+        service_id: row.service_id,
+        contract_title: row.contract_title || null,
+        contract_content: row.contract_content || null,
+        contract_content_preview: row.contract_content_preview?.trim() || null,
+        contract_file_url: row.contract_file_url || null,
+        is_active: true,
+      });
+      if (ins.error) return ins.error.message;
+    }
+    return null;
+  }
+
+  const currentIds = osList.filter((r) => r.id).map((r) => r.id as string);
+  const { data: existingRows } = await supabase.from("operative_services").select("id").eq("operative_id", operativeId);
+  const existingDbIds = (existingRows || []).map((r: { id: string }) => r.id);
+  const toDelete = existingDbIds.filter((dbId) => !currentIds.includes(dbId));
+  for (const rowId of toDelete) {
+    await supabase.from("operative_services").delete().eq("id", rowId);
+  }
+  for (const row of osList) {
+    const rowPayload = {
+      operative_id: operativeId,
+      service_id: row.service_id,
+      contract_title: row.contract_title || null,
+      contract_content: row.contract_content || null,
+      contract_content_preview: row.contract_content_preview?.trim() || null,
+      contract_file_url: row.contract_file_url || null,
+      is_active: true,
+    };
+    if (row.id) {
+      const u = await supabase.from("operative_services").update(rowPayload).eq("id", row.id);
+      if (u.error) return u.error.message;
+    } else {
+      const ins = await supabase.from("operative_services").insert(rowPayload);
+      if (ins.error) return ins.error.message;
+    }
+  }
+  return null;
+}
+
 export async function POST(request: NextRequest) {
   const auth = await requireAdminApi();
   if (!auth.ok) return auth.response;
@@ -76,29 +127,91 @@ export async function POST(request: NextRequest) {
     const supabase = createServiceRoleClient();
     const payload = buildOperativeUpdatePayload(operative);
     const osList: OperativeServicePayload[] = Array.isArray(operative_services) ? operative_services : [];
+    const emailNorm = payload.email.trim().toLowerCase();
 
     if (mode === "add") {
-      const { data: inserted, error } = await supabase.from("operatives").insert(payload).select("*").single();
-      if (error) {
-        console.error("contractors/save insert:", error);
-        return NextResponse.json({ error: error.message }, { status: 400 });
+      const { data: emailMatches, error: matchErr } = await supabase
+        .from("operatives")
+        .select("id, user_id, email, full_name")
+        .ilike("email", emailNorm);
+
+      if (matchErr) {
+        console.error("contractors/save email lookup:", matchErr);
+        return NextResponse.json({ error: matchErr.message }, { status: 400 });
       }
-      for (const row of osList) {
-        const ins = await supabase.from("operative_services").insert({
-          operative_id: inserted.id,
-          service_id: row.service_id,
-          contract_title: row.contract_title || null,
-          contract_content: row.contract_content || null,
-          contract_content_preview: row.contract_content_preview?.trim() || null,
-          contract_file_url: row.contract_file_url || null,
-          is_active: true,
-        });
-        if (ins.error) {
-          console.error("contractors/save operative_services insert:", ins.error);
-          return NextResponse.json({ error: ins.error.message }, { status: 400 });
+
+      const linked = (emailMatches || []).find((r) => r.user_id);
+      if (linked) {
+        return NextResponse.json(
+          {
+            error:
+              "A contractor portal account already exists for this email. Edit that contractor instead of adding a duplicate.",
+          },
+          { status: 409 },
+        );
+      }
+
+      const unclaimed = (emailMatches || []).find((r) => !r.user_id);
+      const inviteAt = new Date().toISOString();
+      const invitePayload = {
+        ...payload,
+        email: emailNorm,
+        onboarding_source: "admin_invite" as const,
+        admin_invited_at: inviteAt,
+        is_verified: false,
+      };
+
+      let inserted: Record<string, unknown>;
+
+      if (unclaimed) {
+        const { data: updated, error } = await supabase
+          .from("operatives")
+          .update(invitePayload)
+          .eq("id", unclaimed.id)
+          .select("*")
+          .single();
+        if (error) {
+          console.error("contractors/save update unclaimed:", error);
+          return NextResponse.json({ error: error.message }, { status: 400 });
+        }
+        inserted = updated as Record<string, unknown>;
+        const syncErr = await replaceOperativeServices(supabase, String(inserted.id), osList, "sync");
+        if (syncErr) {
+          return NextResponse.json({ error: syncErr }, { status: 400 });
+        }
+      } else {
+        const { data: created, error } = await supabase
+          .from("operatives")
+          .insert(invitePayload)
+          .select("*")
+          .single();
+        if (error) {
+          console.error("contractors/save insert:", error);
+          return NextResponse.json({ error: error.message }, { status: 400 });
+        }
+        inserted = created as Record<string, unknown>;
+        const syncErr = await replaceOperativeServices(supabase, String(inserted.id), osList, "replace_all");
+        if (syncErr) {
+          return NextResponse.json({ error: syncErr }, { status: 400 });
         }
       }
-      return NextResponse.json({ ok: true, operative: inserted });
+
+      const inviteEmail = String(inserted.email || emailNorm);
+      const inviteName = String(inserted.full_name || payload.full_name);
+      const sendResult = await sendContractorAdminInviteEmail({
+        toEmail: inviteEmail,
+        fullName: inviteName,
+      });
+      if (!sendResult.ok) {
+        console.error("contractors/save invite email:", sendResult.error);
+      }
+
+      return NextResponse.json({
+        ok: true,
+        operative: inserted,
+        invite_email_sent: sendResult.ok,
+        invite_email_error: sendResult.ok ? null : sendResult.error,
+      });
     }
 
     if (mode === "edit") {
@@ -116,36 +229,9 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
 
-      const currentIds = osList.filter((r) => r.id).map((r) => r.id as string);
-      const { data: existingRows } = await supabase.from("operative_services").select("id").eq("operative_id", id);
-      const existingDbIds = (existingRows || []).map((r: { id: string }) => r.id);
-      const toDelete = existingDbIds.filter((dbId) => !currentIds.includes(dbId));
-      for (const rowId of toDelete) {
-        await supabase.from("operative_services").delete().eq("id", rowId);
-      }
-      for (const row of osList) {
-        const rowPayload = {
-          operative_id: id,
-          service_id: row.service_id,
-          contract_title: row.contract_title || null,
-          contract_content: row.contract_content || null,
-          contract_content_preview: row.contract_content_preview?.trim() || null,
-          contract_file_url: row.contract_file_url || null,
-          is_active: true,
-        };
-        if (row.id) {
-          const u = await supabase.from("operative_services").update(rowPayload).eq("id", row.id);
-          if (u.error) {
-            console.error("contractors/save operative_services update:", u.error);
-            return NextResponse.json({ error: u.error.message }, { status: 400 });
-          }
-        } else {
-          const ins = await supabase.from("operative_services").insert(rowPayload);
-          if (ins.error) {
-            console.error("contractors/save operative_services insert:", ins.error);
-            return NextResponse.json({ error: ins.error.message }, { status: 400 });
-          }
-        }
+      const syncErr = await replaceOperativeServices(supabase, id, osList, "sync");
+      if (syncErr) {
+        return NextResponse.json({ error: syncErr }, { status: 400 });
       }
 
       return NextResponse.json({ ok: true, operative: updated });

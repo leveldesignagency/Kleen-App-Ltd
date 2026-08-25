@@ -280,7 +280,12 @@ export default function AdminContractorsPage() {
       }),
     });
 
-    const json = (await res.json().catch(() => ({}))) as { error?: string; operative?: Record<string, unknown> };
+    const json = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      operative?: Record<string, unknown>;
+      invite_email_sent?: boolean;
+      invite_email_error?: string | null;
+    };
     if (!res.ok || !json.operative) {
       toast({
         type: "error",
@@ -294,7 +299,14 @@ export default function AdminContractorsPage() {
 
     if (modal.mode === "add") {
       addContractor(mapped);
-      toast({ type: "success", title: "Contractor Added", message: `${data.full_name} has been added` });
+      toast({
+        type: json.invite_email_sent === false ? "info" : "success",
+        title: "Contractor Added",
+        message:
+          json.invite_email_sent === false
+            ? `${data.full_name} saved, but the confirm-details email failed${json.invite_email_error ? `: ${json.invite_email_error}` : ""}. Use Resend invite from their profile.`
+            : `${data.full_name} saved. They were emailed a link to confirm their details (still needs your approval after they confirm).`,
+      });
     } else {
       updateContractor(id, mapped);
       toast({ type: "success", title: "Contractor Updated", message: `${data.full_name} has been updated` });
