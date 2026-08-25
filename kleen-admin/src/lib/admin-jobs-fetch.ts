@@ -36,6 +36,7 @@ function mapToAdminJob(
     notes: (j.notes as string) || "",
     created_at: j.created_at as string,
     is_blocked: prof?.is_blocked ?? false,
+    payment_authorized_at: (j.payment_authorized_at as string | null) ?? null,
     payment_captured_at: (j.payment_captured_at as string | null) ?? null,
     stripe_payment_intent_id: (j.stripe_payment_intent_id as string | null) ?? null,
     funds_released_at: (j.funds_released_at as string | null) ?? null,

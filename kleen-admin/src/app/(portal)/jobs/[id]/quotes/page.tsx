@@ -335,6 +335,7 @@ export default function JobQuotesPage() {
         job_id: jobId,
         operative_id: operativeId,
         sent_by: user?.id,
+        initiated_by: "admin",
         deadline,
         status: "quoted",
         responded_at: respondedAt,

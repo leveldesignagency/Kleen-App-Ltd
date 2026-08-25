@@ -572,6 +572,7 @@ export default function AdminJobDetailPage() {
         job_id: job.id,
         operative_id: operativeId,
         sent_by: user?.id,
+        initiated_by: "admin",
         deadline,
         status: "quoted",
         responded_at: respondedAt,
@@ -1109,7 +1110,7 @@ export default function AdminJobDetailPage() {
           </div>
 
           {/* Same timestamps the customer app uses for "Live job activity" */}
-          {job.accepted_quote_request_id && !["cancelled", "disputed", "funds_released"].includes(job.status) && (
+          {job.payment_authorized_at && job.accepted_quote_request_id && !["cancelled", "disputed", "funds_released"].includes(job.status) && (
             <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-5">
               <div className="flex items-center gap-2 text-cyan-300">
                 <MapPin className="h-4 w-4" />

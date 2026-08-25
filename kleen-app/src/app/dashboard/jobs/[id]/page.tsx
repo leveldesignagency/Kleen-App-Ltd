@@ -469,7 +469,7 @@ export default function CustomerJobDetailPage() {
   const isTerminal = ["cancelled", "disputed", "funds_released", "completed"].includes(job.status);
   const currentStep = getStepIndex(job.status);
   const showQuotesSection = ["sent_to_customer", "customer_accepted", "accepted", "awaiting_completion", "in_progress", "pending_confirmation", "completed", "funds_released"].includes(job.status);
-  const canAcceptQuote = job.status === "sent_to_customer" && !job.accepted_quote_request_id;
+  const canAcceptQuote = job.status === "sent_to_customer" && !customerAccepted;
   const canConfirmComplete = ["awaiting_completion", "in_progress", "pending_confirmation"].includes(job.status) && !job.customer_confirmed_complete_at;
   const addressParts = [job.address_line_1, job.address_line_2, job.city, job.postcode].filter(Boolean);
 

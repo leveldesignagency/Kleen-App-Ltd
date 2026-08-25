@@ -1,4 +1,5 @@
 import { Check, Circle, MapPin, Navigation, Wrench, AlertCircle } from "lucide-react";
+import { POST_PAYMENT_JOB_STATUSES } from "@/lib/customer-job-accept";
 
 export type JobActivityModel = {
   status: string;
@@ -32,7 +33,6 @@ type Step = { key: string; label: string; sub: string; done: boolean; icon: "nav
 function buildSteps(job: JobActivityModel): Step[] {
   const out: Step[] = [];
   const s = job.status;
-  const early = ["pending", "awaiting_quotes", "quotes_received", "quoted", "sent_to_customer"].includes(s);
 
   out.push({
     key: "booked",
@@ -40,20 +40,16 @@ function buildSteps(job: JobActivityModel): Step[] {
     sub: job.preferred_date
       ? new Date(job.preferred_date).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })
       : "Date to be agreed",
-    done: job.hasAcceptedQuote && !early,
+    done: true,
     icon: "check",
   });
-
-  if (early && !job.hasAcceptedQuote) {
-    return out;
-  }
 
   out.push({
     key: "enroute",
     label: "On the way",
     sub: job.operative_en_route_at
       ? timeShort(job.operative_en_route_at)
-      : "You’ll see a time when your professional is travelling to you",
+      : "You'll see a time when your professional is travelling to you",
     done: Boolean(job.operative_en_route_at),
     icon: "nav",
   });
@@ -63,18 +59,17 @@ function buildSteps(job: JobActivityModel): Step[] {
     label: "Arrived on site",
     sub: job.operative_arrived_at
       ? timeShort(job.operative_arrived_at)
-      : "They’ll mark arrival when they reach the address",
+      : "They'll mark arrival when they reach the address",
     done: Boolean(job.operative_arrived_at),
     icon: "pin",
   });
 
   const inProg =
-    !early &&
-    (s === "in_progress" ||
-      Boolean(job.operative_marked_complete_at) ||
-      ["pending_confirmation", "completed", "funds_released"].includes(s) ||
-      (Boolean(job.actual_start) &&
-        ["awaiting_completion", "in_progress", "pending_confirmation", "completed", "funds_released"].includes(s)));
+    s === "in_progress" ||
+    Boolean(job.operative_marked_complete_at) ||
+    ["pending_confirmation", "completed", "funds_released"].includes(s) ||
+    (Boolean(job.actual_start) && (s === "awaiting_completion" || s === "in_progress"));
+
   out.push({
     key: "progress",
     label: "In progress",
@@ -114,9 +109,9 @@ function buildSteps(job: JobActivityModel): Step[] {
       if (s === "completed" && both) return "Kleen will release payment after the review window";
       if (job.customer_confirmed_complete_at && !job.contractor_confirmed_complete_at)
         return "Waiting for the other party to confirm";
-      if (job.contractor_confirmed_complete_at && !job.customer_confirmed_complete_at) return "Please confirm you’re happy";
+      if (job.contractor_confirmed_complete_at && !job.customer_confirmed_complete_at) return "Please confirm you're happy";
       if (["pending_confirmation", "completed", "funds_released"].includes(s) || both) return "Wrap-up and payment";
-      return "After the work, you’ll confirm here";
+      return "After the work, you'll confirm here";
     })(),
     done: ["completed", "funds_released"].includes(s) || both,
     icon: "check",
@@ -151,7 +146,9 @@ function StepIcon({ step, isActive }: { step: Step; isActive: boolean }) {
 }
 
 export function JobActivityTimeline({ job }: { job: JobActivityModel }) {
-  if (!job.hasAcceptedQuote || job.status === "cancelled" || job.status === "disputed") return null;
+  if (!job.hasAcceptedQuote) return null;
+  if (!POST_PAYMENT_JOB_STATUSES.includes(job.status as (typeof POST_PAYMENT_JOB_STATUSES)[number])) return null;
+  if (job.status === "cancelled" || job.status === "disputed") return null;
 
   const steps = buildSteps(job);
   const firstIncomplete = steps.findIndex((t) => !t.done);
@@ -163,8 +160,7 @@ export function JobActivityTimeline({ job }: { job: JobActivityModel }) {
         <div>
           <h2 className="text-sm font-semibold text-cyan-950">Live job activity</h2>
           <p className="mt-1 text-xs text-cyan-800/80">
-            Driver / cleaner status updates in real time when you keep this page open. On the way and arrived appear when
-            your professional uses their link.
+            Updates appear here after you accept and pay, when your professional uses their field link on the day.
           </p>
         </div>
         <span className="mt-0.5 inline-flex h-2 w-2 shrink-0 animate-pulse rounded-full bg-emerald-500" title="Listening for updates" />

@@ -22,6 +22,8 @@ export interface AdminJob {
   notes?: string;
   created_at: string;
   is_blocked?: boolean;
+  /** Set when customer authorises payment on quote accept (Stripe) */
+  payment_authorized_at?: string | null;
   /** Set when customer payment is captured — funds are in your Stripe account */
   payment_captured_at?: string | null;
   /** Stripe PaymentIntent for refunds (before funds released to contractor) */
