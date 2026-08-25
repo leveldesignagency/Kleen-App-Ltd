@@ -63,7 +63,7 @@ export function MarketingSection({
     >
       <div
         className={[
-          "px-6 py-10 sm:px-10 sm:py-12 lg:px-14 lg:py-16",
+          "px-5 py-8 sm:px-10 sm:py-12 lg:px-14 lg:py-16",
           innerClassName,
         ]
           .filter(Boolean)
@@ -77,7 +77,7 @@ export function MarketingSection({
   return (
     <section
       className={[
-        "relative px-4 sm:px-6 lg:px-8",
+        "relative px-0",
         overlap ? "-mt-16 z-10 sm:-mt-20" : "",
         noPad ? "pb-0" : "py-3 sm:py-4",
         className,

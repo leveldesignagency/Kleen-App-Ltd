@@ -2,19 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
-import { Resend } from "resend";
-import { resolveResendFrom } from "@/lib/resend-config";
-const CUSTOMER_DASHBOARD_URL = process.env.CUSTOMER_DASHBOARD_URL || "https://dashboard.kleenapp.co.uk";
+import { sendCustomerQuotesReadyEmail } from "@/lib/resend-customer-job-updates";
 
 export async function POST(request: NextRequest) {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) {
+  if (!process.env.RESEND_API_KEY?.trim()) {
     return NextResponse.json(
       { error: "Email not configured (RESEND_API_KEY missing)" },
       { status: 503 }
     );
   }
-  const resend = new Resend(apiKey);
 
   const cookieStore = cookies();
   const supabaseAuth = createServerClient(
@@ -78,46 +74,19 @@ export async function POST(request: NextRequest) {
 
   const ref = (job as { reference?: string }).reference || jobId.slice(0, 8).toUpperCase();
   const serviceName = (job as { services?: { name?: string } }).services?.name || "Cleaning";
-  const jobUrl = `${CUSTOMER_DASHBOARD_URL.replace(/\/$/, "")}/dashboard/jobs/${jobId}`;
-  const quoteWord = count === 1 ? "quote" : "quotes";
-  const intro =
-    count === 1
-      ? "You have a quote available for your cleaning job."
-      : `You have ${count} quotes available for your cleaning job.`;
 
-  const html = `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><title>Quotes ready — ${ref}</title></head>
-<body style="font-family: system-ui, sans-serif; line-height: 1.5; color: #1e293b; max-width: 560px; margin: 0 auto; padding: 24px;">
-  <h1 style="font-size: 1.25rem; margin-bottom: 8px;">Your ${quoteWord} ${count === 1 ? "is" : "are"} ready</h1>
-  <p style="color: #64748b; margin-bottom: 16px;">${intro}</p>
-  <p style="margin-bottom: 24px;">Job <strong>${ref}</strong> · ${serviceName}</p>
-  <p style="margin-bottom: 24px;">
-    <a href="${jobUrl}" style="display: inline-block; background: #0891b2; color: white; text-decoration: none; padding: 12px 20px; border-radius: 8px; font-weight: 600;">View ${quoteWord} in your dashboard</a>
-  </p>
-  <p style="color: #64748b; font-size: 0.875rem;">Log in to choose your preferred quote and confirm the booking.</p>
-</body>
-</html>
-`.trim();
+  const result = await sendCustomerQuotesReadyEmail({
+    toEmail: customer.email,
+    customerName: customer.full_name?.trim() || "there",
+    jobReference: ref,
+    jobId,
+    serviceName,
+    quoteCount: count,
+  });
 
-  try {
-    const { error } = await resend.emails.send({
-      from: resolveResendFrom(),
-      to: customer.email,
-      subject: count === 1 ? `Quote ready for job ${ref}` : `${count} quotes ready for job ${ref}`,
-      html,
-    });
-    if (error) {
-      console.error("Resend send error (notify-customer-quotes):", error);
-      return NextResponse.json({ error: error.message || "Failed to send email" }, { status: 500 });
-    }
-    return NextResponse.json({ ok: true, to: customer.email });
-  } catch (e) {
-    console.error("notify-customer-quotes error:", e);
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Failed to send email" },
-      { status: 500 }
-    );
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error || "Failed to send email" }, { status: 500 });
   }
+
+  return NextResponse.json({ ok: true, to: customer.email });
 }

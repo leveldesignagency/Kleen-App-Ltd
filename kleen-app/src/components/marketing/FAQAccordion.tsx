@@ -107,7 +107,7 @@ export default function FAQAccordion() {
         })}
       </div>
 
-      <div className="mx-auto mt-12 max-w-3xl rounded-[1.5rem] bg-slate-50 p-8 text-center sm:p-10">
+      <div className="mx-auto mt-12 max-w-3xl rounded-[1.5rem] bg-slate-50 p-5 text-center sm:p-8 lg:p-10">
         <h3 className="text-xl font-bold text-slate-900 sm:text-2xl">Still have questions?</h3>
         <p className="mt-2 text-slate-500">Our team is happy to help with anything you need.</p>
         <Link href="/contact" className="btn-primary mt-6 inline-flex px-8 py-3.5">

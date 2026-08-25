@@ -24,6 +24,8 @@
 - `NEXT_PUBLIC_SITE_ACCESS_GATE_ENABLED` (must match SITE_ACCESS_GATE_ENABLED on client)
 - `ADMIN_NOTIFY_EMAIL`
 - `ADMIN_APP_URL`
+- `NEXT_PUBLIC_CONTRACTOR_PORTAL_URL` (contractor CTA links in emails)
+- `NEXT_PUBLIC_CUSTOMER_APP_URL` (optional customer deep links in emails)
 - `CRON_SECRET`
 - `ADMIN_SECRET` (optional — staff diagnostics; falls back to `CRON_SECRET`)
 - `SHARE_LINK_SECRET` (optional — future signed links)

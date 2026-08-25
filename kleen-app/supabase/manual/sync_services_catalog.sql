@@ -3,7 +3,7 @@
 
 insert into public.service_categories (id, name, slug, description, icon, display_order, is_active) values
   ('exterior',   'Exterior Cleaning',    'exterior',   'Driveways, patios, decking, walls, and fences',              'Home',       1, true),
-  ('interior',   'Interior Cleaning',    'interior',   'Full house, room-by-room, or specific area cleaning',        'Sparkles',   2, true),
+  ('interior',   'Interior Cleaning',    'interior',   'Full house, room-by-room, carpet, or specific area cleaning',        'Sparkles',   2, true),
   ('gutter',     'Gutter & Roofline',    'gutter',     'Gutter clearing, fascia, and soffit cleaning',               'CloudRain',  3, true),
   ('kitchen',    'Kitchen',              'kitchen',    'Oven, hob, extractor, and full kitchen deep cleans',          'ChefHat',    4, true),
   ('eot',        'End-of-Tenancy',       'eot',        'Move-out deep clean to landlord/agency standards',            'Key',        5, true),
@@ -31,6 +31,7 @@ insert into public.services (
   ('full-house',    'interior', 'Full House Clean',        'full-house',     'Comprehensive top-to-bottom house cleaning',                    12000,  4000, 180, 1, 3, true),
   ('room-clean',    'interior', 'Room Clean',              'room-clean',     'Individual room deep clean',                                     3500,  1500,  45, 1, 1, true),
   ('bathroom',      'interior', 'Bathroom Clean',          'bathroom',       'Specialist bathroom deep clean and sanitisation',                 4000,  1800,  60, 1, 1, true),
+  ('carpet-clean',  'interior', 'Carpet Cleaning',       'carpet-clean',   'Professional carpet and rug cleaning for homes and offices',     7500,  2500,  90, 1, 2, true),
   ('gutter-clear',  'gutter',   'Gutter Clearing',         'gutter-clear',   'Remove debris and ensure proper drainage',                       8000,  2000,  90, 1, 2, true),
   ('fascia-soffit', 'gutter',   'Fascia & Soffit Clean',   'fascia-soffit',  'Restore roofline appearance',                                    9000,  2500, 120, 1, 2, true),
   ('oven-clean',    'kitchen',  'Oven Clean',              'oven-clean',     'Professional oven and hob deep clean',                           5500,  2000,  75, 1, 1, true),

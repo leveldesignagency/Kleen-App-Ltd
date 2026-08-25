@@ -154,6 +154,12 @@ export default function DisputesPage() {
       setSubmitting(false);
       return;
     }
+    void fetch("/api/disputes/notify-opened", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ disputeId: newRow.id }),
+    }).catch((e) => console.warn("dispute notify email:", e));
     const svc = getService(job.service_id);
     setDisputes((prev) => [
       {

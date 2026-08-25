@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { runContractorFieldAction, type FieldActionName } from "@/lib/contractor-field-job";
+import {
+  loadJobFieldEmailSnapshot,
+  sendEmailsForFieldAction,
+} from "@/lib/field-status-emails";
 import { withSecureApiRoute } from "@/lib/security/with-secure-api-route";
 
 async function portalGetHandler(
@@ -84,6 +88,8 @@ async function portalPostHandler(
     return NextResponse.json({ error: "Job not found" }, { status: 404 });
   }
 
+  const before = await loadJobFieldEmailSnapshot(supabase, jobRow.id);
+
   const result = await runContractorFieldAction(supabase, jobRow.id, action, {
     incompleteReason: body.reason,
     requireArrivedBeforeComplete: true,
@@ -92,6 +98,14 @@ async function portalPostHandler(
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
+
+  await sendEmailsForFieldAction({
+    supabase,
+    jobId: jobRow.id,
+    action,
+    before,
+    incompleteReason: body.reason,
+  });
 
   return NextResponse.json({ ok: true });
 }

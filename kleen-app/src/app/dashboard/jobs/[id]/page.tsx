@@ -6,7 +6,6 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useNotifications } from "@/lib/notifications";
 import { customerDisplayPricePence } from "@/lib/customer-quote-price";
-import { escrowReleaseFromNow } from "@/lib/contractor-field-job";
 import {
   ArrowLeft,
   Loader2,
@@ -355,43 +354,43 @@ export default function CustomerJobDetailPage() {
   const handleConfirmComplete = async () => {
     if (!job) return;
     setActionLoading(true);
-    const supabase = createClient();
-
-    const updates: Record<string, string | null> = {
-      customer_confirmed_complete_at: new Date().toISOString(),
-    };
-
-    if (job.contractor_confirmed_complete_at) {
-      updates.status = "completed";
-      updates.escrow_release_date = escrowReleaseFromNow();
-    } else {
-      updates.status = "pending_confirmation";
-    }
-
-    const { error } = await supabase.from("jobs").update(updates).eq("id", job.id);
-
-    if (error) {
-      toast({ type: "error", title: "Error", message: "Failed to confirm completion." });
-    } else {
+    try {
+      const res = await fetch("/api/jobs/confirm-complete", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: job.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast({ type: "error", title: "Error", message: data.error || "Failed to confirm completion." });
+        return;
+      }
+      const status = (data.status as JobDetail["status"]) || job.status;
+      const escrow = (data.escrow_release_date as string | null) ?? job.escrow_release_date;
       setJob({
         ...job,
-        status: updates.status as JobDetail["status"],
-        customer_confirmed_complete_at: updates.customer_confirmed_complete_at as string,
-        escrow_release_date: (updates.escrow_release_date as string | null) ?? job.escrow_release_date,
+        status,
+        customer_confirmed_complete_at:
+          (data.customer_confirmed_complete_at as string) || new Date().toISOString(),
+        escrow_release_date: escrow,
       });
       toast({
         type: "success",
-        title: updates.status === "completed" ? "Job Complete" : "Confirmation Received",
+        title: status === "completed" ? "Job Complete" : "Confirmation Received",
         message:
-          updates.status === "completed" && updates.escrow_release_date
-            ? `Both parties confirmed. The contractor can be paid after ${new Date(updates.escrow_release_date).toLocaleString("en-GB")} (3-day dispute window).`
-            : updates.status === "completed"
+          status === "completed" && escrow
+            ? `Both parties confirmed. The contractor can be paid after ${new Date(escrow).toLocaleString("en-GB")} (3-day dispute window).`
+            : status === "completed"
               ? "Both parties confirmed."
               : "Waiting for the contractor to confirm completion.",
       });
+    } catch {
+      toast({ type: "error", title: "Error", message: "Failed to confirm completion." });
+    } finally {
+      setActionLoading(false);
+      setConfirmCompleteModal(false);
     }
-    setActionLoading(false);
-    setConfirmCompleteModal(false);
   };
 
   const handleSubmitReview = async () => {

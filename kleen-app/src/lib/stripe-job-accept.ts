@@ -2,7 +2,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendAdminQuoteAcceptedEmail } from "@/lib/resend-admin-notify";
 import { sendContractorJobBookedEmail } from "@/lib/resend-contractor-notify";
 import { sendCustomerFullContractEmail } from "@/lib/resend-customer-contract";
+import { sendCustomerBookingConfirmedEmail } from "@/lib/resend-customer-job-updates";
+import { sendContractorQuoteDeclinedEmail } from "@/lib/resend-contractor-lifecycle";
 import { generateOperativePortalToken } from "@/lib/operative-portal-token";
+import { getService } from "@/lib/services";
 
 type ServiceSupabase = SupabaseClient;
 
@@ -121,18 +124,40 @@ export async function applyQuoteAcceptAuthorized(params: {
 
   const { data: otherRequests } = await supabase
     .from("quote_requests")
-    .select("id")
+    .select("id, operative_id")
     .eq("job_id", jobId)
     .neq("id", quoteRequestId);
   if (otherRequests?.length) {
     await supabase
       .from("quote_requests")
       .update({ customer_declined_at: now })
-      .in("id", otherRequests.map((r) => r.id));
+      .in(
+        "id",
+        otherRequests.map((r) => r.id),
+      );
+
+    const { data: refRow } = await supabase.from("jobs").select("reference").eq("id", jobId).maybeSingle();
+    const declineRef = refRow?.reference || jobId.slice(0, 8).toUpperCase();
+    for (const other of otherRequests) {
+      const opId = (other as { operative_id?: string }).operative_id;
+      if (!opId) continue;
+      const { data: op } = await supabase.from("operatives").select("email, full_name").eq("id", opId).maybeSingle();
+      const toEmail = op?.email?.trim();
+      if (!toEmail) continue;
+      void sendContractorQuoteDeclinedEmail({
+        toEmail,
+        contractorName: op?.full_name?.trim() || "there",
+        jobReference: declineRef,
+      }).catch((e) => console.error("sendContractorQuoteDeclinedEmail:", e));
+    }
   }
 
   if (sendAdminEmail) {
-    const { data: jobRow } = await supabase.from("jobs").select("reference, user_id").eq("id", jobId).single();
+    const { data: jobRow } = await supabase
+      .from("jobs")
+      .select("reference, user_id, service_id")
+      .eq("id", jobId)
+      .single();
     const uid = jobRow?.user_id;
     let customerName = "Customer";
     let customerEmail = "";
@@ -149,6 +174,33 @@ export async function applyQuoteAcceptAuthorized(params: {
       customerEmail,
       amountPence,
     });
+
+    if (customerEmail) {
+      const { data: qrRow } = await supabase
+        .from("quote_requests")
+        .select("operative_id")
+        .eq("id", quoteRequestId)
+        .maybeSingle();
+      let contractorName: string | undefined;
+      if (qrRow?.operative_id) {
+        const { data: op } = await supabase
+          .from("operatives")
+          .select("full_name")
+          .eq("id", qrRow.operative_id)
+          .maybeSingle();
+        contractorName = op?.full_name?.trim() || undefined;
+      }
+      const amountLabel = `£${(amountPence / 100).toFixed(2)}`;
+      await sendCustomerBookingConfirmedEmail({
+        toEmail: customerEmail,
+        customerName,
+        jobReference: ref,
+        jobId,
+        serviceName: jobRow?.service_id ? getService(jobRow.service_id)?.name : undefined,
+        amountLabel,
+        contractorName,
+      });
+    }
   }
 
   await sendFullContractToCustomerIfNeeded(supabase, jobId, quoteRequestId, now);
@@ -253,20 +305,42 @@ export async function applyLegacyImmediateCapture(
       });
     }
   }
+  const { data: jobRowFull } = await supabase
+    .from("jobs")
+    .select("reference, user_id, service_id")
+    .eq("id", jobId)
+    .single();
+
   const { data: otherRequests } = await supabase
     .from("quote_requests")
-    .select("id")
+    .select("id, operative_id")
     .eq("job_id", jobId)
     .neq("id", quoteRequestId);
   if (otherRequests?.length) {
     await supabase
       .from("quote_requests")
       .update({ customer_declined_at: now })
-      .in("id", otherRequests.map((r) => r.id));
+      .in(
+        "id",
+        otherRequests.map((r) => r.id),
+      );
+
+    const declineRef = jobRowFull?.reference || jobId.slice(0, 8).toUpperCase();
+    for (const other of otherRequests) {
+      const opId = (other as { operative_id?: string }).operative_id;
+      if (!opId) continue;
+      const { data: op } = await supabase.from("operatives").select("email, full_name").eq("id", opId).maybeSingle();
+      const toEmail = op?.email?.trim();
+      if (!toEmail) continue;
+      void sendContractorQuoteDeclinedEmail({
+        toEmail,
+        contractorName: op?.full_name?.trim() || "there",
+        jobReference: declineRef,
+      }).catch((e) => console.error("sendContractorQuoteDeclinedEmail:", e));
+    }
   }
 
-  const { data: jobRow } = await supabase.from("jobs").select("reference, user_id").eq("id", jobId).single();
-  const uid = jobRow?.user_id;
+  const uid = jobRowFull?.user_id;
   let customerName = "Customer";
   let customerEmail = "";
   if (uid) {
@@ -274,7 +348,7 @@ export async function applyLegacyImmediateCapture(
     if (prof?.full_name) customerName = prof.full_name;
     if (prof?.email) customerEmail = prof.email;
   }
-  const ref = jobRow?.reference || jobId.slice(0, 8).toUpperCase();
+  const ref = jobRowFull?.reference || jobId.slice(0, 8).toUpperCase();
   await sendAdminQuoteAcceptedEmail({
     jobId,
     jobReference: ref,
@@ -282,6 +356,32 @@ export async function applyLegacyImmediateCapture(
     customerEmail,
     amountPence,
   });
+
+  if (customerEmail) {
+    const { data: qrForName } = await supabase
+      .from("quote_requests")
+      .select("operative_id")
+      .eq("id", quoteRequestId)
+      .maybeSingle();
+    let contractorName: string | undefined;
+    if (qrForName?.operative_id) {
+      const { data: op } = await supabase
+        .from("operatives")
+        .select("full_name")
+        .eq("id", qrForName.operative_id)
+        .maybeSingle();
+      contractorName = op?.full_name?.trim() || undefined;
+    }
+    await sendCustomerBookingConfirmedEmail({
+      toEmail: customerEmail,
+      customerName,
+      jobReference: ref,
+      jobId,
+      serviceName: jobRowFull?.service_id ? getService(jobRowFull.service_id)?.name : undefined,
+      amountLabel: `£${(amountPence / 100).toFixed(2)}`,
+      contractorName,
+    });
+  }
 
   await sendFullContractToCustomerIfNeeded(supabase, jobId, quoteRequestId, now);
 

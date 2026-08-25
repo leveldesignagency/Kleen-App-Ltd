@@ -66,7 +66,7 @@ Use this checklist to test the flow up to payment and notifications. Adjust URLs
 - **Forward / send contractor email** (kleen-admin) — email includes **`/o/<token>`** on the customer app if `CONTRACTOR_PORTAL_BASE_URL` / `CUSTOMER_DASHBOARD_URL` is set.
 - **Release funds** captures the PaymentIntent if needed, then Connect transfer.
 
-See **`kleen-app/docs/FULL_JOB_FLOW_IMPLEMENTED.md`** for detail.
+See **`docs/product/FULL_JOB_FLOW_IMPLEMENTED.md`** for detail.
 
 ---
 

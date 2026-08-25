@@ -10,28 +10,28 @@ type MarketingHeroProps = {
 
 export default function MarketingHero({ jobFlowHref }: MarketingHeroProps) {
   return (
-    <section className="marketing-hero-gradient relative mt-4 min-h-[34rem] overflow-hidden rounded-2xl sm:mt-5 sm:min-h-[38rem] lg:mt-6 lg:min-h-[44rem]">
-      <div className="relative mx-auto flex min-h-[inherit] max-w-screen-2xl items-center pb-16 pt-36 sm:pb-20 sm:pt-40 lg:pb-24 lg:pt-48">
-        <div className="grid items-center gap-10 lg:grid-cols-[0.78fr_1.22fr] lg:gap-2 xl:gap-4">
-          <div className="lg:py-4">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-1.5 text-sm font-medium text-white backdrop-blur-sm">
-              <Sparkles className="h-3.5 w-3.5" />
-              Professional cleaning, simplified
+    <section className="marketing-hero-gradient relative mt-3 min-h-[34rem] overflow-hidden rounded-2xl sm:mt-5 sm:min-h-[38rem] lg:mt-6 lg:min-h-[44rem]">
+      <div className="relative mx-auto flex min-h-[inherit] max-w-screen-2xl items-center px-5 pb-14 pt-32 sm:px-8 sm:pb-20 sm:pt-40 lg:px-10 lg:pb-24 lg:pt-48">
+        <div className="grid w-full items-center gap-10 lg:grid-cols-[0.78fr_1.22fr] lg:gap-2 xl:gap-4">
+          <div className="min-w-0 lg:py-4">
+            <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm sm:px-4 sm:text-sm">
+              <Sparkles className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">Professional cleaning, simplified</span>
             </div>
 
-            <h1 className="mt-6 text-[1.75rem] font-bold leading-[1.12] tracking-tight text-white sm:text-5xl lg:text-[3.25rem] lg:leading-[1.08]">
-              <span className="block whitespace-nowrap">Book trusted cleaners</span>
-              <span className="block whitespace-nowrap">
+            <h1 className="mt-5 text-[1.65rem] font-bold leading-[1.15] tracking-tight text-white sm:mt-6 sm:text-5xl lg:text-[3.25rem] lg:leading-[1.08]">
+              <span className="block sm:whitespace-nowrap">Book trusted cleaners</span>
+              <span className="block sm:whitespace-nowrap">
                 <KineticHighlight tone="light">in minutes</KineticHighlight>
               </span>
             </h1>
 
-            <p className="mt-6 max-w-xl text-lg leading-relaxed text-brand-50/90">
+            <p className="mt-5 max-w-xl text-base leading-relaxed text-brand-50/90 sm:mt-6 sm:text-lg">
               Instant quotes, vetted professionals, and live job tracking — all from one
               modern dashboard. No phone tag. No guesswork.
             </p>
 
-            <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="mt-7 flex flex-col gap-3 sm:mt-9 sm:flex-row sm:items-center">
               <GatedAppLink href={jobFlowHref} className="btn-hero-primary">
                 Get your free quote
                 <span className="relative z-[1] flex h-8 w-8 items-center justify-center rounded-full bg-brand-600 text-white">

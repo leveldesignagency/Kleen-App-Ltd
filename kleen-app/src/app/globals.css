@@ -127,10 +127,17 @@
 
   .marketing-feature-card {
     overflow: hidden;
-    border-radius: 1.75rem;
+    border-radius: 1.5rem;
     border: 1px solid rgb(226 232 240);
     background: #ffffff;
-    padding: 0.75rem;
+    padding: 0.5rem;
+  }
+
+  @media (min-width: 640px) {
+    .marketing-feature-card {
+      border-radius: 1.75rem;
+      padding: 0.75rem;
+    }
   }
 
   .marketing-feature-card-panel {
@@ -254,11 +261,11 @@
   }
 
   .btn-hero-primary {
-    @apply relative overflow-hidden inline-flex items-center justify-center gap-2 rounded-full bg-white px-8 py-4 text-base font-semibold text-brand-700 shadow-lg shadow-brand-950/20 transition-all hover:bg-brand-50 active:scale-[0.98];
+    @apply relative overflow-hidden inline-flex w-full items-center justify-center gap-2 rounded-full bg-white px-5 py-3.5 text-sm font-semibold text-brand-700 shadow-lg shadow-brand-950/20 transition-all hover:bg-brand-50 active:scale-[0.98] sm:w-auto sm:px-8 sm:py-4 sm:text-base;
   }
 
   .btn-hero-secondary {
-    @apply relative overflow-hidden inline-flex items-center justify-center gap-2 rounded-full border border-white/25 bg-white/10 px-8 py-4 text-base font-semibold text-white backdrop-blur-sm transition-all hover:bg-white/15 active:scale-[0.98];
+    @apply relative overflow-hidden inline-flex w-full items-center justify-center gap-2 rounded-full border border-white/25 bg-white/10 px-5 py-3.5 text-sm font-semibold text-white backdrop-blur-sm transition-all hover:bg-white/15 active:scale-[0.98] sm:w-auto sm:px-8 sm:py-4 sm:text-base;
   }
 
   .btn-hero-nav {

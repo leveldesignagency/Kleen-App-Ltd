@@ -258,10 +258,25 @@ export default function AdminContractorsPage() {
     if (!deleteTarget) return;
     const supabase = createClient();
     const name = deleteTarget.full_name;
-    await supabase.from("operatives").delete().eq("id", deleteTarget.id);
+    const retain = new Date();
+    retain.setMonth(retain.getMonth() + 24);
+    await supabase
+      .from("operatives")
+      .update({
+        is_active: false,
+        user_id: null,
+        documents_retain_until: retain.toISOString().slice(0, 10),
+      })
+      .eq("id", deleteTarget.id);
+    // Soft-deactivate + retain docs for 24 months (cron purges files). Hard delete only if no ledger needed:
+    // await supabase.from("operatives").delete().eq("id", deleteTarget.id);
     removeContractor(deleteTarget.id);
     setDeleteTarget(null);
-    toast({ type: "info", title: "Contractor Removed", message: `${name} has been deleted` });
+    toast({
+      type: "info",
+      title: "Contractor deactivated",
+      message: `${name} deactivated. ID docs retained up to 24 months unless a legal hold applies.`,
+    });
   };
 
   const toggleActive = async (c: Contractor) => {
@@ -584,7 +599,9 @@ export default function AdminContractorsPage() {
           >
             <h2 className="text-lg font-bold">Delete Contractor</h2>
             <p className="mt-2 text-sm text-slate-400">
-              Remove {deleteTarget.full_name} from the database? This cannot be undone.
+              Deactivate {deleteTarget.full_name}? They lose portal access. Vetting ID documents are
+              kept for up to 24 months (then purged), unless a legal hold is active. Job/payment
+              history is retained in anonymised/ledger form as needed.
             </p>
             <div className="mt-6 flex justify-end gap-2">
               <button

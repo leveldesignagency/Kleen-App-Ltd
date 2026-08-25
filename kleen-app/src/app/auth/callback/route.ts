@@ -4,6 +4,7 @@ import { contractorPortalHref } from "@/lib/contractor-portal-url";
 import { getSupabaseAuthCookieOptions } from "@/lib/supabase/auth-cookie-options";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { hasSiteAccess, isSiteAccessGateEnabled } from "@/lib/site-access-gate";
+import { maybeSendWelcomeEmail } from "@/lib/maybe-send-welcome";
 
 /**
  * OAuth PKCE exchange — must use getAll/setAll so cookies attach to the redirect response.
@@ -63,7 +64,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL("/sign-in?error=auth", sameOrigin));
   }
 
-  const userId = exchanged?.session?.user?.id;
+  const user = exchanged?.session?.user;
+  const userId = user?.id;
   if (intent === "contractor" && userId) {
     try {
       const admin = createServiceRoleClient();
@@ -78,6 +80,10 @@ export async function GET(request: NextRequest) {
     } catch (e) {
       console.error("auth callback intent=contractor:", e);
     }
+  } else if (user && intent !== "contractor") {
+    void maybeSendWelcomeEmail({ user, audience: "customer" }).catch((e) =>
+      console.error("auth callback welcome email:", e),
+    );
   }
 
   return response;

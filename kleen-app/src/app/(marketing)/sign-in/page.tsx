@@ -83,6 +83,7 @@ function SignInContent() {
         setLoading(false);
         return;
       }
+      void fetch("/api/auth/welcome", { method: "POST", credentials: "include" }).catch(() => {});
     }
 
     setLoading(false);
@@ -93,7 +94,7 @@ function SignInContent() {
   return (
     <SiteAccessGate>
     <div className="flex min-h-[calc(100vh-12rem)] items-center justify-center py-12 sm:py-16">
-      <div className="w-full max-w-md overflow-hidden rounded-[1.5rem] bg-slate-50 p-8 shadow-sm sm:p-10">
+      <div className="w-full max-w-md overflow-hidden rounded-[1.5rem] bg-slate-50 p-5 shadow-sm sm:p-8 lg:p-10">
         <div className="text-center">
           <Link href={getMarketingHomeHref()} className="mb-6 inline-flex items-center">
             <Image

@@ -5,6 +5,10 @@
       "schedule": "0 5 * * *"
     },
     {
+      "path": "/api/cron/purge-contractor-documents",
+      "schedule": "0 6 * * *"
+    },
+    {
       "path": "/api/cron/ensure-new-job-admin-emails",
       "schedule": "*/5 * * * *"
     }

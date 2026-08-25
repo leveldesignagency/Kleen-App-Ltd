@@ -49,7 +49,7 @@ export default function AboutStorySection() {
 
         <div className="about-story-visual relative min-h-[22rem] overflow-hidden rounded-[2rem] shadow-xl shadow-emerald-900/10 sm:min-h-[26rem] lg:min-h-[32rem]">
           <div className="absolute inset-0 bg-gradient-to-t from-emerald-950/80 via-teal-900/25 to-transparent" />
-          <div className="relative flex h-full min-h-[inherit] flex-col justify-between p-7 sm:p-8">
+          <div className="relative flex h-full min-h-[inherit] flex-col justify-between p-5 sm:p-7 lg:p-8">
             <div>
               <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm">
                 <CheckCircle2 className="h-5 w-5 text-white" />

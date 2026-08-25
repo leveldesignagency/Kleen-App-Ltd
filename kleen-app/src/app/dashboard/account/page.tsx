@@ -228,7 +228,8 @@ export default function AccountPage() {
     pushToast({
       type: "success",
       title: "Deletion scheduled",
-      message: "Your account will be permanently removed after the grace period unless you cancel.",
+      message:
+        "Your login will be removed after 30 days. Anonymised job/payment records may be kept for tax, disputes, and fraud prevention as described in our Privacy Policy.",
     });
   };
 
@@ -480,7 +481,7 @@ export default function AccountPage() {
         <p className="mt-1 text-xs text-red-800/80">
           {deletionScheduledAt
             ? "You already have deletion scheduled. Use Cancel deletion above to keep your account."
-            : "We will permanently delete your login and data after 30 days. You can cancel before then."}
+            : "After 30 days we remove your login and scrub personal details. Anonymised job/payment ledgers may be kept for tax, disputes, and fraud prevention (see Privacy Policy). You can cancel before then."}
         </p>
         {!deletionScheduledAt && (
           <button

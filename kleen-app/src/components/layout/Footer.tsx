@@ -24,6 +24,7 @@ const FOOTER_SECONDARY = [
 const FOOTER_LEGAL = [
   { href: "/terms", label: "Terms" },
   { href: "/privacy", label: "Privacy" },
+  { href: "/cookies", label: "Cookies" },
 ] as const;
 
 interface FooterProps {
@@ -34,7 +35,7 @@ interface FooterProps {
 export default function Footer({ user = null }: FooterProps) {
   return (
     <footer className="bg-white">
-      <div className="mx-auto max-w-screen-2xl px-4 py-10 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-screen-2xl px-3 py-10 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between lg:gap-8">
           <Link href="/" className="w-fit shrink-0">
             <Image

@@ -18,7 +18,9 @@ export const BUCKET_CONFIG: Record<RateLimitBucket, BucketConfig> = {
 /** Map Kleen API paths to rate-limit buckets (stricter for expensive routes). */
 export function resolveApiBucket(pathname: string): RateLimitBucket {
   if (pathname.startsWith("/api/site-access/unlock")) return "auth";
+  if (pathname.startsWith("/api/auth/welcome")) return "auth";
   if (pathname.startsWith("/api/jobs/submit")) return "write";
+  if (pathname.startsWith("/api/disputes/")) return "write";
   if (pathname.startsWith("/api/support/report")) return "write";
   if (pathname.startsWith("/api/stripe/")) return "payment";
   if (pathname.startsWith("/api/diagnostics/")) return "sensitive";
@@ -41,6 +43,7 @@ const MARKETING_PATHS = new Set([
   "/services",
   "/terms",
   "/privacy",
+  "/cookies",
   "/sign-in",
 ]);
 

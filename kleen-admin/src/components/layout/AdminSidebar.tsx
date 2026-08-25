@@ -14,6 +14,7 @@ import {
   Menu,
   X,
   ShieldCheck,
+  Scale,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -23,6 +24,7 @@ const NAV_ITEMS = [
   { href: "/contractors", label: "Contractors", icon: Users },
   { href: "/disputes", label: "Disputes", icon: MessageSquare },
   { href: "/customers", label: "Customers", icon: UserSearch },
+  { href: "/legal-holds", label: "Legal holds", icon: Scale },
 ];
 
 export default function AdminSidebar() {

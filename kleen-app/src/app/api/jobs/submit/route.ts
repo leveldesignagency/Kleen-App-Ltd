@@ -4,6 +4,8 @@ import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { notifyAdminNewJobEmail } from "@/lib/admin-new-job-email";
 import { markAdminNewJobEmailSent } from "@/lib/mark-admin-new-job-email-sent";
 import { broadcastJobToMatchingContractors } from "@/lib/broadcast-job-to-contractors";
+import { sendCustomerJobReceivedEmail } from "@/lib/resend-customer-job-updates";
+import { getService } from "@/lib/services";
 import { withSecureApiRoute } from "@/lib/security/with-secure-api-route";
 
 type SubmitBody = {
@@ -143,6 +145,24 @@ async function submitHandler(request: NextRequest) {
       console.error("jobs/submit admin email failed:", adminEmail.error, { jobId: job.id });
     } else {
       await markAdminNewJobEmailSent(job.id);
+    }
+
+    try {
+      const { data: prof } = await admin.from("profiles").select("full_name, email").eq("id", user.id).maybeSingle();
+      const toEmail = (prof?.email || user.email || "").trim();
+      if (toEmail) {
+        await sendCustomerJobReceivedEmail({
+          toEmail,
+          customerName: prof?.full_name?.trim() || "there",
+          jobReference: job.reference || String(job.id).slice(0, 8).toUpperCase(),
+          jobId: job.id,
+          serviceName: serviceId ? getService(serviceId)?.name : undefined,
+          preferredDate: preferredDate || undefined,
+          postcode: postcode || undefined,
+        });
+      }
+    } catch (e) {
+      console.error("jobs/submit customer received email:", e);
     }
 
     const broadcast = await broadcastJobToMatchingContractors(admin, job.id);

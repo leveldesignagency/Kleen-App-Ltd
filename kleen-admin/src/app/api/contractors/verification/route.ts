@@ -1,23 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { requireAdminApi } from "@/lib/require-admin-api";
-import { Resend } from "resend";
-import { resolveResendFrom } from "@/lib/resend-config";
-
-function escapeHtml(s: string) {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function contractorPortalBaseUrl() {
-  return (
-    process.env.CONTRACTOR_PORTAL_BASE_URL?.replace(/\/$/, "") ||
-    "https://contractor.kleenapp.co.uk"
-  );
-}
+import {
+  sendContractorApprovedEmail,
+  sendContractorRejectedEmail,
+} from "@/lib/resend-contractor-lifecycle";
 
 /** PostgREST missing column / stale schema cache — retry with fewer fields. */
 function shouldRetryOperativesUpdate(message: string | undefined) {
@@ -37,6 +24,10 @@ function shouldRetryOperativesUpdate(message: string | undefined) {
 
 function getErrorMessage(err: { message?: string } | null) {
   return err?.message ?? "";
+}
+
+function emailWarn(error: string | undefined, missingKeyMsg: string, failMsg: string) {
+  return error === "RESEND_API_KEY not set" ? missingKeyMsg : failMsg;
 }
 
 export async function POST(request: NextRequest) {
@@ -119,30 +110,17 @@ export async function POST(request: NextRequest) {
     const toEmail = String(data.email || "").trim();
     let emailWarning: string | undefined;
     if (toEmail) {
-      const apiKey = process.env.RESEND_API_KEY;
-      if (!apiKey) {
-        emailWarning = "Contractor approved but approval email was not sent (RESEND_API_KEY missing).";
-      } else {
-        const resend = new Resend(apiKey);
-        const base = contractorPortalBaseUrl();
-        const portalUrl = `${base}/contractor`;
-        const htmlBody = `
-          <p>Hi ${escapeHtml(String(data.full_name || "there"))},</p>
-          <p>Good news — your Kleen contractor application has been <strong>approved</strong>.</p>
-          <p>You can now receive quote invitations, connect Stripe for payouts, and manage jobs from your contractor portal.</p>
-          <p><a href="${portalUrl}">Open contractor portal</a></p>
-          <p style="color:#64748b;font-size:12px;margin-top:24px;">— Kleen</p>
-        `;
-        const { error: sendErr } = await resend.emails.send({
-          from: resolveResendFrom(),
-          to: toEmail,
-          subject: "Your Kleen contractor account is approved",
-          html: htmlBody,
-        });
-        if (sendErr) {
-          console.error("contractors/verification approve resend:", sendErr);
-          emailWarning = "Contractor approved but the approval email failed to send.";
-        }
+      const sendResult = await sendContractorApprovedEmail({
+        toEmail,
+        fullName: String(data.full_name || "there"),
+      });
+      if (!sendResult.ok) {
+        console.error("contractors/verification approve email:", sendResult.error);
+        emailWarning = emailWarn(
+          sendResult.error,
+          "Contractor approved but approval email was not sent (RESEND_API_KEY missing).",
+          "Contractor approved but the approval email failed to send.",
+        );
       }
     }
 
@@ -215,47 +193,19 @@ export async function POST(request: NextRequest) {
   }
 
   const toEmail = before?.email?.trim();
+  let emailWarning: string | undefined;
   if (toEmail) {
-    const apiKey = process.env.RESEND_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json(
-        {
-          ok: true,
-          operative: data,
-          emailWarning: "Contractor updated but email was not sent (RESEND_API_KEY missing).",
-          ...(usedFallback ? { dbWarning: "Decline used minimal DB columns; run ensure_operatives_contractor_verification_columns.sql for full rejection storage." } : {}),
-        },
-        { status: 200 }
-      );
-    }
-    const resend = new Resend(apiKey);
-    const base = contractorPortalBaseUrl();
-    const profileUrl = `${base}/contractor`;
-    const htmlBody = `
-      <p>Hi ${escapeHtml(before?.full_name || "there")},</p>
-      <p>Thanks for applying to work with Kleen as a contractor. After reviewing your application, we are not able to approve your profile at this time.</p>
-      <p><strong>What we need you to address</strong></p>
-      <div style="white-space:pre-wrap;border-left:3px solid #0d9488;padding-left:12px;margin:16px 0;">${escapeHtml(trimmed).replace(/\n/g, "<br/>")}</div>
-      <p>Please update your details in the contractor portal and reply to this email or contact us if you have questions.</p>
-      <p><a href="${profileUrl}">Open your contractor profile</a></p>
-      <p style="color:#64748b;font-size:12px;margin-top:24px;">— Kleen</p>
-    `;
-    const { error: sendErr } = await resend.emails.send({
-      from: resolveResendFrom(),
-      to: toEmail,
-      subject: "Update to your Kleen contractor application",
-      html: htmlBody,
+    const sendResult = await sendContractorRejectedEmail({
+      toEmail,
+      fullName: before?.full_name || "there",
+      message: trimmed,
     });
-    if (sendErr) {
-      console.error("contractors/verification resend:", sendErr);
-      return NextResponse.json(
-        {
-          ok: true,
-          operative: data,
-          emailWarning: "Contractor saved but the email failed to send. Check Resend logs.",
-          ...(usedFallback ? { dbWarning: "Decline used minimal DB columns; run ensure_operatives_contractor_verification_columns.sql for full rejection storage." } : {}),
-        },
-        { status: 200 }
+    if (!sendResult.ok) {
+      console.error("contractors/verification reject email:", sendResult.error);
+      emailWarning = emailWarn(
+        sendResult.error,
+        "Contractor updated but email was not sent (RESEND_API_KEY missing).",
+        "Contractor saved but the email failed to send. Check Resend logs.",
       );
     }
   }
@@ -263,6 +213,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     ok: true,
     operative: data,
+    ...(emailWarning ? { emailWarning } : {}),
     ...(usedFallback
       ? {
           dbWarning:

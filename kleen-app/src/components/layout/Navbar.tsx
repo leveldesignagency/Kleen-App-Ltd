@@ -37,7 +37,7 @@ export default function Navbar({ user, framed = false }: NavbarProps) {
   const shellActive = !atHeroTop;
   const useLightNav = shellActive || atHeroTop;
   const useFixedNav = isHome;
-  const headerPadding = "px-4 pt-4 sm:px-5 sm:pt-5 lg:px-6 lg:pt-6";
+  const headerPadding = "px-3 pt-3 sm:px-5 sm:pt-5 lg:px-6 lg:pt-6";
 
   const jobFlowHref = customerAppHref("/job-flow");
   const signInHref = customerAppHref("/sign-in");

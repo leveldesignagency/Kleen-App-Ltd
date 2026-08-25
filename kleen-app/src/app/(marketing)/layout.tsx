@@ -1,6 +1,7 @@
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import MarketingSiteFrame from "@/components/marketing/MarketingSiteFrame";
+import CookieConsentBanner from "@/components/legal/CookieConsentBanner";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export default async function MarketingLayout({
@@ -16,8 +17,9 @@ export default async function MarketingLayout({
   return (
     <MarketingSiteFrame>
       <Navbar user={user ? { email: user.email ?? "" } : null} framed />
-      <main className="flex-1 px-4 sm:px-5 lg:px-6">{children}</main>
+      <main className="flex-1 px-3 sm:px-5 lg:px-6">{children}</main>
       <Footer user={user ? { email: user.email ?? "" } : null} framed />
+      <CookieConsentBanner />
     </MarketingSiteFrame>
   );
 }

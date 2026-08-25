@@ -29,7 +29,7 @@ export default function MarketingFeatureCard({
     <div className={["marketing-feature-card flex h-full flex-col", className].filter(Boolean).join(" ")}>
       <div
         className={[
-          "marketing-feature-card-panel relative flex flex-1 flex-col overflow-hidden rounded-[1.25rem] p-7 sm:p-8",
+          "marketing-feature-card-panel relative flex flex-1 flex-col overflow-hidden rounded-[1.25rem] p-5 sm:p-7 lg:p-8",
           featured ? "marketing-feature-card-panel-featured" : "",
         ].join(" ")}
       >

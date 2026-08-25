@@ -99,7 +99,7 @@ export function MarketingStatGrid({
 export const marketingCard = "marketing-feature-card";
 
 export const marketingCardPanel =
-  "marketing-feature-card-panel relative overflow-hidden rounded-[1.25rem] p-7 sm:p-8";
+  "marketing-feature-card-panel relative overflow-hidden rounded-[1.25rem] p-5 sm:p-7 lg:p-8";
 
 export const marketingCardHover =
   "marketing-feature-card transition-all duration-300 hover:-translate-y-1 hover:border-slate-300";

@@ -149,8 +149,8 @@ export default function HomeFeatureCardsSection({
                       ? [
                           "relative z-10 shadow-xl shadow-brand-600/20",
                           isIntroFeatured
-                            ? "-translate-y-6 scale-[1.04]"
-                            : "-translate-y-3 scale-[1.02]",
+                            ? "-translate-y-3 lg:-translate-y-6 lg:scale-[1.04]"
+                            : "-translate-y-2 lg:-translate-y-3 lg:scale-[1.02]",
                         ].join(" ")
                       : "",
                   ]
