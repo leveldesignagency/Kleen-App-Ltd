@@ -35,11 +35,10 @@ export function useSiteAccess() {
 }
 
 export function SiteAccessProvider({ children }: { children: React.ReactNode }) {
-  // Prefer server SITE_ACCESS_GATE_ENABLED via /api/site-access/status (runtime).
-  // NEXT_PUBLIC_ is only an optimistic hint until status loads.
   const publicHint = isSiteAccessGateEnabledPublic();
-  const [gateEnabled, setGateEnabled] = useState(publicHint);
-  const [unlocked, setUnlocked] = useState(!publicHint);
+  // Optimistic: treat as locked while we ask the server — never default unlocked=true.
+  const [gateEnabled, setGateEnabled] = useState(true);
+  const [unlocked, setUnlocked] = useState(false);
   const [checking, setChecking] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [pendingHref, setPendingHref] = useState<string | null>(null);
@@ -48,21 +47,29 @@ export function SiteAccessProvider({ children }: { children: React.ReactNode }) 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const resolveRef = useRef<((ok: boolean) => void) | null>(null);
+  const statusReadyRef = useRef<Promise<void> | null>(null);
 
   const refreshStatus = useCallback(async () => {
     try {
-      const res = await fetch("/api/site-access/status", { credentials: "include", cache: "no-store" });
-      const data = (await res.json()) as { unlocked?: boolean; enabled?: boolean; disabled?: boolean };
+      const res = await fetch("/api/site-access/status", {
+        credentials: "include",
+        cache: "no-store",
+      });
+      const data = (await res.json()) as {
+        unlocked?: boolean;
+        enabled?: boolean;
+        disabled?: boolean;
+      };
       const enabled =
-        typeof data.enabled === "boolean" ? data.enabled : data.disabled === true ? false : publicHint;
+        typeof data.enabled === "boolean"
+          ? data.enabled
+          : data.disabled === true
+            ? false
+            : publicHint;
       setGateEnabled(enabled);
-      if (!enabled) {
-        setUnlocked(true);
-      } else {
-        setUnlocked(Boolean(data.unlocked));
-      }
+      setUnlocked(enabled ? Boolean(data.unlocked) : true);
     } catch {
-      // If status fails, fall back to public build flag so preview still works when configured.
+      // Network failure: keep gate on if public flag says so, else open
       setGateEnabled(publicHint);
       setUnlocked(!publicHint);
     } finally {
@@ -71,7 +78,7 @@ export function SiteAccessProvider({ children }: { children: React.ReactNode }) 
   }, [publicHint]);
 
   useEffect(() => {
-    void refreshStatus();
+    statusReadyRef.current = refreshStatus();
   }, [refreshStatus]);
 
   const finishRequest = useCallback((ok: boolean, href: string | null) => {
@@ -83,23 +90,57 @@ export function SiteAccessProvider({ children }: { children: React.ReactNode }) 
     setUsername("");
     setPassword("");
     if (ok && href) {
-      window.location.href = href;
+      window.location.assign(href);
     }
   }, []);
 
   const requestAccess = useCallback(
-    (targetHref?: string) => {
-      if (!gateEnabled || unlocked) {
-        if (targetHref) window.location.href = targetHref;
-        return Promise.resolve(true);
+    async (targetHref?: string) => {
+      // Wait for status so we don't skip the modal before knowing gate state
+      if (statusReadyRef.current) {
+        await statusReadyRef.current;
+      } else {
+        await refreshStatus();
       }
+
+      // Re-read via a one-shot status check for accuracy after await
+      let enabled = gateEnabled;
+      let isUnlocked = unlocked;
+      try {
+        const res = await fetch("/api/site-access/status", {
+          credentials: "include",
+          cache: "no-store",
+        });
+        const data = (await res.json()) as {
+          unlocked?: boolean;
+          enabled?: boolean;
+          disabled?: boolean;
+        };
+        enabled =
+          typeof data.enabled === "boolean"
+            ? data.enabled
+            : data.disabled === true
+              ? false
+              : publicHint;
+        isUnlocked = enabled ? Boolean(data.unlocked) : true;
+        setGateEnabled(enabled);
+        setUnlocked(isUnlocked);
+      } catch {
+        /* keep state */
+      }
+
+      if (!enabled || isUnlocked) {
+        if (targetHref) window.location.assign(targetHref);
+        return true;
+      }
+
       setPendingHref(targetHref ?? null);
       setModalOpen(true);
       return new Promise<boolean>((resolve) => {
         resolveRef.current = resolve;
       });
     },
-    [gateEnabled, unlocked]
+    [gateEnabled, unlocked, publicHint, refreshStatus],
   );
 
   const handleUnlock = async (e: React.FormEvent) => {
@@ -142,7 +183,7 @@ export function SiteAccessProvider({ children }: { children: React.ReactNode }) 
   return (
     <SiteAccessContext.Provider value={value}>
       {children}
-      {gateEnabled && modalOpen ? (
+      {modalOpen ? (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/95 px-4">
           <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-slate-900 p-8 shadow-2xl">
             <div className="mb-6 flex items-center justify-center gap-2 text-brand-400">
@@ -153,8 +194,8 @@ export function SiteAccessProvider({ children }: { children: React.ReactNode }) 
             </div>
             <h2 className="text-center text-xl font-bold text-white">Private preview</h2>
             <p className="mt-2 text-center text-sm text-slate-400">
-              Kleen is not open to the public yet. Enter the preview password to reach the
-              sign-in page — you will still sign in with Google after this.
+              Kleen is not open to the public yet. Enter the preview password to continue —
+              you will still sign in with Google after this.
             </p>
             <form onSubmit={handleUnlock} className="mt-6 space-y-4">
               <div>
@@ -190,7 +231,7 @@ export function SiteAccessProvider({ children }: { children: React.ReactNode }) 
                 {loading ? (
                   <Loader2 className="mx-auto h-4 w-4 animate-spin" />
                 ) : (
-                  "Continue to sign in"
+                  "Continue"
                 )}
               </button>
               <button

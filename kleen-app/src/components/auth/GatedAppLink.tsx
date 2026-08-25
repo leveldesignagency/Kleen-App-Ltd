@@ -7,14 +7,14 @@ import { isGatedCustomerHref } from "@/lib/site-access-gate-public";
 type Props = React.ComponentProps<typeof Link>;
 
 export default function GatedAppLink({ href, onClick, ...props }: Props) {
-  const { gateEnabled, unlocked, requestAccess } = useSiteAccess();
+  const { checking, requestAccess } = useSiteAccess();
   const hrefStr =
     typeof href === "string"
       ? href
       : typeof href === "object" && href && "pathname" in href
-        ? `${href.pathname ?? ""}`
+        ? `${(href as { pathname?: string }).pathname ?? ""}`
         : "";
-  const needsGate = gateEnabled && !unlocked && isGatedCustomerHref(hrefStr);
+  const isGatedPath = isGatedCustomerHref(hrefStr);
 
   return (
     <Link
@@ -23,8 +23,14 @@ export default function GatedAppLink({ href, onClick, ...props }: Props) {
       onClick={(e) => {
         onClick?.(e);
         if (e.defaultPrevented) return;
-        if (!needsGate) return;
+        if (!isGatedPath) return;
+        // Always intercept gated paths until server status says unlocked —
+        // requestAccess waits on /api/site-access/status and shows the modal when needed.
         e.preventDefault();
+        if (checking) {
+          void requestAccess(hrefStr);
+          return;
+        }
         void requestAccess(hrefStr);
       }}
     />

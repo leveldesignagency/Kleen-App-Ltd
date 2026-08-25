@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useJobFlowStore } from "@/lib/store";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, getBrowserUser } from "@/lib/supabase/client";
+import SiteAccessGate from "@/components/auth/SiteAccessGate";
 import { useUserProfile } from "@/lib/user-profile";
 import { useServiceHealth } from "@/hooks/useServiceHealth";
 import Step1Auth from "@/components/job-flow/Step1Auth";
@@ -47,15 +48,16 @@ export default function JobFlowPage() {
       }
     };
 
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    void (async () => {
+      const user = await getBrowserUser();
       if (cancelled) return;
       if (user) applyUser(user);
       setAuthChecked(true);
-    });
+    })();
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
+    } = supabase.auth.onAuthStateChange((event: string, session: { user?: { email?: string | null; user_metadata?: Record<string, unknown> } } | null) => {
       if (cancelled) return;
       if (event === "SIGNED_IN" && session?.user) {
         applyUser(session.user);
@@ -68,11 +70,18 @@ export default function JobFlowPage() {
     };
   }, [setStep, setProfile]);
 
-  if (!authChecked || serviceHealth.loading) return null;
+  if (!authChecked || serviceHealth.loading) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center bg-slate-950 text-sm text-slate-400">
+        Loading…
+      </div>
+    );
+  }
 
   const showServicesDown = !serviceHealth.ok && step > 1;
 
   return (
+    <SiteAccessGate>
     <div className="flex min-h-dvh flex-col bg-gradient-to-br from-slate-900 via-brand-950 to-slate-900">
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(6,182,212,0.12),_transparent_60%)] pointer-events-none" />
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_left,_rgba(16,185,129,0.08),_transparent_60%)] pointer-events-none" />
@@ -152,5 +161,6 @@ export default function JobFlowPage() {
       </nav>
       <ToastContainer />
     </div>
+    </SiteAccessGate>
   );
 }

@@ -9,7 +9,13 @@ export const SITE_ACCESS_COOKIE_VALUE = "1";
 const MIDDLEWARE_GATED_PREFIXES = ["/dashboard", "/job-flow"];
 
 export function isSiteAccessGateEnabled(): boolean {
-  return process.env.SITE_ACCESS_GATE_ENABLED === "true";
+  const flag = process.env.SITE_ACCESS_GATE_ENABLED?.trim().toLowerCase();
+  if (flag === "true") return true;
+  if (flag === "false") return false;
+  // Failsafe: credentials in env mean private preview should stay on
+  return Boolean(
+    process.env.SITE_ACCESS_USERNAME?.trim() && process.env.SITE_ACCESS_PASSWORD?.trim(),
+  );
 }
 
 export function isValidSiteAccessCookie(value: string | undefined): boolean {

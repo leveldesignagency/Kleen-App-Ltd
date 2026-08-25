@@ -1,24 +1,19 @@
 import type { CookieOptionsWithName } from "@supabase/ssr";
 
 /**
- * Share Supabase auth cookies across www + dashboard (leading dot).
- * Required so PKCE code-verifier set on one host works when OAuth returns on another.
+ * Optional: set NEXT_PUBLIC_AUTH_COOKIE_DOMAIN=.kleenapp.co.uk (leading dot) so auth
+ * cookies are shared across www and dashboard on the same registrable domain.
  *
- * Override with NEXT_PUBLIC_AUTH_COOKIE_DOMAIN (e.g. .kleenapp.co.uk).
- * In production on kleenapp.co.uk we default to .kleenapp.co.uk when unset.
+ * Do NOT invent a default domain — mismatched host-only vs domain cookies cause
+ * refresh_token storms (400/429 loops) after deploys.
  */
 export function getSupabaseAuthCookieOptions(): CookieOptionsWithName | undefined {
-  const configured = process.env.NEXT_PUBLIC_AUTH_COOKIE_DOMAIN?.trim();
-  const domain =
-    configured ||
-    (process.env.NODE_ENV === "production" ? ".kleenapp.co.uk" : undefined);
-
+  const domain = process.env.NEXT_PUBLIC_AUTH_COOKIE_DOMAIN?.trim();
   if (!domain) return undefined;
-
   return {
     domain,
     path: "/",
     sameSite: "lax",
-    secure: true,
+    secure: process.env.NODE_ENV === "production",
   };
 }
