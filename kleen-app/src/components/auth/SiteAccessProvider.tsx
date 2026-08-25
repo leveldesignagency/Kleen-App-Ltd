@@ -10,6 +10,9 @@ import {
 } from "react";
 import { Loader2, Lock } from "lucide-react";
 import { isSiteAccessGateEnabledPublic } from "@/lib/site-access-gate-public";
+import { neutralizeAuthStorm } from "@/lib/supabase/client";
+
+const SESSION_UNLOCK_KEY = "kleen_preview_session_ok";
 
 type SiteAccessContextValue = {
   gateEnabled: boolean;
@@ -20,6 +23,24 @@ type SiteAccessContextValue = {
 };
 
 const SiteAccessContext = createContext<SiteAccessContextValue | null>(null);
+
+function readSessionUnlocked(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return sessionStorage.getItem(SESSION_UNLOCK_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeSessionUnlocked(ok: boolean) {
+  try {
+    if (ok) sessionStorage.setItem(SESSION_UNLOCK_KEY, "1");
+    else sessionStorage.removeItem(SESSION_UNLOCK_KEY);
+  } catch {
+    /* ignore */
+  }
+}
 
 export function useSiteAccess() {
   const ctx = useContext(SiteAccessContext);
@@ -36,8 +57,9 @@ export function useSiteAccess() {
 
 export function SiteAccessProvider({ children }: { children: React.ReactNode }) {
   const publicHint = isSiteAccessGateEnabledPublic();
-  // Optimistic: treat as locked while we ask the server — never default unlocked=true.
   const [gateEnabled, setGateEnabled] = useState(true);
+  // UI unlock is tab-session only — ignore long-lived httpOnly cookie for the modal.
+  // (Cookie still unlocks middleware; status.unlocked:true was hiding the modal forever.)
   const [unlocked, setUnlocked] = useState(false);
   const [checking, setChecking] = useState(true);
   const [credentialsConfigured, setCredentialsConfigured] = useState(true);
@@ -49,6 +71,12 @@ export function SiteAccessProvider({ children }: { children: React.ReactNode }) 
   const [loading, setLoading] = useState(false);
   const resolveRef = useRef<((ok: boolean) => void) | null>(null);
   const statusReadyRef = useRef<Promise<void> | null>(null);
+
+  useEffect(() => {
+    // Kill corrupt refresh tokens as early as possible (before job-flow mounts).
+    void neutralizeAuthStorm();
+    setUnlocked(readSessionUnlocked());
+  }, []);
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -69,14 +97,14 @@ export function SiteAccessProvider({ children }: { children: React.ReactNode }) 
             ? false
             : publicHint;
       setGateEnabled(enabled);
-      setUnlocked(enabled ? Boolean(data.unlocked) : true);
+      // Do NOT use data.unlocked (httpOnly cookie) to skip the modal.
+      setUnlocked(enabled ? readSessionUnlocked() : true);
       if (typeof data.credentialsConfigured === "boolean") {
         setCredentialsConfigured(data.credentialsConfigured);
       }
     } catch {
-      // Network failure: keep gate on if public flag says so, else open
       setGateEnabled(publicHint);
-      setUnlocked(!publicHint);
+      setUnlocked(publicHint ? readSessionUnlocked() : true);
     } finally {
       setChecking(false);
     }
@@ -101,23 +129,19 @@ export function SiteAccessProvider({ children }: { children: React.ReactNode }) 
 
   const requestAccess = useCallback(
     async (targetHref?: string) => {
-      // Wait for status so we don't skip the modal before knowing gate state
       if (statusReadyRef.current) {
         await statusReadyRef.current;
       } else {
         await refreshStatus();
       }
 
-      // Re-read via a one-shot status check for accuracy after await
       let enabled = gateEnabled;
-      let isUnlocked = unlocked;
       try {
         const res = await fetch("/api/site-access/status", {
           credentials: "include",
           cache: "no-store",
         });
         const data = (await res.json()) as {
-          unlocked?: boolean;
           enabled?: boolean;
           disabled?: boolean;
           credentialsConfigured?: boolean;
@@ -128,17 +152,18 @@ export function SiteAccessProvider({ children }: { children: React.ReactNode }) 
             : data.disabled === true
               ? false
               : publicHint;
-        isUnlocked = enabled ? Boolean(data.unlocked) : true;
         setGateEnabled(enabled);
-        setUnlocked(isUnlocked);
         if (typeof data.credentialsConfigured === "boolean") {
           setCredentialsConfigured(data.credentialsConfigured);
         }
       } catch {
-        /* keep state */
+        /* keep */
       }
 
-      if (!enabled || isUnlocked) {
+      const sessionOk = readSessionUnlocked();
+      setUnlocked(sessionOk);
+
+      if (!enabled || sessionOk) {
         if (targetHref) window.location.assign(targetHref);
         return true;
       }
@@ -149,7 +174,7 @@ export function SiteAccessProvider({ children }: { children: React.ReactNode }) 
         resolveRef.current = resolve;
       });
     },
-    [gateEnabled, unlocked, publicHint, refreshStatus],
+    [gateEnabled, publicHint, refreshStatus],
   );
 
   const handleUnlock = async (e: React.FormEvent) => {
@@ -169,6 +194,7 @@ export function SiteAccessProvider({ children }: { children: React.ReactNode }) 
         setError(data.error ?? "Access denied");
         return;
       }
+      writeSessionUnlocked(true);
       setUnlocked(true);
       finishRequest(true, href);
     } catch {
