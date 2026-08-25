@@ -19,6 +19,7 @@ import {
   Undo2,
   XCircle,
 } from "lucide-react";
+import { isCustomerAcceptedJob } from "@/lib/customer-job-accept";
 
 const UNDO_SECONDS = 10;
 
@@ -27,6 +28,8 @@ interface JobBasic {
   reference: string;
   status: string;
   accepted_quote_request_id: string | null;
+  payment_authorized_at: string | null;
+  payment_captured_at: string | null;
 }
 
 interface CustomerQuote {
@@ -84,7 +87,7 @@ export default function CustomerQuotesView({
 
     const { data: j } = await supabase
       .from("jobs")
-      .select("id, reference, status, accepted_quote_request_id")
+      .select("id, reference, status, accepted_quote_request_id, payment_authorized_at, payment_captured_at")
       .eq("id", id as string)
       .eq("user_id", user.id)
       .single();
@@ -101,6 +104,8 @@ export default function CustomerQuotesView({
       reference: j.reference || j.id.slice(0, 8).toUpperCase(),
       status: j.status,
       accepted_quote_request_id: j.accepted_quote_request_id || null,
+      payment_authorized_at: j.payment_authorized_at || null,
+      payment_captured_at: j.payment_captured_at || null,
     });
 
     const showQuotes = [
@@ -313,8 +318,9 @@ export default function CustomerQuotesView({
     );
   }
 
-  const canChoose = job.status === "sent_to_customer" && !job.accepted_quote_request_id;
-  const acceptedQuote = job.accepted_quote_request_id
+  const customerAccepted = job ? isCustomerAcceptedJob(job) : false;
+  const canChoose = job.status === "sent_to_customer" && !customerAccepted;
+  const acceptedQuote = customerAccepted && job.accepted_quote_request_id
     ? quotes.find((q) => q.quote_request_id === job.accepted_quote_request_id)
     : null;
   // When one quote is accepted, all others are effectively declined (webhook sets customer_declined_at)

@@ -22,6 +22,7 @@ import {
   Check,
 } from "lucide-react";
 import { JobActivityTimeline } from "@/components/dashboard/JobActivityTimeline";
+import { isCustomerAcceptedJob } from "@/lib/customer-job-accept";
 
 /* ─── Status Config ───────────────────────────────────────────────────────── */
 
@@ -103,6 +104,8 @@ interface JobDetail {
   customer_confirmed_complete_at: string | null;
   /** When work actually started; once set, customer can no longer cancel. */
   actual_start: string | null;
+  /** When payment was authorized (customer accepted quote via Stripe). */
+  payment_authorized_at: string | null;
   /** When payment was captured; 48h from this = full refund if cancelled. */
   payment_captured_at: string | null;
   cancelled_at: string | null;
@@ -213,6 +216,7 @@ export default function CustomerJobDetailPage() {
         contractor_confirmed_complete_at: j.contractor_confirmed_complete_at || null,
         customer_confirmed_complete_at: j.customer_confirmed_complete_at || null,
         actual_start: j.actual_start || null,
+        payment_authorized_at: j.payment_authorized_at || null,
         payment_captured_at: j.payment_captured_at || null,
         cancelled_at: j.cancelled_at || null,
         operative_en_route_at: j.operative_en_route_at || null,
@@ -454,7 +458,8 @@ export default function CustomerJobDetailPage() {
   /* ─── Derived State ───────────────────────────────────────────────── */
 
   const badge = STATUS_CONFIG[job.status] ?? STATUS_CONFIG.pending;
-  const jobCommenced = Boolean(job.actual_start);
+  const customerAccepted = isCustomerAcceptedJob(job);
+  const jobCommenced = customerAccepted && Boolean(job.actual_start);
   const canCancel =
     !TERMINAL_NO_CANCEL.includes(job.status) &&
     !jobCommenced;
@@ -560,14 +565,14 @@ export default function CustomerJobDetailPage() {
         </div>
       )}
 
-      {job.accepted_quote_request_id && !["cancelled", "disputed"].includes(job.status) && (
+      {customerAccepted && !["cancelled", "disputed"].includes(job.status) && (
         <div className="mt-6">
           <JobActivityTimeline
             job={{
               status: job.status,
               preferred_date: job.preferred_date || null,
               hasAcceptedQuote: true,
-              actual_start: job.actual_start,
+              actual_start: jobCommenced ? job.actual_start : null,
               operative_en_route_at: job.operative_en_route_at,
               operative_arrived_at: job.operative_arrived_at,
               operative_marked_complete_at: job.operative_marked_complete_at,
@@ -625,7 +630,7 @@ export default function CustomerJobDetailPage() {
           {showQuotesSection && (
             <div className="rounded-2xl border border-slate-200 bg-white p-5">
               <h2 className="text-sm font-semibold text-slate-900">
-                {job.accepted_quote_request_id ? "Your quote" : "Quotes"}
+                {customerAccepted ? "Your quote" : "Quotes"}
               </h2>
               {quotes.length > 0 ? (
                 <>
@@ -635,7 +640,7 @@ export default function CustomerJobDetailPage() {
                   </p>
                   <div className="mt-4 space-y-2">
                     {quotes.map((q) => {
-                      const isAccepted = job.accepted_quote_request_id === q.quote_request_id;
+                      const isAccepted = customerAccepted && job.accepted_quote_request_id === q.quote_request_id;
                       return (
                         <div
                           key={q.id}
@@ -673,7 +678,7 @@ export default function CustomerJobDetailPage() {
                       View quotes & choose
                     </Link>
                   )}
-                  {job.accepted_quote_request_id && acceptedQuote && (
+                  {customerAccepted && acceptedQuote && (
                     <p className="mt-3 text-center text-xs text-slate-500">
                       Chosen: {acceptedQuote.contractor_label} — {formatPrice(acceptedQuote.customer_price_pence)}
                     </p>

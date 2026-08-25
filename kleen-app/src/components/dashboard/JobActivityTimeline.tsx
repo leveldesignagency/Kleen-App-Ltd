@@ -69,10 +69,12 @@ function buildSteps(job: JobActivityModel): Step[] {
   });
 
   const inProg =
-    Boolean(job.actual_start) ||
-    s === "in_progress" ||
-    Boolean(job.operative_marked_complete_at) ||
-    ["pending_confirmation", "completed", "funds_released"].includes(s);
+    !early &&
+    (s === "in_progress" ||
+      Boolean(job.operative_marked_complete_at) ||
+      ["pending_confirmation", "completed", "funds_released"].includes(s) ||
+      (Boolean(job.actual_start) &&
+        ["awaiting_completion", "in_progress", "pending_confirmation", "completed", "funds_released"].includes(s)));
   out.push({
     key: "progress",
     label: "In progress",

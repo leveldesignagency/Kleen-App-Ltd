@@ -8,7 +8,7 @@ import { useAdminStore, Contractor, QuoteRequest, QuoteResponse } from "@/lib/ad
 import { useAdminNotifications } from "@/lib/admin-notifications";
 import { fetchAdminJobById, fetchAdminJobsList } from "@/lib/admin-jobs-fetch";
 import { contractorOffersService, contractorServiceTags, fetchAdminContractors } from "@/lib/admin-contractors-fetch";
-import { quoteCustomerStatusBadge, canAdminSendQuotesToCustomer } from "@/lib/quote-customer-status";
+import { quoteCustomerStatusBadge, canAdminSendQuotesToCustomer, isCustomerAcceptedQuote } from "@/lib/quote-customer-status";
 import {
   ArrowLeft,
   Loader2,
@@ -492,11 +492,16 @@ export default function AdminJobDetailPage() {
 
   const handleForwardToContractor = async (qr: QuoteRequest) => {
     if (!job || !qr.quote_response) return;
+    if (!isCustomerAcceptedQuote(qr, job)) {
+      toast({
+        type: "error",
+        title: "Customer has not accepted",
+        message: "Wait for the customer to accept this quote in their dashboard before emailing the contractor.",
+      });
+      return;
+    }
     setActionLoading(true);
-    const supabase = createClient();
-    const now = new Date().toISOString();
 
-    // Send job details to contractor by email (if Resend is configured)
     try {
       const emailRes = await fetch("/api/jobs/send-contractor-email", {
         method: "POST",
@@ -506,21 +511,14 @@ export default function AdminJobDetailPage() {
       const emailData = await emailRes.json().catch(() => ({}));
       if (!emailRes.ok) {
         toast({ type: "warning", title: "Email not sent", message: emailData.error || "Could not send email. Add RESEND_API_KEY to enable." });
+      } else {
+        toast({ type: "success", title: "Email sent", message: `${qr.operative_name} has been emailed the job details.` });
       }
     } catch {
       toast({ type: "warning", title: "Email not sent", message: "Could not send email to contractor." });
     }
 
-    await supabase
-      .from("jobs")
-      .update({
-        status: "awaiting_completion",
-        accepted_quote_request_id: qr.id,
-        customer_accepted_at: new Date().toISOString(),
-        actual_start: now, // Job considered "commenced" — customer can no longer cancel
-      })
-      .eq("id", job.id);
-
+    const supabase = createClient();
     await supabase
       .from("job_assignments")
       .upsert({
@@ -529,8 +527,6 @@ export default function AdminJobDetailPage() {
         assigned_at: new Date().toISOString(),
       }, { onConflict: "job_id,operative_id" });
 
-    updateJob(job.id, { status: "awaiting_completion" });
-    toast({ type: "success", title: "Forwarded to Contractor", message: `Job updated. ${qr.operative_name} has been emailed the job details.` });
     setActionLoading(false);
   };
 
@@ -1406,7 +1402,8 @@ export default function AdminJobDetailPage() {
               Add quote for: {job?.service || "this job"}
             </h2>
             <p className="mt-1 text-sm text-slate-400">
-              Add a contractor quote. For early ops, leave “Assign directly” on so the job appears on their Assigned tab immediately.
+              Saves the quote on the contractor&apos;s <strong className="text-slate-300">My quotes</strong> tab immediately.
+              Send to customer when ready — they choose and pay in their dashboard.
             </p>
             <div className="mt-4 space-y-3">
               <div>

@@ -11,6 +11,7 @@ import {
   findCustomerAcceptedQuote,
   canAdminSendQuotesToCustomer,
   canAdminSendOneQuoteToCustomer,
+  isCustomerAcceptedQuote,
 } from "@/lib/quote-customer-status";
 import CustomDropdown from "@/components/ui/CustomDropdown";
 import {
@@ -414,7 +415,15 @@ export default function JobQuotesPage() {
   };
 
   const handleForwardToContractor = async (qr: QuoteRequest) => {
-    if (!jobId || !qr.quote_response) return;
+    if (!jobId || !qr.quote_response || !job) return;
+    if (!isCustomerAcceptedQuote(qr, job)) {
+      toast({
+        type: "error",
+        title: "Customer has not accepted",
+        message: "Wait for the customer to accept this quote in their dashboard before emailing the contractor.",
+      });
+      return;
+    }
     setForwardLoading(true);
     try {
       const emailRes = await fetch("/api/jobs/send-contractor-email", {
@@ -429,32 +438,22 @@ export default function JobQuotesPage() {
           title: "Email not sent",
           message: emailData.error || "Could not email contractor. Check RESEND_API_KEY.",
         });
+      } else {
+        toast({
+          type: "success",
+          title: "Email sent",
+          message: `${qr.operative_name} has been emailed the job details.`,
+        });
       }
     } catch {
       toast({ type: "warning", title: "Email not sent", message: "Could not email contractor." });
     }
 
     const supabase = createClient();
-    const now = new Date().toISOString();
-    await supabase
-      .from("jobs")
-      .update({
-        status: "awaiting_completion",
-        accepted_quote_request_id: qr.id,
-        customer_accepted_at: now,
-        actual_start: now,
-      })
-      .eq("id", jobId);
     await supabase.from("job_assignments").upsert(
-      { job_id: jobId, operative_id: qr.operative_id, assigned_at: now },
+      { job_id: jobId, operative_id: qr.operative_id, assigned_at: new Date().toISOString() },
       { onConflict: "job_id,operative_id" },
     );
-    await loadJobAndQuotes();
-    toast({
-      type: "success",
-      title: "Forwarded to contractor",
-      message: `${qr.operative_name} has been assigned and emailed the job details.`,
-    });
     setForwardLoading(false);
   };
 
@@ -592,7 +591,8 @@ export default function JobQuotesPage() {
   const acceptedQuote = findCustomerAcceptedQuote(quotes, job);
   const canForward =
     acceptedQuote?.quote_response &&
-    ["customer_accepted", "accepted", "awaiting_completion", "in_progress", "sent_to_customer"].includes(job.status);
+    isCustomerAcceptedQuote(acceptedQuote, job) &&
+    ["customer_accepted", "accepted", "awaiting_completion", "in_progress"].includes(job.status);
   const showSendAllButton = quotes.length > 0 && canAdminSendQuotesToCustomer(job, quotes);
 
   return (
@@ -735,7 +735,7 @@ export default function JobQuotesPage() {
                   const canForwardOne =
                     qr.quote_response &&
                     !qr.customer_declined_at &&
-                    ["sent_to_customer", "customer_accepted", "accepted", "awaiting_completion"].includes(job.status);
+                    isCustomerAcceptedQuote(qr, job);
                   return (
                     <div
                       key={qr.id}
@@ -796,7 +796,7 @@ export default function JobQuotesPage() {
                               className="flex items-center gap-1.5 rounded-xl border border-brand-500/40 bg-brand-500/10 px-4 py-2 text-sm font-medium text-brand-300 transition-colors hover:bg-brand-500/20 disabled:opacity-50"
                             >
                               {forwardLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Forward className="h-4 w-4" />}
-                              Assign & email
+                              Email contractor
                             </button>
                           )}
                         </div>
@@ -830,7 +830,8 @@ export default function JobQuotesPage() {
           <div className="w-full max-w-md rounded-2xl border border-white/10 bg-slate-900 p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-semibold text-white">Add contractor quote</h2>
             <p className="mt-1 text-sm text-slate-400">
-              Add a quote and optionally assign the contractor immediately (early ops). They will see the job under Assigned in their dashboard.
+              Saves the quote on the contractor&apos;s <strong className="text-slate-300">My quotes</strong> tab immediately.
+              Send to customer when ready — they choose and pay in their dashboard.
             </p>
             <div className="mt-4 space-y-3">
               <div>
