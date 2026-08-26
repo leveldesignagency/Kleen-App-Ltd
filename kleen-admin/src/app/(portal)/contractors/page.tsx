@@ -409,15 +409,15 @@ export default function AdminContractorsPage() {
           <table className="w-full min-w-[1080px] text-left text-sm">
             <thead>
               <tr className="border-b border-white/10 bg-white/[0.03]">
-                <th className="px-4 py-3 font-medium text-slate-400">Name</th>
-                <th className="px-4 py-3 font-medium text-slate-400">Type</th>
-                <th className="hidden px-4 py-3 font-medium text-slate-400 md:table-cell">Company</th>
-                <th className="hidden px-4 py-3 font-medium text-slate-400 lg:table-cell">Services</th>
-                <th className="px-4 py-3 font-medium text-slate-400">Rating</th>
-                <th className="min-w-[11.5rem] whitespace-nowrap px-4 py-3 font-medium text-slate-400">
+                <th className="whitespace-nowrap px-4 py-2.5 font-medium text-slate-400">Name</th>
+                <th className="min-w-[6.75rem] whitespace-nowrap px-4 py-2.5 font-medium text-slate-400">Type</th>
+                <th className="hidden px-4 py-2.5 font-medium text-slate-400 md:table-cell">Company</th>
+                <th className="hidden px-4 py-2.5 font-medium text-slate-400 lg:table-cell">Services</th>
+                <th className="whitespace-nowrap px-4 py-2.5 font-medium text-slate-400">Rating</th>
+                <th className="min-w-[11.5rem] whitespace-nowrap px-4 py-2.5 font-medium text-slate-400">
                   Status
                 </th>
-                <th className="px-4 py-3 font-medium text-slate-400">Actions</th>
+                <th className="whitespace-nowrap px-4 py-2.5 font-medium text-slate-400">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -437,32 +437,32 @@ export default function AdminContractorsPage() {
                     className="cursor-pointer border-b border-white/[0.06] transition-colors hover:bg-white/[0.03]"
                     onClick={() => router.push(`/contractors/${c.id}`)}
                   >
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-2.5">
                       <div>
                         <p className="font-medium">{c.full_name}</p>
                         <p className="text-xs text-slate-500">{c.email}</p>
                       </div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="whitespace-nowrap px-4 py-2.5">
                       <span
-                        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ${
+                        className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-medium leading-none ${
                           c.contractor_type === "business"
                             ? "bg-indigo-500/20 text-indigo-400"
                             : "bg-teal-500/20 text-teal-400"
                         }`}
                       >
                         {c.contractor_type === "business" ? (
-                          <Building2 className="h-3 w-3" />
+                          <Building2 className="h-3 w-3 shrink-0" />
                         ) : (
-                          <UserRound className="h-3 w-3" />
+                          <UserRound className="h-3 w-3 shrink-0" />
                         )}
                         {c.contractor_type === "business" ? "Business" : "Sole Trader"}
                       </span>
                     </td>
-                    <td className="hidden px-4 py-3 text-slate-400 md:table-cell">
+                    <td className="hidden px-4 py-2.5 text-slate-400 md:table-cell">
                       {c.company_name || "—"}
                     </td>
-                    <td className="hidden px-4 py-3 lg:table-cell">
+                    <td className="hidden px-4 py-2.5 lg:table-cell">
                       <div className="flex flex-wrap gap-1">
                         {serviceTags.slice(0, 2).map((s) => (
                           <span
@@ -479,13 +479,13 @@ export default function AdminContractorsPage() {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-2.5">
                       <div className="flex items-center gap-1">
                         <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
                         <span className="text-sm">{c.rating.toFixed(1)}</span>
                       </div>
                     </td>
-                    <td className="min-w-[11.5rem] whitespace-nowrap px-4 py-3">
+                    <td className="min-w-[11.5rem] whitespace-nowrap px-4 py-2.5">
                       <div className="flex flex-nowrap items-center gap-1.5">
                         <span
                           className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
@@ -517,7 +517,7 @@ export default function AdminContractorsPage() {
                         </span>
                       </div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-2.5">
                       <div className="flex items-center gap-1">
                         <button
                           onClick={async (e) => {
