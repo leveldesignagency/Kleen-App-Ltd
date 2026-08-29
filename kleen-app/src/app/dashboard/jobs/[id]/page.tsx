@@ -40,6 +40,7 @@ const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
   completed:            { label: "Completed",          className: "bg-emerald-100 text-emerald-700" },
   funds_released:       { label: "Complete",           className: "bg-green-100 text-green-700" },
   disputed:             { label: "Disputed",           className: "bg-red-100 text-red-700" },
+  could_not_start:      { label: "Couldn’t start",     className: "bg-amber-100 text-amber-800" },
   cancelled:            { label: "Cancelled",          className: "bg-slate-100 text-slate-500" },
 };
 
@@ -114,6 +115,7 @@ interface JobDetail {
   operative_marked_complete_at: string | null;
   operative_marked_incomplete_at: string | null;
   operative_incomplete_reason: string | null;
+  cannot_start_reason_code: string | null;
   escrow_release_date: string | null;
 }
 
@@ -147,6 +149,9 @@ export default function CustomerJobDetailPage() {
     comment: string | null;
   } | null>(null);
   const [reviewContractor, setReviewContractor] = useState(5);
+  const [rebookDate, setRebookDate] = useState("");
+  const [rebookTime, setRebookTime] = useState("");
+  const [rebookLoading, setRebookLoading] = useState(false);
   const [reviewKleen, setReviewKleen] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
   const [reviewSaving, setReviewSaving] = useState(false);
@@ -224,6 +229,7 @@ export default function CustomerJobDetailPage() {
         operative_marked_complete_at: j.operative_marked_complete_at || null,
         operative_marked_incomplete_at: j.operative_marked_incomplete_at || null,
         operative_incomplete_reason: j.operative_incomplete_reason || null,
+        cannot_start_reason_code: j.cannot_start_reason_code || null,
         escrow_release_date: j.escrow_release_date || null,
       });
 
@@ -355,6 +361,52 @@ export default function CustomerJobDetailPage() {
     setCancelModal(false);
   };
 
+  const handleRebook = async () => {
+    if (!job || !rebookDate) {
+      toast({ type: "error", title: "Date needed", message: "Choose a new date to rebook." });
+      return;
+    }
+    setRebookLoading(true);
+    try {
+      const res = await fetch(`/api/jobs/${job.id}/rebook`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          preferredDate: rebookDate,
+          preferredTime: rebookTime || null,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast({ type: "error", title: "Couldn’t rebook", message: data.error || "Try again." });
+        return;
+      }
+      setJob({
+        ...job,
+        status: "awaiting_completion",
+        preferred_date: data.preferred_date || rebookDate,
+        preferred_time: data.preferred_time || rebookTime || "",
+        operative_en_route_at: null,
+        operative_arrived_at: null,
+        actual_start: null,
+        operative_marked_incomplete_at: null,
+        operative_incomplete_reason: null,
+        cannot_start_reason_code: null,
+        operative_marked_complete_at: null,
+        contractor_confirmed_complete_at: null,
+        customer_confirmed_complete_at: null,
+      });
+      toast({
+        type: "success",
+        title: "Rebooked",
+        message: "Your contractor has been notified of the new date.",
+      });
+    } finally {
+      setRebookLoading(false);
+    }
+  };
+
   const handleConfirmComplete = async () => {
     if (!job) return;
     setActionLoading(true);
@@ -466,7 +518,10 @@ export default function CustomerJobDetailPage() {
   const isWithinRefundWindow =
     job.payment_captured_at &&
     Date.now() - new Date(job.payment_captured_at).getTime() < CANCELLATION_REFUND_HOURS * 60 * 60 * 1000;
-  const isTerminal = ["cancelled", "disputed", "funds_released", "completed"].includes(job.status);
+  const isTerminal = ["cancelled", "disputed", "could_not_start", "funds_released", "completed"].includes(job.status);
+  const canRebookSameContractor =
+    job.status === "could_not_start" ||
+    (job.status === "disputed" && !!job.operative_marked_incomplete_at);
   const currentStep = getStepIndex(job.status);
   const showQuotesSection = ["sent_to_customer", "customer_accepted", "accepted", "awaiting_completion", "in_progress", "pending_confirmation", "completed", "funds_released"].includes(job.status);
   const canAcceptQuote = job.status === "sent_to_customer" && !customerAccepted;
@@ -565,7 +620,61 @@ export default function CustomerJobDetailPage() {
         </div>
       )}
 
-      {customerAccepted && !["cancelled", "disputed"].includes(job.status) && (
+      {canRebookSameContractor && (
+        <div className="mt-6 overflow-hidden rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white shadow-sm">
+          <div className="border-b border-amber-100 px-5 py-4 sm:px-6">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-800">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-base font-bold text-slate-900">Contractor couldn&apos;t start</h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  {job.operative_incomplete_reason ||
+                    "Your contractor reported they were unable to begin the visit."}
+                </p>
+                <p className="mt-2 text-sm text-slate-700">
+                  Keep the same contractor and payment — just choose a new date below.
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="space-y-4 px-5 py-5 sm:px-6">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-sm font-semibold text-slate-800">
+                New date
+                <input
+                  type="date"
+                  value={rebookDate}
+                  min={new Date().toISOString().slice(0, 10)}
+                  onChange={(e) => setRebookDate(e.target.value)}
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+                />
+              </label>
+              <label className="text-sm font-semibold text-slate-800">
+                Preferred time <span className="font-normal text-slate-400">(optional)</span>
+                <input
+                  type="time"
+                  value={rebookTime}
+                  onChange={(e) => setRebookTime(e.target.value)}
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+                />
+              </label>
+            </div>
+            <button
+              type="button"
+              disabled={rebookLoading || !rebookDate}
+              onClick={handleRebook}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {rebookLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calendar className="h-4 w-4" />}
+              Rebook with same contractor
+            </button>
+          </div>
+        </div>
+      )}
+
+      {customerAccepted && !["cancelled", "disputed", "could_not_start"].includes(job.status) && (
         <div className="mt-6">
           <JobActivityTimeline
             job={{

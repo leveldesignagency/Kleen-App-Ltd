@@ -35,3 +35,37 @@ export async function sendContractorJobBookedEmail(params: {
     html,
   });
 }
+
+/** Contractor: customer rebooked after a could-not-start visit. */
+export async function sendContractorJobRebookedEmail(params: {
+  toEmail: string;
+  contractorName: string;
+  jobReference: string;
+  jobId: string;
+  preferredDate: string;
+  preferredTime?: string | null;
+}): Promise<{ ok: boolean }> {
+  const name = params.contractorName.trim() || "there";
+  const when = params.preferredTime
+    ? `${params.preferredDate} · ${params.preferredTime.slice(0, 5)}`
+    : params.preferredDate;
+  const html = emailLayout({
+    title: `Job rebooked — ${params.jobReference}`,
+    heading: "Customer picked a new date",
+    introHtml: `<p>Hi ${escapeHtml(name)}, the customer has rebooked job <strong>${escapeHtml(params.jobReference)}</strong> with you after the previous visit could not start.</p>`,
+    rows: [
+      { label: "Reference", value: escapeHtml(params.jobReference) },
+      { label: "New schedule", value: escapeHtml(when) },
+    ],
+    cta: {
+      href: contractorPortalUrl(`/contractor/jobs/${params.jobId}`),
+      label: "Open job in your dashboard",
+    },
+  });
+
+  return sendKleenEmail({
+    to: params.toEmail,
+    subject: `Job rebooked — ${params.jobReference}`,
+    html,
+  });
+}

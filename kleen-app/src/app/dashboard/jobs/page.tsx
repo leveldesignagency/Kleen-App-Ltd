@@ -42,6 +42,7 @@ const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
   completed:            { label: "Completed",          className: "bg-accent-100 text-accent-700" },
   funds_released:       { label: "Complete",           className: "bg-green-100 text-green-700" },
   disputed:             { label: "Disputed",           className: "bg-red-100 text-red-700" },
+  could_not_start:      { label: "Couldn’t start",     className: "bg-amber-100 text-amber-800" },
   cancelled:            { label: "Cancelled",          className: "bg-slate-100 text-slate-500" },
 };
 

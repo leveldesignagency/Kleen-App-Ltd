@@ -177,11 +177,11 @@ export async function sendCustomerJobIncompleteEmail(
   const html = emailLayout({
     title: `Update needed — ${params.jobReference}`,
     heading: "There's an update on your job",
-    introHtml: `<p>Hi ${escapeHtml(name)}, your contractor reported an issue completing job <strong>${escapeHtml(params.jobReference)}</strong>. Kleen has been notified and will help resolve it.</p>`,
+    introHtml: `<p>Hi ${escapeHtml(name)}, your contractor reported they could not start job <strong>${escapeHtml(params.jobReference)}</strong>.</p><p>You can pick a new date and keep the same contractor from your job page — or contact Kleen if you need help.</p>`,
     rows: params.reason
       ? [{ label: "Note", value: escapeHtml(params.reason) }]
       : undefined,
-    cta: { href: jobUrl(params.jobId), label: "View job" },
+    cta: { href: jobUrl(params.jobId), label: "Rebook or view job" },
   });
   return sendKleenEmail({
     to: params.toEmail,

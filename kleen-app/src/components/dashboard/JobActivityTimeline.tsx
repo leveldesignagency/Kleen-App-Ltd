@@ -81,8 +81,8 @@ function buildSteps(job: JobActivityModel): Step[] {
   if (job.operative_marked_incomplete_at) {
     out.push({
       key: "issue",
-      label: "Issue reported",
-      sub: job.operative_incomplete_reason || "Kleen or your contractor may contact you",
+      label: s === "could_not_start" ? "Couldn’t start" : "Issue reported",
+      sub: job.operative_incomplete_reason || "You can rebook the same contractor from this job page",
       done: true,
       icon: "alert",
     });
