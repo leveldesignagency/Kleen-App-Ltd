@@ -710,7 +710,7 @@ export default function CustomerJobDetailPage() {
                 {job.status === "pending" ? "Your job is being reviewed" : "We're collecting quotes for you"}
               </p>
               <p className="mt-1 text-xs text-blue-500">
-                You'll be notified as soon as quotes are available.
+                {"You'll be notified as soon as quotes are available."}
               </p>
             </div>
           )}
