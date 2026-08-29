@@ -25,7 +25,7 @@ Diagnostics (kleen-app): `GET/POST /api/diagnostics/email` with admin/cron secre
 |-------|---------|-----|
 | Welcome | OAuth callback / email signup → `/api/auth/welcome` | kleen-app |
 | Job received | `/api/jobs/submit` | kleen-app |
-| Quotes ready | Admin “notify customer” | kleen-admin |
+| Quotes ready | Contractor marketplace apply + admin “notify customer” | kleen-contractor, kleen-admin |
 | Booking confirmed | Stripe accept / confirm-accept | kleen-app |
 | Full contract | After accept | kleen-app |
 | On the way / arrived / complete request / incomplete | Field portal + contractor field API | kleen-app, kleen-contractor |
@@ -38,6 +38,7 @@ Diagnostics (kleen-app): `GET/POST /api/diagnostics/email` with admin/cron secre
 | Application submitted | Submit for review | kleen-contractor |
 | Approved / needs updates | Admin verification | kleen-admin |
 | New job to quote | Broadcast after job submit | kleen-app |
+| Quote submitted (marketplace) | Find a Job apply | kleen-contractor |
 | Job booked | Quote accept | kleen-app |
 | Quote not selected | Other quotes declined on accept | kleen-app |
 | Customer confirmed completion | `/api/jobs/confirm-complete` | kleen-app |
