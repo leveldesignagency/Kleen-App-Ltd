@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
-import { sendAdminDisputeOpenedEmail } from "@/lib/resend-customer-job-updates";
+import {
+  sendAdminDisputeOpenedEmail,
+  sendCustomerDisputeOpenedEmail,
+} from "@/lib/resend-customer-job-updates";
+import { sendContractorDisputeOpenedEmail } from "@/lib/resend-contractor-notify";
 import {
   DISPUTE_ELIGIBLE_JOB_STATUSES,
   DISPUTE_REASON_OPTIONS,
@@ -44,7 +48,7 @@ async function openDisputeHandler(request: NextRequest) {
   const admin = createServiceRoleClient();
   const { data: job, error: jobErr } = await admin
     .from("jobs")
-    .select("id, reference, user_id, status, service_id")
+    .select("id, reference, user_id, status, service_id, escrow_release_date")
     .eq("id", jobId)
     .maybeSingle();
 
@@ -92,7 +96,11 @@ async function openDisputeHandler(request: NextRequest) {
     return NextResponse.json({ error: insErr?.message || "Could not open dispute" }, { status: 400 });
   }
 
-  await admin.from("jobs").update({ status: "disputed" }).eq("id", jobId);
+  // Flag job disputed and pause escrow countdown while the case is open.
+  await admin
+    .from("jobs")
+    .update({ status: "disputed", escrow_release_date: null })
+    .eq("id", jobId);
 
   await admin.from("dispute_messages").insert({
     dispute_id: dispute.id,
@@ -102,15 +110,54 @@ async function openDisputeHandler(request: NextRequest) {
   });
 
   const { data: prof } = await admin.from("profiles").select("full_name, email").eq("id", user.id).maybeSingle();
+  const customerEmail = prof?.email?.trim() || user.email || "";
+  const customerName = prof?.full_name?.trim() || "Customer";
+  const jobReference = job.reference || jobId.slice(0, 8).toUpperCase();
 
   void sendAdminDisputeOpenedEmail({
     disputeId: dispute.id,
-    jobReference: job.reference || jobId.slice(0, 8).toUpperCase(),
+    jobReference,
     jobId,
-    customerName: prof?.full_name?.trim() || "Customer",
-    customerEmail: prof?.email?.trim() || user.email || "",
+    customerName,
+    customerEmail,
     reason: reasonText,
   }).catch((e) => console.error("sendAdminDisputeOpenedEmail:", e));
+
+  if (customerEmail) {
+    void sendCustomerDisputeOpenedEmail({
+      toEmail: customerEmail,
+      customerName,
+      jobReference,
+      jobId,
+      reason: reasonText,
+    }).catch((e) => console.error("sendCustomerDisputeOpenedEmail:", e));
+  }
+
+  const { data: assignment } = await admin
+    .from("job_assignments")
+    .select("operative_id, operatives ( id, full_name, email, user_id )")
+    .eq("job_id", jobId)
+    .limit(1)
+    .maybeSingle();
+
+  const op = Array.isArray(assignment?.operatives)
+    ? assignment?.operatives[0]
+    : assignment?.operatives;
+  let opEmail = (op as { email?: string | null } | null)?.email || null;
+  const opUid = (op as { user_id?: string | null } | null)?.user_id;
+  if (!opEmail && opUid) {
+    const { data: authUser } = await admin.auth.admin.getUserById(opUid);
+    opEmail = authUser.user?.email ?? null;
+  }
+  if (opEmail) {
+    void sendContractorDisputeOpenedEmail({
+      toEmail: opEmail,
+      contractorName: (op as { full_name?: string | null } | null)?.full_name || "Contractor",
+      jobReference,
+      jobId,
+      reason: reasonText,
+    }).catch((e) => console.error("sendContractorDisputeOpenedEmail:", e));
+  }
 
   return NextResponse.json({
     ok: true,

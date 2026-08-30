@@ -55,6 +55,7 @@ export default function DashboardOverview() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<DashboardJob | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [disputeCount, setDisputeCount] = useState(0);
   const pushNotification = useNotifications((s) => s.push);
 
   useEffect(() => {
@@ -97,6 +98,13 @@ export default function DashboardOverview() {
         } else {
           setJobs([]);
         }
+
+        const { count } = await supabase
+          .from("disputes")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", user.id)
+          .in("status", ["open", "under_review", "escalated"]);
+        setDisputeCount(count ?? 0);
       };
 
       await fetchJobs();
@@ -148,7 +156,6 @@ export default function DashboardOverview() {
     (j) => !["completed", "funds_released", "cancelled", "disputed"].includes(j.status)
   ).length;
   const completedCount = jobs.filter((j) => j.status === "completed").length;
-  const disputeCount = jobs.filter((j) => j.status === "disputed").length;
   const totalSpent = jobs
     .filter((j) => j.status === "completed")
     .reduce((sum, j) => sum + j.max_price, 0);

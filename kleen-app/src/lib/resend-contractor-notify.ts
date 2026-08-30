@@ -69,3 +69,60 @@ export async function sendContractorJobRebookedEmail(params: {
     html,
   });
 }
+
+/** Contractor: customer opened a dispute on an assigned job. */
+export async function sendContractorDisputeOpenedEmail(params: {
+  toEmail: string;
+  contractorName: string;
+  jobReference: string;
+  jobId: string;
+  reason?: string;
+}): Promise<{ ok: boolean }> {
+  const name = params.contractorName.trim() || "there";
+  const html = emailLayout({
+    title: `Dispute — ${params.jobReference}`,
+    heading: "A customer opened a dispute",
+    introHtml: `<p>Hi ${escapeHtml(name)}, a customer raised a dispute on job <strong>${escapeHtml(params.jobReference)}</strong>. Kleen mediates — reply in your disputes inbox. Funds stay held until the case is resolved.</p>`,
+    rows: params.reason ? [{ label: "Reason", value: escapeHtml(params.reason) }] : undefined,
+    cta: {
+      href: contractorPortalUrl(`/contractor/disputes`),
+      label: "Open disputes",
+    },
+  });
+
+  return sendKleenEmail({
+    to: params.toEmail,
+    subject: `Dispute — ${params.jobReference}`,
+    html,
+  });
+}
+
+/** Contractor: dispute resolved / closed. */
+export async function sendContractorDisputeResolvedEmail(params: {
+  toEmail: string;
+  contractorName: string;
+  jobReference: string;
+  resolution?: string | null;
+  status?: string;
+}): Promise<{ ok: boolean }> {
+  const name = params.contractorName.trim() || "there";
+  const closed = params.status === "closed";
+  const html = emailLayout({
+    title: `Dispute ${closed ? "closed" : "resolved"} — ${params.jobReference}`,
+    heading: closed ? "Dispute closed" : "Dispute resolved",
+    introHtml: `<p>Hi ${escapeHtml(name)}, Kleen has ${closed ? "closed" : "resolved"} the dispute on job <strong>${escapeHtml(params.jobReference)}</strong>.</p>`,
+    rows: params.resolution
+      ? [{ label: "Resolution", value: escapeHtml(params.resolution) }]
+      : undefined,
+    cta: {
+      href: contractorPortalUrl(`/contractor/disputes`),
+      label: "View disputes",
+    },
+  });
+
+  return sendKleenEmail({
+    to: params.toEmail,
+    subject: `Dispute ${closed ? "closed" : "resolved"} — ${params.jobReference}`,
+    html,
+  });
+}

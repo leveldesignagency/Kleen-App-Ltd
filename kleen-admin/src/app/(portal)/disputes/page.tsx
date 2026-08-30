@@ -133,56 +133,22 @@ export default function AdminDisputesPage() {
   const saveMeta = async () => {
     if (!activeId || !active) return;
     setSavingMeta(true);
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    const becomingResolved = isDisputeResolved(statusDraft) && !isDisputeResolved(active.status);
-    const updates: Record<string, unknown> = {
-      status: statusDraft,
-      resolution: resolutionDraft.trim() || null,
-    };
-    if (becomingResolved) {
-      updates.resolved_at = new Date().toISOString();
-      updates.resolved_by = user?.id ?? null;
-    }
-    if (!isDisputeResolved(statusDraft)) {
-      updates.resolved_at = null;
-      updates.resolved_by = null;
-    }
-
-    const { error } = await supabase.from("disputes").update(updates).eq("id", activeId);
-    if (error) {
-      setSavingMeta(false);
-      alert(error.message);
+    const res = await fetch("/api/disputes/update", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        disputeId: activeId,
+        status: statusDraft,
+        resolution: resolutionDraft.trim() || null,
+      }),
+    });
+    const json = (await res.json().catch(() => ({}))) as { error?: string };
+    setSavingMeta(false);
+    if (!res.ok) {
+      alert(json.error || "Could not save");
       return;
     }
-
-    // When closing a dispute, restore job out of disputed if still disputed
-    if (becomingResolved) {
-      const job = Array.isArray(active.jobs) ? active.jobs[0] : active.jobs;
-      if (job?.status === "disputed" || active) {
-        const { data: jobRow } = await supabase
-          .from("jobs")
-          .select(
-            "id, status, operative_marked_complete_at, customer_confirmed_complete_at, contractor_confirmed_complete_at",
-          )
-          .eq("id", active.job_id)
-          .maybeSingle();
-        if (jobRow?.status === "disputed") {
-          let nextStatus = "awaiting_completion";
-          if (jobRow.customer_confirmed_complete_at && jobRow.contractor_confirmed_complete_at) {
-            nextStatus = "completed";
-          } else if (jobRow.operative_marked_complete_at || jobRow.customer_confirmed_complete_at) {
-            nextStatus = "pending_confirmation";
-          } else if (jobRow.operative_marked_complete_at === null) {
-            nextStatus = "awaiting_completion";
-          }
-          await supabase.from("jobs").update({ status: nextStatus }).eq("id", active.job_id);
-        }
-      }
-    }
-
-    setSavingMeta(false);
     await loadRows();
   };
 

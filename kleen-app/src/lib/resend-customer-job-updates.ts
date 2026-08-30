@@ -212,13 +212,54 @@ export async function sendAdminDisputeOpenedEmail(params: {
       { label: "Reason", value: escapeHtml(params.reason) },
     ],
     cta: {
-      href: adminAppUrl(`/jobs/${params.jobId}`),
-      label: "Open job in admin",
+      href: adminAppUrl(`/disputes`),
+      label: "Open disputes in admin",
     },
   });
   return sendKleenEmail({
     to: getAdminNotifyEmail(),
     subject: `Dispute — ${params.jobReference}`,
+    html,
+  });
+}
+
+/** Customer: confirmation that their dispute was received. */
+export async function sendCustomerDisputeOpenedEmail(
+  params: JobMailBase & { reason?: string },
+): Promise<EmailSendResult> {
+  const name = params.customerName.trim() || "there";
+  const html = emailLayout({
+    title: `Dispute opened — ${params.jobReference}`,
+    heading: "We've received your dispute",
+    introHtml: `<p>Hi ${escapeHtml(name)}, Kleen has your dispute for job <strong>${escapeHtml(params.jobReference)}</strong>. We'll mediate with the contractor and keep funds held until this is resolved.</p>`,
+    rows: params.reason ? [{ label: "Reason", value: escapeHtml(params.reason) }] : undefined,
+    cta: { href: customerDashboardUrl("/dashboard/disputes"), label: "View dispute" },
+  });
+  return sendKleenEmail({
+    to: params.toEmail,
+    subject: `Dispute opened — ${params.jobReference}`,
+    html,
+  });
+}
+
+/** Customer: dispute resolved / closed. */
+export async function sendCustomerDisputeResolvedEmail(
+  params: JobMailBase & { resolution?: string | null; status?: string },
+): Promise<EmailSendResult> {
+  const name = params.customerName.trim() || "there";
+  const closed = params.status === "closed";
+  const html = emailLayout({
+    title: `Dispute ${closed ? "closed" : "resolved"} — ${params.jobReference}`,
+    heading: closed ? "Dispute closed" : "Dispute resolved",
+    introHtml: `<p>Hi ${escapeHtml(name)}, Kleen has ${closed ? "closed" : "resolved"} the dispute on job <strong>${escapeHtml(params.jobReference)}</strong>.</p>`,
+    rows: params.resolution
+      ? [{ label: "Resolution", value: escapeHtml(params.resolution) }]
+      : undefined,
+    cta: { href: customerDashboardUrl("/dashboard/disputes"), label: "View dispute" },
+  });
+  return sendKleenEmail({
+    to: params.toEmail,
+    subject: `Dispute ${closed ? "closed" : "resolved"} — ${params.jobReference}`,
     html,
   });
 }

@@ -1,6 +1,5 @@
-import { customerDashboardUrl, emailLayout, escapeHtml } from "@/lib/email/layout";
+import { customerDashboardUrl, contractorPortalUrl, emailLayout, escapeHtml, adminAppUrl } from "@/lib/email/layout";
 import { sendKleenEmail, type EmailSendResult } from "@/lib/email/send";
-import { adminAppUrl } from "@/lib/email/layout";
 import { getAdminNotifyEmail } from "@/lib/admin-notify-email";
 
 type JobMailBase = {
@@ -212,13 +211,102 @@ export async function sendAdminDisputeOpenedEmail(params: {
       { label: "Reason", value: escapeHtml(params.reason) },
     ],
     cta: {
-      href: adminAppUrl(`/jobs/${params.jobId}`),
-      label: "Open job in admin",
+      href: adminAppUrl(`/disputes`),
+      label: "Open disputes in admin",
     },
   });
   return sendKleenEmail({
     to: getAdminNotifyEmail(),
     subject: `Dispute — ${params.jobReference}`,
+    html,
+  });
+}
+
+/** Customer: confirmation that their dispute was received. */
+export async function sendCustomerDisputeOpenedEmail(
+  params: JobMailBase & { reason?: string },
+): Promise<EmailSendResult> {
+  const name = params.customerName.trim() || "there";
+  const html = emailLayout({
+    title: `Dispute opened — ${params.jobReference}`,
+    heading: "We've received your dispute",
+    introHtml: `<p>Hi ${escapeHtml(name)}, Kleen has your dispute for job <strong>${escapeHtml(params.jobReference)}</strong>. We'll mediate with the contractor and keep funds held until this is resolved.</p>`,
+    rows: params.reason ? [{ label: "Reason", value: escapeHtml(params.reason) }] : undefined,
+    cta: { href: customerDashboardUrl("/dashboard/disputes"), label: "View dispute" },
+  });
+  return sendKleenEmail({
+    to: params.toEmail,
+    subject: `Dispute opened — ${params.jobReference}`,
+    html,
+  });
+}
+
+/** Customer: dispute resolved / closed. */
+export async function sendCustomerDisputeResolvedEmail(
+  params: JobMailBase & { resolution?: string | null; status?: string },
+): Promise<EmailSendResult> {
+  const name = params.customerName.trim() || "there";
+  const closed = params.status === "closed";
+  const html = emailLayout({
+    title: `Dispute ${closed ? "closed" : "resolved"} — ${params.jobReference}`,
+    heading: closed ? "Dispute closed" : "Dispute resolved",
+    introHtml: `<p>Hi ${escapeHtml(name)}, Kleen has ${closed ? "closed" : "resolved"} the dispute on job <strong>${escapeHtml(params.jobReference)}</strong>.</p>`,
+    rows: params.resolution
+      ? [{ label: "Resolution", value: escapeHtml(params.resolution) }]
+      : undefined,
+    cta: { href: customerDashboardUrl("/dashboard/disputes"), label: "View dispute" },
+  });
+  return sendKleenEmail({
+    to: params.toEmail,
+    subject: `Dispute ${closed ? "closed" : "resolved"} — ${params.jobReference}`,
+    html,
+  });
+}
+
+/** Contractor: customer opened a dispute. */
+export async function sendContractorDisputeOpenedEmail(params: {
+  toEmail: string;
+  contractorName: string;
+  jobReference: string;
+  reason?: string;
+}): Promise<EmailSendResult> {
+  const name = params.contractorName.trim() || "there";
+  const html = emailLayout({
+    title: `Dispute — ${params.jobReference}`,
+    heading: "A customer opened a dispute",
+    introHtml: `<p>Hi ${escapeHtml(name)}, a customer raised a dispute on job <strong>${escapeHtml(params.jobReference)}</strong>. Kleen mediates — reply in your disputes inbox.</p>`,
+    rows: params.reason ? [{ label: "Reason", value: escapeHtml(params.reason) }] : undefined,
+    cta: { href: contractorPortalUrl("/contractor/disputes"), label: "Open disputes" },
+  });
+  return sendKleenEmail({
+    to: params.toEmail,
+    subject: `Dispute — ${params.jobReference}`,
+    html,
+  });
+}
+
+/** Contractor: dispute resolved / closed. */
+export async function sendContractorDisputeResolvedEmail(params: {
+  toEmail: string;
+  contractorName: string;
+  jobReference: string;
+  resolution?: string | null;
+  status?: string;
+}): Promise<EmailSendResult> {
+  const name = params.contractorName.trim() || "there";
+  const closed = params.status === "closed";
+  const html = emailLayout({
+    title: `Dispute ${closed ? "closed" : "resolved"} — ${params.jobReference}`,
+    heading: closed ? "Dispute closed" : "Dispute resolved",
+    introHtml: `<p>Hi ${escapeHtml(name)}, Kleen has ${closed ? "closed" : "resolved"} the dispute on job <strong>${escapeHtml(params.jobReference)}</strong>.</p>`,
+    rows: params.resolution
+      ? [{ label: "Resolution", value: escapeHtml(params.resolution) }]
+      : undefined,
+    cta: { href: contractorPortalUrl("/contractor/disputes"), label: "View disputes" },
+  });
+  return sendKleenEmail({
+    to: params.toEmail,
+    subject: `Dispute ${closed ? "closed" : "resolved"} — ${params.jobReference}`,
     html,
   });
 }
