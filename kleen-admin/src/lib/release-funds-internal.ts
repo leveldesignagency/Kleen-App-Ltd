@@ -17,7 +17,10 @@ export type ReleaseFundsResult =
  * Release escrow to contractor (Stripe transfer + job update).
  * Used by admin POST /api/stripe/release-funds and cron when dispute window has passed.
  */
-export async function releaseFundsForJob(jobId: string): Promise<ReleaseFundsResult> {
+export async function releaseFundsForJob(
+  jobId: string,
+  options?: { skipDisputeCheck?: boolean },
+): Promise<ReleaseFundsResult> {
   const stripeKey = process.env.STRIPE_SECRET_KEY;
   if (!stripeKey) {
     return { ok: false, error: "Stripe not configured", status: 503 };
@@ -80,16 +83,18 @@ export async function releaseFundsForJob(jobId: string): Promise<ReleaseFundsRes
     }
   }
 
-  const { data: openDispute } = await supabase
-    .from("disputes")
-    .select("id")
-    .eq("job_id", jobId)
-    .in("status", ["open", "under_review", "escalated"])
-    .limit(1)
-    .maybeSingle();
+  if (!options?.skipDisputeCheck) {
+    const { data: openDispute } = await supabase
+      .from("disputes")
+      .select("id")
+      .eq("job_id", jobId)
+      .in("status", ["open", "under_review", "escalated"])
+      .limit(1)
+      .maybeSingle();
 
-  if (openDispute?.id) {
-    return { ok: false, error: "Resolve or close the open dispute before releasing funds.", status: 400 };
+    if (openDispute?.id) {
+      return { ok: false, error: "Resolve or close the open dispute before releasing funds.", status: 400 };
+    }
   }
 
   const { data: qr } = await supabase
@@ -116,7 +121,22 @@ export async function releaseFundsForJob(jobId: string): Promise<ReleaseFundsRes
     return { ok: false, error: "Quote response or customer price not found", status: 404 };
   }
 
-  const contractorSharePence = Math.round(customerPricePence * (1 - PLATFORM_FEE_RATE));
+  const { data: payRow } = await supabase
+    .from("payments")
+    .select("refund_amount_pence")
+    .eq("job_id", jobId)
+    .maybeSingle();
+  const refundedPence = payRow?.refund_amount_pence ?? 0;
+  const netCustomerPence = Math.max(0, customerPricePence - refundedPence);
+  const contractorSharePence = Math.round(netCustomerPence * (1 - PLATFORM_FEE_RATE));
+
+  if (contractorSharePence <= 0) {
+    return {
+      ok: false,
+      error: "No contractor payout remaining after refunds on this job.",
+      status: 400,
+    };
+  }
 
   const { data: operative } = await supabase
     .from("operatives")
