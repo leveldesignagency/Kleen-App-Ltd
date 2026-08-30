@@ -99,6 +99,10 @@ type DisputeContext = {
     created_at: string;
   }>;
   customerHistory: { priorDisputes: number };
+  riskFlags?: {
+    customer: Array<{ flag_type: string; severity: string; notes: string | null }>;
+    contractor: Array<{ flag_type: string; severity: string; notes: string | null }>;
+  };
 };
 
 type Tab = "overview" | "thread" | "audit";
@@ -467,6 +471,7 @@ export default function DisputeTerminal() {
                             ? `${ctx.customerHistory.priorDisputes} prior dispute(s)`
                             : "No prior disputes"
                         }
+                        flags={ctx.riskFlags?.customer}
                       />
                       <PartyCard
                         icon={Wrench}
@@ -474,6 +479,7 @@ export default function DisputeTerminal() {
                         name={ctx.contractor?.name || "Unassigned"}
                         email={ctx.contractor?.email || "—"}
                         meta="Not notified until you message them"
+                        flags={ctx.riskFlags?.contractor}
                       />
                     </div>
 
@@ -764,12 +770,14 @@ function PartyCard({
   name,
   email,
   meta,
+  flags,
 }: {
   icon: typeof User;
   title: string;
   name: string;
   email: string;
   meta: string;
+  flags?: Array<{ flag_type: string; severity: string; notes: string | null }>;
 }) {
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
@@ -780,6 +788,18 @@ function PartyCard({
       <p className="mt-2 font-medium text-slate-100">{name}</p>
       <p className="text-xs text-slate-400">{email}</p>
       <p className="mt-2 text-[11px] text-slate-500">{meta}</p>
+      {flags && flags.length > 0 && (
+        <ul className="mt-2 space-y-1">
+          {flags.map((f, i) => (
+            <li
+              key={i}
+              className="rounded-md bg-amber-500/10 px-2 py-1 text-[10px] font-medium text-amber-200"
+            >
+              {f.severity}: {f.flag_type.replace(/_/g, " ")}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

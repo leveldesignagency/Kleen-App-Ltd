@@ -125,6 +125,30 @@ export async function loadDisputeContext(disputeId: string) {
     .select("id", { count: "exact", head: true })
     .eq("user_id", dispute.user_id);
 
+  const { data: customerFlags } = dispute.user_id
+    ? await admin
+        .from("account_risk_flags")
+        .select("id, flag_type, severity, notes, created_at")
+        .eq("subject_type", "customer")
+        .eq("subject_id", dispute.user_id)
+        .is("resolved_at", null)
+        .order("created_at", { ascending: false })
+        .limit(10)
+    : { data: [] };
+
+  let contractorFlags: typeof customerFlags = [];
+  if (contractor) {
+    const { data: flags } = await admin
+      .from("account_risk_flags")
+      .select("id, flag_type, severity, notes, created_at")
+      .eq("subject_type", "contractor")
+      .eq("subject_id", contractor.id)
+      .is("resolved_at", null)
+      .order("created_at", { ascending: false })
+      .limit(10);
+    contractorFlags = flags || [];
+  }
+
   return {
     dispute,
     job,
@@ -144,6 +168,10 @@ export async function loadDisputeContext(disputeId: string) {
     promoCode,
     actions: actions ?? [],
     customerHistory: { priorDisputes: Math.max(0, (customerDisputeCount ?? 1) - 1) },
+    riskFlags: {
+      customer: customerFlags || [],
+      contractor: contractorFlags || [],
+    },
   };
 }
 

@@ -12,6 +12,7 @@ import {
   isDisputeActive,
 } from "@/lib/dispute-helpers";
 import { withSecureApiRoute } from "@/lib/security/with-secure-api-route";
+import { isUserRestricted } from "@/lib/account-restriction";
 
 async function openDisputeHandler(request: NextRequest) {
   const supabase = createServerSupabaseClient();
@@ -20,6 +21,9 @@ async function openDisputeHandler(request: NextRequest) {
   } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (await isUserRestricted(user.id)) {
+    return NextResponse.json({ error: "Your account is restricted." }, { status: 403 });
   }
 
   let body: { jobId?: string; reasonCode?: string; description?: string };

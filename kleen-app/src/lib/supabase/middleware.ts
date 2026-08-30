@@ -40,6 +40,20 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  const isRestrictedPath =
+    pathname === "/account-suspended" ||
+    pathname.startsWith("/api/account/restriction") ||
+    pathname === "/sign-out" ||
+    pathname.startsWith("/auth/");
+
+  if (user && !isRestrictedPath) {
+    const { data: banned } = await supabase.rpc("is_auth_user_banned", { p_user_id: user.id });
+    if (banned === true) {
+      const suspended = new URL("/account-suspended", request.url);
+      return NextResponse.redirect(suspended);
+    }
+  }
+
   const needsCustomerSession =
     pathname === "/dashboard" ||
     pathname.startsWith("/dashboard/");

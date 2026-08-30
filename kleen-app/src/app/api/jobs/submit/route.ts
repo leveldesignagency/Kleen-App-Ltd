@@ -7,6 +7,8 @@ import { broadcastJobToMatchingContractors } from "@/lib/broadcast-job-to-contra
 import { sendCustomerJobReceivedEmail } from "@/lib/resend-customer-job-updates";
 import { getService } from "@/lib/services";
 import { withSecureApiRoute } from "@/lib/security/with-secure-api-route";
+import { isUserRestricted } from "@/lib/account-restriction";
+import { checkIdentityBlocked } from "@/lib/identity-blocklist";
 
 type SubmitBody = {
   serviceId?: string;
@@ -61,6 +63,9 @@ async function submitHandler(request: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: "Unauthorized — sign in again and retry" }, { status: 401 });
     }
+    if (await isUserRestricted(user.id)) {
+      return NextResponse.json({ error: "Your account is restricted." }, { status: 403 });
+    }
 
     let body: SubmitBody;
     try {
@@ -84,6 +89,16 @@ async function submitHandler(request: NextRequest) {
     }
 
     const { serviceId, cleaningType, address, postcode, preferredDate, preferredTime, notes, detail, estimate } = body;
+
+    const line1 = address?.trim().split(",")[0]?.trim() || address?.trim() || "";
+    const identity = await checkIdentityBlocked({
+      email: user.email,
+      postcode: postcode?.trim(),
+      addressLine1: line1,
+    });
+    if (identity.blocked) {
+      return NextResponse.json({ error: identity.reason || "Cannot create job." }, { status: 403 });
+    }
 
     const { data: job, error: jobError } = await admin
       .from("jobs")
