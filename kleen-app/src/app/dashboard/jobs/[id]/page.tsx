@@ -839,7 +839,11 @@ export default function CustomerJobDetailPage() {
                 Mark as Complete
               </button>
               <p className="mt-2 text-center text-[11px] text-teal-500">
-                Not happy? You can <Link href="/dashboard/disputes" className="font-medium underline">raise a dispute</Link> instead.
+                Not happy? You can{" "}
+                <Link href={`/dashboard/disputes?job=${job.id}`} className="font-medium underline">
+                  raise a dispute
+                </Link>{" "}
+                instead.
               </p>
             </div>
           )}
@@ -873,6 +877,29 @@ export default function CustomerJobDetailPage() {
                   {new Date(job.escrow_release_date).toLocaleString("en-GB")} (3-day dispute window).
                 </p>
               )}
+              {job.status === "completed" && (
+                <p className="mt-3 text-center text-[11px] text-emerald-700/80">
+                  Something wrong?{" "}
+                  <Link href={`/dashboard/disputes?job=${job.id}`} className="font-medium underline">
+                    Raise a dispute
+                  </Link>
+                </p>
+              )}
+            </div>
+          )}
+
+          {job.status === "disputed" && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+              <h2 className="text-sm font-semibold text-amber-900">Dispute open</h2>
+              <p className="mt-1 text-xs text-amber-800">
+                Kleen is mediating this job. Funds stay held until the case is resolved.
+              </p>
+              <Link
+                href="/dashboard/disputes"
+                className="mt-3 inline-flex rounded-xl bg-amber-700 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600"
+              >
+                View dispute thread
+              </Link>
             </div>
           )}
 

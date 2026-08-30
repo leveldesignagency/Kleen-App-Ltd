@@ -1,9 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import CustomDropdown from "@/components/ui/CustomDropdown";
-import { Loader2, MessageSquare, Send } from "lucide-react";
+import {
+  DISPUTE_STATUS_OPTIONS,
+  disputeStatusBadgeClass,
+  isDisputeResolved,
+} from "@/lib/dispute-helpers";
+import { ExternalLink, Loader2, MessageSquare, Send } from "lucide-react";
 
 type Row = {
   id: string;
@@ -11,8 +17,10 @@ type Row = {
   user_id: string;
   status: string;
   reason: string;
+  resolution: string | null;
   created_at: string;
-  jobs: { reference: string } | { reference: string }[] | null;
+  resolved_at: string | null;
+  jobs: { reference: string; status: string } | { reference: string; status: string }[] | null;
 };
 
 type Msg = {
@@ -24,8 +32,14 @@ type Msg = {
 };
 
 const RECIPIENT_OPTIONS = [
-  { value: "customer", label: "Customer" },
-  { value: "operative", label: "Contractor" },
+  { value: "customer", label: "Reply to customer" },
+  { value: "operative", label: "Reply to contractor" },
+];
+
+const FILTER_OPTIONS = [
+  { value: "active", label: "Active" },
+  { value: "all", label: "All" },
+  { value: "resolved", label: "Resolved" },
 ];
 
 export default function AdminDisputesPage() {
@@ -38,19 +52,36 @@ export default function AdminDisputesPage() {
   const [recipientRole, setRecipientRole] = useState("customer");
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const [filter, setFilter] = useState("active");
+  const [myUserId, setMyUserId] = useState<string | null>(null);
+  const [statusDraft, setStatusDraft] = useState("open");
+  const [resolutionDraft, setResolutionDraft] = useState("");
+  const [savingMeta, setSavingMeta] = useState(false);
+
+  const loadRows = useCallback(async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    setMyUserId(user?.id ?? null);
+    const { data } = await supabase
+      .from("disputes")
+      .select("id, job_id, user_id, status, reason, resolution, created_at, resolved_at, jobs(reference, status)")
+      .order("created_at", { ascending: false });
+    setRows((data as Row[]) || []);
+    setLoading(false);
+  }, [supabase]);
 
   useEffect(() => {
-    const run = async () => {
-      const { data } = await supabase
-        .from("disputes")
-        .select("id, job_id, user_id, status, reason, created_at, jobs(reference)")
-        .order("created_at", { ascending: false });
-      setRows((data as Row[]) || []);
-      setLoading(false);
-    };
-    run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    void loadRows();
+  }, [loadRows]);
+
+  const filteredRows = useMemo(() => {
+    if (filter === "all") return rows;
+    if (filter === "resolved") return rows.filter((r) => isDisputeResolved(r.status));
+    return rows.filter((r) => !isDisputeResolved(r.status));
+  }, [rows, filter]);
+
+  const active = rows.find((r) => r.id === activeId) || null;
 
   const loadMessages = async (disputeId: string) => {
     setMsgLoading(true);
@@ -65,12 +96,17 @@ export default function AdminDisputesPage() {
 
   const openDispute = async (id: string) => {
     setActiveId(id);
+    const row = rows.find((r) => r.id === id);
+    setStatusDraft(row?.status || "open");
+    setResolutionDraft(row?.resolution || "");
     await loadMessages(id);
   };
 
   const send = async () => {
     if (!activeId || !text.trim()) return;
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return;
     setSending(true);
     const { error } = await supabase.from("dispute_messages").insert({
@@ -84,80 +120,233 @@ export default function AdminDisputesPage() {
       alert(error.message);
       return;
     }
+    // Move open → under_review on first admin reply
+    if (active && active.status === "open") {
+      await supabase.from("disputes").update({ status: "under_review" }).eq("id", activeId);
+      setStatusDraft("under_review");
+      void loadRows();
+    }
     setText("");
     await loadMessages(activeId);
+  };
+
+  const saveMeta = async () => {
+    if (!activeId || !active) return;
+    setSavingMeta(true);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const becomingResolved = isDisputeResolved(statusDraft) && !isDisputeResolved(active.status);
+    const updates: Record<string, unknown> = {
+      status: statusDraft,
+      resolution: resolutionDraft.trim() || null,
+    };
+    if (becomingResolved) {
+      updates.resolved_at = new Date().toISOString();
+      updates.resolved_by = user?.id ?? null;
+    }
+    if (!isDisputeResolved(statusDraft)) {
+      updates.resolved_at = null;
+      updates.resolved_by = null;
+    }
+
+    const { error } = await supabase.from("disputes").update(updates).eq("id", activeId);
+    if (error) {
+      setSavingMeta(false);
+      alert(error.message);
+      return;
+    }
+
+    // When closing a dispute, restore job out of disputed if still disputed
+    if (becomingResolved) {
+      const job = Array.isArray(active.jobs) ? active.jobs[0] : active.jobs;
+      if (job?.status === "disputed" || active) {
+        const { data: jobRow } = await supabase
+          .from("jobs")
+          .select(
+            "id, status, operative_marked_complete_at, customer_confirmed_complete_at, contractor_confirmed_complete_at",
+          )
+          .eq("id", active.job_id)
+          .maybeSingle();
+        if (jobRow?.status === "disputed") {
+          let nextStatus = "awaiting_completion";
+          if (jobRow.customer_confirmed_complete_at && jobRow.contractor_confirmed_complete_at) {
+            nextStatus = "completed";
+          } else if (jobRow.operative_marked_complete_at || jobRow.customer_confirmed_complete_at) {
+            nextStatus = "pending_confirmation";
+          } else if (jobRow.operative_marked_complete_at === null) {
+            nextStatus = "awaiting_completion";
+          }
+          await supabase.from("jobs").update({ status: nextStatus }).eq("id", active.job_id);
+        }
+      }
+    }
+
+    setSavingMeta(false);
+    await loadRows();
+  };
+
+  const msgLabel = (m: Msg) => {
+    const fromAdmin = myUserId && m.sender_id === myUserId;
+    if (fromAdmin) {
+      return m.recipient_role === "customer"
+        ? "Kleen → Customer"
+        : m.recipient_role === "operative"
+          ? "Kleen → Contractor"
+          : "Kleen";
+    }
+    if (m.recipient_role === "admin") {
+      // Could be customer or contractor — we don't store sender role; infer later if needed
+      return "Party → Kleen";
+    }
+    return `To ${m.recipient_role}`;
   };
 
   return (
     <div className="grid gap-4 lg:grid-cols-[380px_minmax(0,1fr)]">
       <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-        <h1 className="text-xl font-bold">Disputes</h1>
-        <p className="mt-1 text-xs text-slate-400">Kleen-mediated thread between customer and contractor.</p>
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <h1 className="text-xl font-bold">Disputes</h1>
+            <p className="mt-1 text-xs text-slate-400">Mediated thread — customer and contractor never chat directly.</p>
+          </div>
+        </div>
+        <div className="mt-3">
+          <CustomDropdown value={filter} onChange={setFilter} options={FILTER_OPTIONS} />
+        </div>
         {loading ? (
-          <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-brand-400" /></div>
+          <div className="flex justify-center py-10">
+            <Loader2 className="h-6 w-6 animate-spin text-brand-400" />
+          </div>
         ) : (
-          <ul className="mt-3 space-y-2">
-            {rows.map((r) => {
+          <ul className="mt-3 max-h-[70vh] space-y-2 overflow-y-auto">
+            {filteredRows.map((r) => {
               const j = Array.isArray(r.jobs) ? r.jobs[0] : r.jobs;
               return (
                 <li key={r.id}>
                   <button
                     type="button"
                     onClick={() => openDispute(r.id)}
-                    className={`w-full rounded-xl border px-3 py-2 text-left text-sm ${
-                      activeId === r.id ? "border-brand-500/40 bg-brand-500/10" : "border-white/10 bg-white/[0.02] hover:bg-white/[0.05]"
+                    className={`w-full rounded-xl border px-3 py-2.5 text-left text-sm transition ${
+                      activeId === r.id
+                        ? "border-brand-500/40 bg-brand-500/10"
+                        : "border-white/10 bg-white/[0.02] hover:bg-white/[0.05]"
                     }`}
                   >
-                    <p className="font-medium text-slate-100">{j?.reference || "Job"} · {r.status}</p>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-medium text-slate-100">{j?.reference || "Job"}</p>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize ${disputeStatusBadgeClass(r.status)}`}>
+                        {r.status.replace(/_/g, " ")}
+                      </span>
+                    </div>
                     <p className="mt-1 line-clamp-2 text-xs text-slate-400">{r.reason}</p>
+                    <p className="mt-1 text-[10px] text-slate-500">
+                      {new Date(r.created_at).toLocaleString("en-GB")}
+                    </p>
                   </button>
                 </li>
               );
             })}
-            {rows.length === 0 && <li className="text-sm text-slate-500">No disputes.</li>}
+            {filteredRows.length === 0 && <li className="text-sm text-slate-500">No disputes in this filter.</li>}
           </ul>
         )}
       </section>
 
       <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-        <h2 className="text-sm font-semibold text-slate-200">Thread</h2>
-        {!activeId ? (
-          <p className="mt-3 text-sm text-slate-500">Select a dispute.</p>
-        ) : msgLoading ? (
-          <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-brand-400" /></div>
+        {!activeId || !active ? (
+          <p className="mt-3 text-sm text-slate-500">Select a dispute to mediate.</p>
         ) : (
           <>
-            <ul className="mt-3 max-h-[52vh] space-y-2 overflow-y-auto">
-              {messages.map((m) => (
-                <li key={m.id} className="rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-sm">
-                  <p className="text-xs text-slate-500">
-                    {m.recipient_role === "admin" ? "To Kleen" : `To ${m.recipient_role}`} · {new Date(m.created_at).toLocaleString("en-GB")}
-                  </p>
-                  <p className="mt-1 whitespace-pre-wrap text-slate-200">{m.message}</p>
-                </li>
-              ))}
-              {messages.length === 0 && <li className="text-sm text-slate-500">No messages.</li>}
-            </ul>
-            <div className="mt-4 grid gap-2 sm:grid-cols-[220px_minmax(0,1fr)]">
-              <CustomDropdown value={recipientRole} onChange={setRecipientRole} options={RECIPIENT_OPTIONS} />
-              <div className="flex gap-2">
-                <textarea
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  rows={2}
-                  className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-slate-500 outline-none focus:border-brand-500"
-                  placeholder="Reply as Kleen..."
-                />
-                <button type="button" disabled={sending || !text.trim()} onClick={send} className="inline-flex h-fit items-center gap-2 self-end rounded-xl bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50">
-                  {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                  Send
-                </button>
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-white/10 pb-4">
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold text-slate-200">
+                  {(Array.isArray(active.jobs) ? active.jobs[0] : active.jobs)?.reference || "Job"}
+                </h2>
+                <p className="mt-1 text-sm text-slate-400">{active.reason}</p>
+                <Link
+                  href={`/jobs/${active.job_id}`}
+                  className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-brand-400 hover:underline"
+                >
+                  Open job <ExternalLink className="h-3 w-3" />
+                </Link>
               </div>
             </div>
-            <p className="mt-2 flex items-center gap-1 text-xs text-slate-500">
-              <MessageSquare className="h-3.5 w-3.5" />
-              Messages are mediated by Kleen; customer and contractor do not message each other directly.
-            </p>
+
+            <div className="mt-4 grid gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-3 sm:grid-cols-2">
+              <div>
+                <label className="text-xs font-medium text-slate-400">Status</label>
+                <CustomDropdown
+                  className="mt-1"
+                  value={statusDraft}
+                  onChange={setStatusDraft}
+                  options={[...DISPUTE_STATUS_OPTIONS]}
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-xs font-medium text-slate-400">Resolution note</label>
+                <textarea
+                  value={resolutionDraft}
+                  onChange={(e) => setResolutionDraft(e.target.value)}
+                  rows={2}
+                  className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-slate-500 outline-none focus:border-brand-500"
+                  placeholder="Shown to customer & contractor when resolved…"
+                />
+              </div>
+              <button
+                type="button"
+                disabled={savingMeta}
+                onClick={saveMeta}
+                className="inline-flex items-center justify-center rounded-xl bg-white/10 px-3 py-2 text-sm font-medium text-white hover:bg-white/15 disabled:opacity-50 sm:col-span-2"
+              >
+                {savingMeta ? "Saving…" : "Save status / resolution"}
+              </button>
+            </div>
+
+            <h3 className="mt-5 text-sm font-semibold text-slate-200">Thread</h3>
+            {msgLoading ? (
+              <div className="flex justify-center py-12">
+                <Loader2 className="h-6 w-6 animate-spin text-brand-400" />
+              </div>
+            ) : (
+              <>
+                <ul className="mt-3 max-h-[40vh] space-y-2 overflow-y-auto">
+                  {messages.map((m) => (
+                    <li key={m.id} className="rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-sm">
+                      <p className="text-xs text-slate-500">
+                        {msgLabel(m)} · {new Date(m.created_at).toLocaleString("en-GB")}
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap text-slate-200">{m.message}</p>
+                    </li>
+                  ))}
+                  {messages.length === 0 && <li className="text-sm text-slate-500">No messages.</li>}
+                </ul>
+                <div className="mt-4 grid gap-2 sm:grid-cols-[220px_minmax(0,1fr)]">
+                  <CustomDropdown value={recipientRole} onChange={setRecipientRole} options={RECIPIENT_OPTIONS} />
+                  <div className="flex gap-2">
+                    <textarea
+                      value={text}
+                      onChange={(e) => setText(e.target.value)}
+                      rows={2}
+                      className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-slate-500 outline-none focus:border-brand-500"
+                      placeholder="Reply as Kleen…"
+                    />
+                    <button
+                      type="button"
+                      disabled={sending || !text.trim()}
+                      onClick={send}
+                      className="inline-flex h-fit items-center gap-2 self-end rounded-xl bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
+                    >
+                      {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                      Send
+                    </button>
+                  </div>
+                </div>
+                <p className="mt-2 flex items-center gap-1 text-xs text-slate-500">
+                  <MessageSquare className="h-3.5 w-3.5" />
+                  Customer only sees messages to them; contractor only sees messages to them.
+                </p>
+              </>
+            )}
           </>
         )}
       </section>
