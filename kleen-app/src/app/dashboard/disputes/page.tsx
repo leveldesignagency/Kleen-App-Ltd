@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -56,6 +56,20 @@ type EligibleJob = {
 type FilterTab = "active" | "resolved" | "all";
 
 export default function DisputesPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
+        </div>
+      }
+    >
+      <DisputesPageInner />
+    </Suspense>
+  );
+}
+
+function DisputesPageInner() {
   const supabase = createClient();
   const searchParams = useSearchParams();
   const prefillJobId = searchParams.get("job") || "";
