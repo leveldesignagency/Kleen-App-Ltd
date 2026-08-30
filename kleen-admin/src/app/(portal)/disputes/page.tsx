@@ -63,11 +63,14 @@ export default function AdminDisputesPage() {
       data: { user },
     } = await supabase.auth.getUser();
     setMyUserId(user?.id ?? null);
-    const { data } = await supabase
-      .from("disputes")
-      .select("id, job_id, user_id, status, reason, resolution, created_at, resolved_at, jobs(reference, status)")
-      .order("created_at", { ascending: false });
-    setRows((data as Row[]) || []);
+    const res = await fetch("/api/disputes/list", { credentials: "include" });
+    const json = (await res.json().catch(() => ({}))) as { error?: string; disputes?: Row[] };
+    if (!res.ok) {
+      console.error(json.error || "disputes list failed");
+      setRows([]);
+    } else {
+      setRows(json.disputes || []);
+    }
     setLoading(false);
   }, [supabase]);
 
@@ -85,12 +88,11 @@ export default function AdminDisputesPage() {
 
   const loadMessages = async (disputeId: string) => {
     setMsgLoading(true);
-    const { data } = await supabase
-      .from("dispute_messages")
-      .select("id, sender_id, recipient_role, message, created_at")
-      .eq("dispute_id", disputeId)
-      .order("created_at", { ascending: true });
-    setMessages((data as Msg[]) || []);
+    const res = await fetch(`/api/disputes/messages?disputeId=${encodeURIComponent(disputeId)}`, {
+      credentials: "include",
+    });
+    const json = (await res.json().catch(() => ({}))) as { messages?: Msg[] };
+    setMessages(json.messages || []);
     setMsgLoading(false);
   };
 
@@ -104,25 +106,24 @@ export default function AdminDisputesPage() {
 
   const send = async () => {
     if (!activeId || !text.trim()) return;
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
     setSending(true);
-    const { error } = await supabase.from("dispute_messages").insert({
-      dispute_id: activeId,
-      sender_id: user.id,
-      recipient_role: recipientRole,
-      message: text.trim(),
+    const res = await fetch("/api/disputes/messages", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        disputeId: activeId,
+        message: text.trim(),
+        recipientRole,
+      }),
     });
+    const json = (await res.json().catch(() => ({}))) as { error?: string; status?: string };
     setSending(false);
-    if (error) {
-      alert(error.message);
+    if (!res.ok) {
+      alert(json.error || "Could not send");
       return;
     }
-    // Move open → under_review on first admin reply
-    if (active && active.status === "open") {
-      await supabase.from("disputes").update({ status: "under_review" }).eq("id", activeId);
+    if (json.status === "under_review") {
       setStatusDraft("under_review");
       void loadRows();
     }
@@ -153,19 +154,13 @@ export default function AdminDisputesPage() {
   };
 
   const msgLabel = (m: Msg) => {
-    const fromAdmin = myUserId && m.sender_id === myUserId;
-    if (fromAdmin) {
-      return m.recipient_role === "customer"
-        ? "Kleen → Customer"
-        : m.recipient_role === "operative"
-          ? "Kleen → Contractor"
-          : "Kleen";
-    }
+    if (m.recipient_role === "customer") return "Kleen → Customer";
+    if (m.recipient_role === "operative") return "Kleen → Contractor";
     if (m.recipient_role === "admin") {
-      // Could be customer or contractor — we don't store sender role; infer later if needed
-      return "Party → Kleen";
+      if (active?.user_id && m.sender_id === active.user_id) return "Customer → Kleen";
+      return "Contractor → Kleen";
     }
-    return `To ${m.recipient_role}`;
+    return "Message";
   };
 
   return (

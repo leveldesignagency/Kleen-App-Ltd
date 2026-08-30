@@ -263,7 +263,7 @@ export async function sendCustomerDisputeResolvedEmail(
   });
 }
 
-/** Contractor: customer opened a dispute. */
+/** Contractor: Kleen needs input on a mediated dispute. */
 export async function sendContractorDisputeOpenedEmail(params: {
   toEmail: string;
   contractorName: string;
@@ -273,9 +273,9 @@ export async function sendContractorDisputeOpenedEmail(params: {
   const name = params.contractorName.trim() || "there";
   const html = emailLayout({
     title: `Dispute — ${params.jobReference}`,
-    heading: "A customer opened a dispute",
-    introHtml: `<p>Hi ${escapeHtml(name)}, a customer raised a dispute on job <strong>${escapeHtml(params.jobReference)}</strong>. Kleen mediates — reply in your disputes inbox.</p>`,
-    rows: params.reason ? [{ label: "Reason", value: escapeHtml(params.reason) }] : undefined,
+    heading: "Kleen needs your response",
+    introHtml: `<p>Hi ${escapeHtml(name)}, Kleen is mediating a dispute on job <strong>${escapeHtml(params.jobReference)}</strong> and has a message for you. Reply in your disputes inbox — you never message the customer directly.</p>`,
+    rows: params.reason ? [{ label: "Message", value: escapeHtml(params.reason) }] : undefined,
     cta: { href: contractorPortalUrl("/contractor/disputes"), label: "Open disputes" },
   });
   return sendKleenEmail({

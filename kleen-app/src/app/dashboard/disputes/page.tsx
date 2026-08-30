@@ -18,7 +18,6 @@ import { createClient } from "@/lib/supabase/client";
 import { getService } from "@/lib/services";
 import CustomDropdown from "@/components/ui/CustomDropdown";
 import {
-  DISPUTE_ELIGIBLE_JOB_STATUSES,
   DISPUTE_REASON_OPTIONS,
   disputeStatusBadge,
   isDisputeResolved,
@@ -101,71 +100,53 @@ function DisputesPageInner() {
     }
     setMyUserId(user.id);
 
-    const [{ data: rows }, { data: jobs }] = await Promise.all([
-      supabase
-        .from("disputes")
-        .select(
-          `
-          id,
-          job_id,
-          status,
-          reason,
-          resolution,
-          created_at,
-          jobs (
-            reference,
-            service_id
-          )
-        `,
-        )
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("jobs")
-        .select("id, reference, service_id, status, preferred_date")
-        .eq("user_id", user.id)
-        .in("status", [...DISPUTE_ELIGIBLE_JOB_STATUSES])
-        .order("preferred_date", { ascending: false }),
-    ]);
-
-    type Row = {
-      id: string;
-      job_id: string;
-      status: DisputeStatus;
-      reason: string;
-      resolution: string | null;
-      created_at: string;
-      jobs: { reference: string; service_id: string } | { reference: string; service_id: string }[] | null;
+    const res = await fetch("/api/disputes/list", { credentials: "include" });
+    const json = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      disputes?: Array<{
+        id: string;
+        jobId: string;
+        jobReference: string;
+        serviceId: string;
+        status: DisputeStatus;
+        reason: string;
+        resolution: string | null;
+        createdAt: string;
+      }>;
+      eligibleJobs?: EligibleJob[];
     };
 
-    const list: DisputeRow[] = ((rows as Row[]) || [])
-      .map((r) => {
-        const job = Array.isArray(r.jobs) ? r.jobs[0] : r.jobs;
-        if (!job) return null;
-        const svc = getService(job.service_id);
-        return {
-          id: r.id,
-          jobId: r.job_id,
-          jobReference: job.reference,
-          serviceId: job.service_id,
-          serviceName: svc?.name ?? job.service_id,
-          status: r.status,
-          reason: r.reason,
-          resolution: r.resolution,
-          createdAt: r.created_at,
-        };
-      })
-      .filter((row): row is DisputeRow => row != null);
+    if (!res.ok) {
+      setError(json.error || "Could not load disputes");
+      setDisputes([]);
+      setEligibleJobs([]);
+      setLoading(false);
+      return;
+    }
+
+    const list: DisputeRow[] = (json.disputes || []).map((r) => {
+      const svc = getService(r.serviceId);
+      return {
+        id: r.id,
+        jobId: r.jobId,
+        jobReference: r.jobReference,
+        serviceId: r.serviceId,
+        serviceName: svc?.name ?? r.serviceId,
+        status: r.status,
+        reason: r.reason,
+        resolution: r.resolution,
+        createdAt: r.createdAt,
+      };
+    });
 
     setDisputes(list);
-
     const openJobIds = new Set(
       list.filter((d) => !isDisputeResolved(d.status)).map((d) => d.jobId),
     );
     setEligibleJobs(
-      ((jobs as EligibleJob[]) || []).filter((j) => !openJobIds.has(j.id) || j.id === prefillJobId),
+      (json.eligibleJobs || []).filter((j) => !openJobIds.has(j.id) || j.id === prefillJobId),
     );
-
+    setError("");
     setLoading(false);
   }, [supabase, prefillJobId]);
 
@@ -264,13 +245,16 @@ function DisputesPageInner() {
 
   const loadMessages = async (disputeId: string) => {
     setLoadingMessages(disputeId);
-    const { data, error: msgErr } = await supabase
-      .from("dispute_messages")
-      .select("id, sender_id, recipient_role, message, created_at")
-      .eq("dispute_id", disputeId)
-      .order("created_at", { ascending: true });
-    if (msgErr) console.error(msgErr);
-    setMessagesByDispute((prev) => ({ ...prev, [disputeId]: (data as MsgRow[]) || [] }));
+    const res = await fetch(`/api/disputes/messages?disputeId=${encodeURIComponent(disputeId)}`, {
+      credentials: "include",
+    });
+    const json = (await res.json().catch(() => ({}))) as { error?: string; messages?: MsgRow[] };
+    if (!res.ok) {
+      console.error(json.error || "messages failed");
+      setMessagesByDispute((prev) => ({ ...prev, [disputeId]: [] }));
+    } else {
+      setMessagesByDispute((prev) => ({ ...prev, [disputeId]: json.messages || [] }));
+    }
     setLoadingMessages(null);
   };
 
@@ -286,23 +270,21 @@ function DisputesPageInner() {
   const sendReply = async (disputeId: string) => {
     const text = (replyText[disputeId] || "").trim();
     if (!text) return;
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
     setSendingId(disputeId);
-    const { error: sendErr } = await supabase.from("dispute_messages").insert({
-      dispute_id: disputeId,
-      sender_id: user.id,
-      recipient_role: "admin",
-      message: text,
+    const res = await fetch("/api/disputes/messages", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ disputeId, message: text }),
     });
+    const json = (await res.json().catch(() => ({}))) as { error?: string };
     setSendingId(null);
-    if (sendErr) {
-      setError(sendErr.message);
+    if (!res.ok) {
+      setError(json.error || "Could not send message");
       return;
     }
     setReplyText((prev) => ({ ...prev, [disputeId]: "" }));
+    setError("");
     await loadMessages(disputeId);
   };
 
@@ -424,14 +406,24 @@ function DisputesPageInner() {
         ))}
       </div>
 
+      {error && !showNew && (
+        <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>
+      )}
+
       <div className="mt-4 space-y-3">
         {filtered.length === 0 && !showNew ? (
           <div className="card py-12 text-center">
             <AlertTriangle className="mx-auto h-10 w-10 text-slate-300" />
             <p className="mt-3 text-sm text-slate-500">
-              {filter === "active" ? "No active disputes" : filter === "resolved" ? "No resolved disputes yet" : "No disputes"}
+              {error
+                ? "Couldn’t load disputes"
+                : filter === "active"
+                  ? "No active disputes"
+                  : filter === "resolved"
+                    ? "No resolved disputes yet"
+                    : "No disputes"}
             </p>
-            <p className="text-xs text-slate-400">That&apos;s great — keep it up!</p>
+            {!error && <p className="text-xs text-slate-400">That&apos;s great — keep it up!</p>}
           </div>
         ) : (
           filtered.map((dispute) => {

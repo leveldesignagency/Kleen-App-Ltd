@@ -5,7 +5,6 @@ import {
   sendAdminDisputeOpenedEmail,
   sendCustomerDisputeOpenedEmail,
 } from "@/lib/resend-customer-job-updates";
-import { sendContractorDisputeOpenedEmail } from "@/lib/resend-contractor-notify";
 import {
   DISPUTE_ELIGIBLE_JOB_STATUSES,
   DISPUTE_REASON_OPTIONS,
@@ -133,31 +132,8 @@ async function openDisputeHandler(request: NextRequest) {
     }).catch((e) => console.error("sendCustomerDisputeOpenedEmail:", e));
   }
 
-  const { data: assignment } = await admin
-    .from("job_assignments")
-    .select("operative_id, operatives ( id, full_name, email, user_id )")
-    .eq("job_id", jobId)
-    .limit(1)
-    .maybeSingle();
-
-  const op = Array.isArray(assignment?.operatives)
-    ? assignment?.operatives[0]
-    : assignment?.operatives;
-  let opEmail = (op as { email?: string | null } | null)?.email || null;
-  const opUid = (op as { user_id?: string | null } | null)?.user_id;
-  if (!opEmail && opUid) {
-    const { data: authUser } = await admin.auth.admin.getUserById(opUid);
-    opEmail = authUser.user?.email ?? null;
-  }
-  if (opEmail) {
-    void sendContractorDisputeOpenedEmail({
-      toEmail: opEmail,
-      contractorName: (op as { full_name?: string | null } | null)?.full_name || "Contractor",
-      jobReference,
-      jobId,
-      reason: reasonText,
-    }).catch((e) => console.error("sendContractorDisputeOpenedEmail:", e));
-  }
+  // Contractor is not notified until Kleen engages (status leaves "open" /
+  // admin messages the operative). Admin + customer get immediate emails.
 
   return NextResponse.json({
     ok: true,
