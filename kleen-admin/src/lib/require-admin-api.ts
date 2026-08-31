@@ -1,13 +1,26 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
-import type { AdminStaffRole } from "@/lib/admin-staff";
+import {
+  hasPermission,
+  normalizeAdminRole,
+  parsePermissionList,
+  resolvePermissions,
+  type AdminPermission,
+  type AdminStaffRole,
+} from "@/lib/admin-permissions";
 
 export type AdminAuthResult =
-  | { ok: true; userId: string; adminRole: AdminStaffRole | null }
+  | {
+      ok: true;
+      userId: string;
+      adminRole: AdminStaffRole;
+      adminPermissions: AdminPermission[];
+      permissions: AdminPermission[];
+    }
   | { ok: false; response: NextResponse };
 
-export async function requireAdminApi(): Promise<AdminAuthResult> {
+async function loadAdminAuth(): Promise<AdminAuthResult | { ok: false; response: NextResponse }> {
   const cookieStore = cookies();
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -30,26 +43,45 @@ export async function requireAdminApi(): Promise<AdminAuthResult> {
   }
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role, admin_role")
+    .select("role, admin_role, admin_permissions")
     .eq("id", user.id)
     .single();
   if (!profile || profile.role !== "admin") {
     return { ok: false, response: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
   }
-  return {
-    ok: true,
-    userId: user.id,
-    adminRole: (profile.admin_role as AdminStaffRole | null) ?? "staff",
-  };
+  const adminRole = normalizeAdminRole(profile.admin_role);
+  const adminPermissions = parsePermissionList(profile.admin_permissions);
+  const permissions = resolvePermissions(adminRole, adminPermissions);
+  return { ok: true, userId: user.id, adminRole, adminPermissions, permissions };
 }
 
-export async function requireSuperadminApi(): Promise<AdminAuthResult> {
-  const auth = await requireAdminApi();
+export async function requireAdminApi(): Promise<AdminAuthResult> {
+  const auth = await loadAdminAuth();
+  return auth;
+}
+
+export async function requirePermissionApi(
+  permission: AdminPermission,
+): Promise<AdminAuthResult> {
+  const auth = await loadAdminAuth();
   if (!auth.ok) return auth;
-  if (auth.adminRole !== "superadmin") {
+  if (!hasPermission(auth.adminRole, auth.adminPermissions, permission)) {
     return {
       ok: false,
-      response: NextResponse.json({ error: "Superadmin access required" }, { status: 403 }),
+      response: NextResponse.json({ error: "Insufficient permissions" }, { status: 403 }),
+    };
+  }
+  return auth;
+}
+
+/** @deprecated Use requirePermissionApi('team.manage') or isMasterAdmin checks */
+export async function requireSuperadminApi(): Promise<AdminAuthResult> {
+  const auth = await loadAdminAuth();
+  if (!auth.ok) return auth;
+  if (!hasPermission(auth.adminRole, auth.adminPermissions, "team.manage")) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Team management permission required" }, { status: 403 }),
     };
   }
   return auth;

@@ -1,13 +1,15 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   DEFAULT_ADMIN_PREFERENCES,
   parseAdminPreferences,
   type AdminDisplayPreferences,
+  type AdminPermission,
   type AdminStaffProfile,
   type AdminStaffRole,
 } from "@/lib/admin-staff";
+import { hasPermission, isMasterAdmin, resolvePermissions } from "@/lib/admin-permissions";
 
 type AdminStaffContextValue = {
   profile: AdminStaffProfile | null;
@@ -18,6 +20,10 @@ type AdminStaffContextValue = {
     phone?: string;
     admin_preferences?: Partial<AdminDisplayPreferences>;
   }) => Promise<boolean>;
+  permissions: AdminPermission[];
+  hasPermission: (permission: AdminPermission) => boolean;
+  isMasterAdmin: boolean;
+  /** @deprecated use hasPermission('team.manage') */
   isSuperadmin: boolean;
   preferences: AdminDisplayPreferences;
 };
@@ -36,9 +42,12 @@ export function AdminStaffProvider({ children }: { children: ReactNode }) {
         return;
       }
       const json = (await res.json()) as { profile: AdminStaffProfile };
+      const prefs = parseAdminPreferences(json.profile.admin_preferences);
       setProfile({
         ...json.profile,
-        admin_preferences: parseAdminPreferences(json.profile.admin_preferences),
+        admin_preferences: prefs,
+        admin_permissions: json.profile.admin_permissions ?? [],
+        permissions: json.profile.permissions ?? [],
       });
     } catch {
       setProfile(null);
@@ -68,6 +77,8 @@ export function AdminStaffProvider({ children }: { children: ReactNode }) {
       setProfile({
         ...json.profile,
         admin_preferences: parseAdminPreferences(json.profile.admin_preferences),
+        admin_permissions: json.profile.admin_permissions ?? [],
+        permissions: json.profile.permissions ?? [],
       });
       return true;
     },
@@ -75,11 +86,34 @@ export function AdminStaffProvider({ children }: { children: ReactNode }) {
   );
 
   const preferences = profile?.admin_preferences ?? DEFAULT_ADMIN_PREFERENCES;
-  const isSuperadmin = profile?.admin_role === "superadmin";
+  const permissions = useMemo(
+    () =>
+      profile?.permissions ??
+      resolvePermissions(profile?.admin_role, profile?.admin_permissions ?? []),
+    [profile],
+  );
+
+  const checkPermission = useCallback(
+    (permission: AdminPermission) =>
+      hasPermission(profile?.admin_role, profile?.admin_permissions ?? [], permission),
+    [profile],
+  );
+
+  const master = isMasterAdmin(profile?.admin_role);
 
   return (
     <AdminStaffContext.Provider
-      value={{ profile, loading, refresh, updateProfile, isSuperadmin, preferences }}
+      value={{
+        profile,
+        loading,
+        refresh,
+        updateProfile,
+        permissions,
+        hasPermission: checkPermission,
+        isMasterAdmin: master,
+        isSuperadmin: master || checkPermission("team.manage"),
+        preferences,
+      }}
     >
       {children}
     </AdminStaffContext.Provider>
@@ -92,12 +126,10 @@ export function useAdminStaff() {
   return ctx;
 }
 
-/** Optional hook for components outside provider (returns defaults). */
 export function useAdminStaffOptional() {
   return useContext(AdminStaffContext);
 }
 
-export function roleLabel(role: AdminStaffRole | null | undefined): string {
-  if (role === "superadmin") return "Superadmin";
-  return "Staff";
-}
+export { roleLabel } from "@/lib/admin-permissions";
+
+export type { AdminStaffRole };

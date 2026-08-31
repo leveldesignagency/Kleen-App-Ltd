@@ -1,5 +1,3 @@
-export type AdminStaffRole = "superadmin" | "staff";
-
 export type AdminDisplayPreferences = {
   compactTables: boolean;
   alertSounds: boolean;
@@ -12,6 +10,24 @@ export const DEFAULT_ADMIN_PREFERENCES: AdminDisplayPreferences = {
   showToastAlerts: true,
 };
 
+export type { AdminPermission, AdminStaffRole } from "@/lib/admin-permissions";
+export {
+  normalizeAdminRole,
+  roleLabel,
+  resolvePermissions,
+  hasPermission,
+  isMasterAdmin,
+  assignableRoles,
+  grantablePermissions,
+  canGrantRole,
+  PERMISSION_GROUPS,
+  PERMISSION_LABELS,
+  ROLE_LABELS,
+  NAV_PERMISSION_MAP,
+} from "@/lib/admin-permissions";
+
+import type { AdminPermission, AdminStaffRole } from "@/lib/admin-permissions";
+
 export type AdminStaffProfile = {
   id: string;
   email: string;
@@ -19,7 +35,9 @@ export type AdminStaffProfile = {
   phone: string | null;
   avatar_url: string | null;
   admin_role: AdminStaffRole | null;
+  admin_permissions: AdminPermission[];
   admin_preferences: AdminDisplayPreferences;
+  permissions: AdminPermission[];
 };
 
 export function parseAdminPreferences(raw: unknown): AdminDisplayPreferences {

@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminApi } from "@/lib/require-admin-api";
+import { requirePermissionApi } from "@/lib/require-admin-api";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { placeAccountBan, liftAccountBan } from "@/lib/account-ban-service";
 import { BAN_REASON_CODES } from "@/lib/account-enforcement";
 
 export async function GET(request: NextRequest) {
-  const auth = await requireAdminApi();
+  const auth = await requirePermissionApi("enforcement.view");
   if (!auth.ok) return auth.response;
 
   const tab = request.nextUrl.searchParams.get("tab") || "bans";
@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireAdminApi();
+  const auth = await requirePermissionApi("enforcement.manage");
   if (!auth.ok) return auth.response;
 
   let body: {

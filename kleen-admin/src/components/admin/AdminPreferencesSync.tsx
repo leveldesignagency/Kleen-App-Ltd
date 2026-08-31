@@ -8,11 +8,13 @@ import { useAdminNotifications } from "@/lib/admin-notifications";
 export default function AdminPreferencesSync() {
   const { preferences } = useAdminStaff();
   const setSoundEnabled = useAdminNotifications((s) => s.setSoundEnabled);
+  const setAlertsEnabled = useAdminNotifications((s) => s.setAlertsEnabled);
 
   useEffect(() => {
     setSoundEnabled(preferences.alertSounds);
+    setAlertsEnabled(preferences.showToastAlerts);
     document.documentElement.dataset.adminCompact = preferences.compactTables ? "true" : "false";
-  }, [preferences.alertSounds, preferences.compactTables, setSoundEnabled]);
+  }, [preferences.alertSounds, preferences.showToastAlerts, preferences.compactTables, setSoundEnabled, setAlertsEnabled]);
 
   return null;
 }

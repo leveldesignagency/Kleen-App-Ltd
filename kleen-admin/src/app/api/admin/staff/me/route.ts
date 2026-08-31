@@ -2,7 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { requireAdminApi } from "@/lib/require-admin-api";
-import { parseAdminPreferences, type AdminDisplayPreferences } from "@/lib/admin-staff";
+import {
+  parseAdminPreferences,
+  type AdminDisplayPreferences,
+} from "@/lib/admin-staff";
+import {
+  parsePermissionList,
+  resolvePermissions,
+} from "@/lib/admin-permissions";
+import { hasPermission } from "@/lib/admin-permissions";
 
 async function authClient() {
   const cookieStore = cookies();
@@ -21,6 +29,22 @@ async function authClient() {
   );
 }
 
+function profilePayload(data: Record<string, unknown>) {
+  const adminRole = data.admin_role;
+  const adminPermissions = parsePermissionList(data.admin_permissions);
+  return {
+    id: data.id,
+    email: data.email,
+    full_name: data.full_name,
+    phone: data.phone,
+    avatar_url: data.avatar_url,
+    admin_role: adminRole,
+    admin_permissions: adminPermissions,
+    admin_preferences: parseAdminPreferences(data.admin_preferences),
+    permissions: resolvePermissions(adminRole as string, adminPermissions),
+  };
+}
+
 export async function GET() {
   const auth = await requireAdminApi();
   if (!auth.ok) return auth.response;
@@ -28,7 +52,7 @@ export async function GET() {
   const supabase = await authClient();
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, email, full_name, phone, avatar_url, admin_role, admin_preferences")
+    .select("id, email, full_name, phone, avatar_url, admin_role, admin_permissions, admin_preferences")
     .eq("id", auth.userId)
     .single();
 
@@ -36,17 +60,7 @@ export async function GET() {
     return NextResponse.json({ error: error?.message || "Profile not found" }, { status: 404 });
   }
 
-  return NextResponse.json({
-    profile: {
-      id: data.id,
-      email: data.email,
-      full_name: data.full_name,
-      phone: data.phone,
-      avatar_url: data.avatar_url,
-      admin_role: data.admin_role ?? "staff",
-      admin_preferences: parseAdminPreferences(data.admin_preferences),
-    },
-  });
+  return NextResponse.json({ profile: profilePayload(data) });
 }
 
 export async function PATCH(request: NextRequest) {
@@ -64,6 +78,10 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
+  if (body.admin_preferences && !hasPermission(auth.adminRole, auth.adminPermissions, "settings.display")) {
+    return NextResponse.json({ error: "Cannot change display settings" }, { status: 403 });
+  }
+
   const supabase = await authClient();
   const { data: current } = await supabase
     .from("profiles")
@@ -72,8 +90,12 @@ export async function PATCH(request: NextRequest) {
     .single();
 
   const patch: Record<string, unknown> = {};
-  if (body.full_name !== undefined) patch.full_name = body.full_name.trim() || null;
-  if (body.phone !== undefined) patch.phone = body.phone.trim() || null;
+  if (body.full_name !== undefined && hasPermission(auth.adminRole, auth.adminPermissions, "settings.profile")) {
+    patch.full_name = body.full_name.trim() || null;
+  }
+  if (body.phone !== undefined && hasPermission(auth.adminRole, auth.adminPermissions, "settings.profile")) {
+    patch.phone = body.phone.trim() || null;
+  }
 
   if (body.admin_preferences) {
     const merged = {
@@ -91,18 +113,12 @@ export async function PATCH(request: NextRequest) {
     .from("profiles")
     .update(patch)
     .eq("id", auth.userId)
-    .select("id, email, full_name, phone, avatar_url, admin_role, admin_preferences")
+    .select("id, email, full_name, phone, avatar_url, admin_role, admin_permissions, admin_preferences")
     .single();
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  return NextResponse.json({
-    profile: {
-      ...data,
-      admin_role: data.admin_role ?? "staff",
-      admin_preferences: parseAdminPreferences(data.admin_preferences),
-    },
-  });
+  return NextResponse.json({ profile: profilePayload(data) });
 }

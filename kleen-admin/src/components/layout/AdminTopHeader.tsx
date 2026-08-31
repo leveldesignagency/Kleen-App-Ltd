@@ -11,6 +11,7 @@ import {
   MessageSquare,
   Search,
   Settings,
+  Shield,
   User,
   UserSearch,
   Users,
@@ -37,7 +38,7 @@ const TYPE_LABEL = {
 
 export default function AdminTopHeader() {
   const router = useRouter();
-  const { profile, preferences, isSuperadmin } = useAdminStaff();
+  const { profile, preferences, hasPermission } = useAdminStaff();
   const { toasts, dismiss } = useAdminNotifications();
   const alertCount = toasts.filter((t) => t.type === "alert" || t.persistent).length;
 
@@ -323,14 +324,24 @@ export default function AdminTopHeader() {
                     <Settings className="h-4 w-4" />
                     Display settings
                   </Link>
-                  {isSuperadmin && (
+                  {hasPermission("team.view") && (
                     <Link
-                      href="/settings?tab=team"
+                      href="/team"
                       onClick={() => setProfileOpen(false)}
                       className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-300 hover:bg-white/5"
                     >
                       <Users className="h-4 w-4" />
-                      Manage team
+                      Team &amp; HR
+                    </Link>
+                  )}
+                  {hasPermission("security.view") && (
+                    <Link
+                      href="/settings?tab=security"
+                      onClick={() => setProfileOpen(false)}
+                      className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-300 hover:bg-white/5"
+                    >
+                      <Shield className="h-4 w-4" />
+                      Security
                     </Link>
                   )}
                 </div>

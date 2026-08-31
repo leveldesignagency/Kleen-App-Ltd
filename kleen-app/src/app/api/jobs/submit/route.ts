@@ -9,6 +9,7 @@ import { getService } from "@/lib/services";
 import { withSecureApiRoute } from "@/lib/security/with-secure-api-route";
 import { isUserRestricted } from "@/lib/account-restriction";
 import { checkIdentityBlocked } from "@/lib/identity-blocklist";
+import { userHasVerifiedPhone } from "@/lib/require-verified-phone";
 
 type SubmitBody = {
   serviceId?: string;
@@ -98,6 +99,16 @@ async function submitHandler(request: NextRequest) {
     });
     if (identity.blocked) {
       return NextResponse.json({ error: identity.reason || "Cannot create job." }, { status: 403 });
+    }
+
+    if (!(await userHasVerifiedPhone(admin, user.id))) {
+      return NextResponse.json(
+        {
+          error: "Verify your mobile number before booking a clean.",
+          code: "phone_not_verified",
+        },
+        { status: 403 },
+      );
     }
 
     const { data: job, error: jobError } = await admin

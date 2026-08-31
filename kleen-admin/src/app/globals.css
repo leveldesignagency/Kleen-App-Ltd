@@ -1,3 +1,16 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Admin display preferences */
+html[data-admin-compact="true"] .admin-table-row {
+  @apply py-1.5 text-xs;
+}
+
+html[data-admin-compact="true"] .admin-table-head {
+  @apply py-2 text-[10px];
+}
+
+html[data-admin-compact="true"] .admin-card-pad {
+  @apply p-4;
+}

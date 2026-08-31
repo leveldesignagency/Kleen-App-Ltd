@@ -5,6 +5,7 @@ import { User, Building2, Check, Shield, Globe, Receipt, Users, AlertTriangle } 
 import { createClient } from "@/lib/supabase/client";
 import CustomDropdown from "@/components/ui/CustomDropdown";
 import { useNotifications } from "@/lib/notifications";
+import PhoneVerificationPanel from "@/components/auth/PhoneVerificationPanel";
 
 type AccountType = "personal" | "business";
 
@@ -142,7 +143,6 @@ export default function AccountPage() {
         id: user.id,
         email,
         full_name: personal.fullName || null,
-        phone: personal.phone || null,
         account_type: accountType,
       },
       { onConflict: "id" },
@@ -351,14 +351,8 @@ export default function AccountPage() {
               className="input-field mt-1 bg-slate-50"
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700">Phone</label>
-            <input
-              type="tel"
-              value={personal.phone}
-              onChange={(e) => setPersonal({ ...personal, phone: e.target.value })}
-              className="input-field mt-1"
-            />
+          <div className="sm:col-span-2">
+            <PhoneVerificationPanel />
           </div>
         </div>
       </div>

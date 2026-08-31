@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Ban, Flag, Loader2, ShieldAlert, Unlock } from "lucide-react";
+import { Ban, Flag, Loader2, ShieldAlert, Unlock, Info } from "lucide-react";
 import CustomDropdown from "@/components/ui/CustomDropdown";
 import { useAdminNotifications } from "@/lib/admin-notifications";
 import { BAN_REASON_CODES } from "@/lib/account-enforcement";
@@ -170,9 +170,28 @@ export default function EnforcementPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Enforcement</h1>
-        <p className="mt-1 text-sm text-slate-400">
-          Risk detection, bans with appeals, and identity blocklist for repeat offenders.
+        <h1 className="flex items-center gap-2 text-2xl font-bold">
+          <ShieldAlert className="h-6 w-6 text-brand-400" />
+          Enforcement
+        </h1>
+        <p className="mt-1 max-w-2xl text-sm text-slate-400">
+          Operational account sanctions — risk flags, bans with appeals, and identity blocklist.
+          For GDPR data-retention freezes, use{" "}
+          <a href="/legal-holds" className="text-brand-400 hover:underline">
+            Legal holds
+          </a>{" "}
+          instead.
+        </p>
+      </div>
+
+      <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 text-xs text-slate-300">
+        <p className="flex items-start gap-2 font-medium text-amber-200">
+          <Info className="mt-0.5 h-4 w-4 shrink-0" />
+          Not the same as legal holds
+        </p>
+        <p className="mt-1.5 pl-6">
+          Enforcement <strong className="text-white">locks users out</strong> of the marketplace. Legal holds only{" "}
+          <strong className="text-white">pause deletion</strong> of records during investigations.
         </p>
       </div>
 

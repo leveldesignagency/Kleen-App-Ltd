@@ -17,6 +17,8 @@ Adapted from production hardening checklist. Kleen uses **Supabase Auth** (not N
 | Block `/api/test*` | Production middleware → 404 |
 | PII redaction helpers | `redactEmail()`, `redactText()` |
 | Admin Security tab | Settings → Security (`/api/admin/security`) |
+| SMS phone verification (customers + contractors) | Migration 062, `/api/auth/phone`, `PhoneVerificationPanel` |
+| Admin TOTP MFA (optional enroll) | Settings → Security, login challenge, middleware AAL2 |
 
 ## Not applicable to Kleen
 

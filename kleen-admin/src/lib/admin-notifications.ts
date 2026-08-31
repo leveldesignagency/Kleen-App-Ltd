@@ -16,7 +16,9 @@ export interface AdminToast {
 interface AdminNotificationStore {
   toasts: AdminToast[];
   soundEnabled: boolean;
+  alertsEnabled: boolean;
   setSoundEnabled: (v: boolean) => void;
+  setAlertsEnabled: (v: boolean) => void;
   push: (toast: Omit<AdminToast, "id">) => void;
   dismiss: (id: string) => void;
 }
@@ -24,13 +26,17 @@ interface AdminNotificationStore {
 export const useAdminNotifications = create<AdminNotificationStore>((set, get) => ({
   toasts: [],
   soundEnabled: DEFAULT_ADMIN_PREFERENCES.alertSounds,
+  alertsEnabled: DEFAULT_ADMIN_PREFERENCES.showToastAlerts,
   setSoundEnabled: (v) => set({ soundEnabled: v }),
+  setAlertsEnabled: (v) => set({ alertsEnabled: v }),
   push: (toast) => {
-    const id = crypto.randomUUID();
     const isAlert = toast.type === "alert";
     const persistent = toast.persistent ?? isAlert;
     const playSound = toast.playSound ?? isAlert;
 
+    if (isAlert && !get().alertsEnabled) return;
+
+    const id = crypto.randomUUID();
     set((s) => ({ toasts: [...s.toasts, { ...toast, id }] }));
 
     if (playSound && get().soundEnabled) playAdminAlertSound();

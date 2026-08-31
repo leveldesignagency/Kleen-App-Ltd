@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
-import { requireAdminApi } from "@/lib/require-admin-api";
+import { requirePermissionApi } from "@/lib/require-admin-api";
 
 const REASONS = new Set(["fraud", "safety", "legal_claim", "regulatory", "dispute", "other"]);
 const SUBJECTS = new Set(["user", "operative", "job"]);
 
 /** List active (and optional released) legal holds — admin/legal only. */
 export async function GET(request: NextRequest) {
-  const auth = await requireAdminApi();
+  const auth = await requirePermissionApi("legal_holds.view");
   if (!auth.ok) return auth.response;
 
   const includeReleased = request.nextUrl.searchParams.get("includeReleased") === "1";
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
 
 /** Place a legal hold. */
 export async function POST(request: NextRequest) {
-  const auth = await requireAdminApi();
+  const auth = await requirePermissionApi("legal_holds.manage");
   if (!auth.ok) return auth.response;
 
   const body = await request.json().catch(() => ({}));
@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
 
 /** Release a legal hold. */
 export async function PATCH(request: NextRequest) {
-  const auth = await requireAdminApi();
+  const auth = await requirePermissionApi("legal_holds.manage");
   if (!auth.ok) return auth.response;
 
   const body = await request.json().catch(() => ({}));

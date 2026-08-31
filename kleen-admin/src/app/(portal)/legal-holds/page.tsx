@@ -1,7 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Scale, Plus, Unlock } from "lucide-react";
+import { Loader2, Scale, Plus, Unlock, Info } from "lucide-react";
+import CustomDropdown from "@/components/ui/CustomDropdown";
+import AdminToggle from "@/components/ui/AdminToggle";
+import { useAdminStaff } from "@/components/admin/AdminStaffProvider";
 
 type Hold = {
   id: string;
@@ -15,15 +18,24 @@ type Hold = {
 };
 
 const REASONS = [
-  { value: "fraud", label: "Fraud" },
-  { value: "safety", label: "Safety" },
-  { value: "legal_claim", label: "Legal claim" },
-  { value: "regulatory", label: "Regulatory" },
-  { value: "dispute", label: "Dispute" },
-  { value: "other", label: "Other" },
+  { value: "fraud", label: "Fraud investigation" },
+  { value: "safety", label: "Safety incident" },
+  { value: "legal_claim", label: "Legal claim / litigation" },
+  { value: "regulatory", label: "Regulatory request" },
+  { value: "dispute", label: "Active dispute" },
+  { value: "other", label: "Other (document in notes)" },
+];
+
+const SUBJECT_TYPES = [
+  { value: "user", label: "Customer (profile UUID)" },
+  { value: "operative", label: "Contractor (operative UUID)" },
+  { value: "job", label: "Job (job UUID)" },
 ];
 
 export default function LegalHoldsPage() {
+  const { hasPermission } = useAdminStaff();
+  const canManage = hasPermission("legal_holds.manage");
+
   const [holds, setHolds] = useState<Hold[]>([]);
   const [loading, setLoading] = useState(true);
   const [includeReleased, setIncludeReleased] = useState(false);
@@ -57,6 +69,7 @@ export default function LegalHoldsPage() {
 
   const placeHold = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canManage) return;
     setBusy(true);
     setError("");
     const res = await fetch("/api/legal-holds", {
@@ -102,84 +115,94 @@ export default function LegalHoldsPage() {
           Legal holds
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-slate-400">
-          Pause account erase and contractor document purge for fraud, safety, legal claims, or
-          regulatory needs. Prefer anonymised job ledgers + Stripe IDs over keeping full profiles
-          forever. Admin/legal access only.
+          GDPR / data-retention tool — pauses account deletion and document purge while you investigate.
+          This is <strong className="text-slate-300">not</strong> the same as Enforcement (bans and marketplace lockouts).
         </p>
       </div>
 
-      <form
-        onSubmit={placeHold}
-        className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-4"
-      >
-        <h2 className="text-sm font-semibold text-slate-200">Place hold</h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="rounded-2xl border border-brand-500/20 bg-brand-500/5 p-4 text-sm">
+        <p className="flex items-start gap-2 font-medium text-brand-200">
+          <Info className="mt-0.5 h-4 w-4 shrink-0" />
+          Legal holds vs Enforcement
+        </p>
+        <ul className="mt-2 space-y-1.5 pl-6 text-xs text-slate-300">
+          <li>
+            <strong className="text-white">Legal holds</strong> — freeze data erasure (privacy law, litigation, regulatory).
+            User may still log in unless separately banned.
+          </li>
+          <li>
+            <strong className="text-white">Enforcement</strong> — operational sanctions: bans, appeals, identity blocklist,
+            repeat-disputer flags. Blocks marketplace access immediately.
+          </li>
+        </ul>
+      </div>
+
+      {canManage && (
+        <form
+          onSubmit={placeHold}
+          className="admin-card-pad rounded-2xl border border-white/10 bg-white/[0.03] space-y-4"
+        >
+          <h2 className="text-sm font-semibold text-slate-200">Place hold</h2>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div>
+              <span className="text-xs text-slate-400">Subject type</span>
+              <CustomDropdown
+                className="mt-1"
+                value={subjectType}
+                onChange={setSubjectType}
+                options={SUBJECT_TYPES}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-xs text-slate-400">
+                Subject UUID
+                <input
+                  value={subjectId}
+                  onChange={(e) => setSubjectId(e.target.value)}
+                  required
+                  placeholder="Paste profile, operative, or job id"
+                  className="mt-1 w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 font-mono text-sm text-white"
+                />
+              </label>
+            </div>
+            <div>
+              <span className="text-xs text-slate-400">Reason</span>
+              <CustomDropdown
+                className="mt-1"
+                value={reason}
+                onChange={setReason}
+                options={REASONS}
+              />
+            </div>
+          </div>
           <label className="block text-xs text-slate-400">
-            Subject type
-            <select
-              value={subjectType}
-              onChange={(e) => setSubjectType(e.target.value)}
+            Notes {reason === "other" ? "(required)" : "(recommended)"}
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
               className="mt-1 w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
-            >
-              <option value="user">User (profile id)</option>
-              <option value="operative">Operative (contractor id)</option>
-              <option value="job">Job (job id)</option>
-            </select>
-          </label>
-          <label className="block text-xs text-slate-400 sm:col-span-2">
-            Subject UUID
-            <input
-              value={subjectId}
-              onChange={(e) => setSubjectId(e.target.value)}
-              required
-              placeholder="uuid"
-              className="mt-1 w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 font-mono text-sm text-white"
             />
           </label>
-          <label className="block text-xs text-slate-400">
-            Reason
-            <select
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
-            >
-              {REASONS.map((r) => (
-                <option key={r.value} value={r.value}>
-                  {r.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        <label className="block text-xs text-slate-400">
-          Notes {reason === "other" ? "(required)" : "(recommended)"}
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={2}
-            className="mt-1 w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
-          />
-        </label>
-        <button
-          type="submit"
-          disabled={busy}
-          className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-500 disabled:opacity-50"
-        >
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-          Place legal hold
-        </button>
-      </form>
+          <button
+            type="submit"
+            disabled={busy}
+            className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-500 disabled:opacity-50"
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            Place legal hold
+          </button>
+        </form>
+      )}
 
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-sm font-semibold text-slate-200">Holds</h2>
-        <label className="flex items-center gap-2 text-xs text-slate-400">
-          <input
-            type="checkbox"
-            checked={includeReleased}
-            onChange={(e) => setIncludeReleased(e.target.checked)}
-          />
-          Include released
-        </label>
+        <AdminToggle
+          checked={includeReleased}
+          onChange={setIncludeReleased}
+          label="Include released holds"
+          description="Show historical holds that have been lifted"
+        />
       </div>
 
       {error && (
@@ -199,12 +222,12 @@ export default function LegalHoldsPage() {
           {holds.map((h) => (
             <li
               key={h.id}
-              className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm"
+              className="admin-card-pad rounded-2xl border border-white/10 bg-white/[0.03] text-sm"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="font-medium text-white">
-                    {h.reason.replace("_", " ")} · {h.subject_type}
+                    {h.reason.replace(/_/g, " ")} · {h.subject_type}
                   </p>
                   <p className="mt-1 font-mono text-xs text-slate-400">{h.subject_id}</p>
                   {h.notes && <p className="mt-2 text-slate-300">{h.notes}</p>}
@@ -215,7 +238,7 @@ export default function LegalHoldsPage() {
                       : " · Active"}
                   </p>
                 </div>
-                {!h.released_at && (
+                {!h.released_at && canManage && (
                   <button
                     type="button"
                     disabled={busy}

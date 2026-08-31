@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { User, Mail, Phone, Save, Loader2, CreditCard } from "lucide-react";
+import { User, Mail, Save, Loader2, CreditCard } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useNotifications } from "@/lib/notifications";
+import PhoneVerificationPanel from "@/components/auth/PhoneVerificationPanel";
 
 export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
@@ -12,7 +13,6 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState({
     fullName: "",
     email: "",
-    phone: "",
   });
 
   const supabase = createClient();
@@ -24,14 +24,13 @@ export default function ProfilePage() {
       if (!user) return;
       const { data: row } = await supabase
         .from("profiles")
-        .select("full_name, email, phone")
+        .select("full_name, email")
         .eq("id", user.id)
         .single();
       if (row) {
         setProfile({
           fullName: row.full_name ?? "",
           email: row.email ?? user.email ?? "",
-          phone: row.phone ?? "",
         });
       } else if (user.email) {
         setProfile((p) => ({ ...p, email: user.email ?? "" }));
@@ -59,7 +58,6 @@ export default function ProfilePage() {
         id: user.id,
         email,
         full_name: profile.fullName || null,
-        phone: profile.phone || null,
       },
       { onConflict: "id" },
     );
@@ -126,17 +124,8 @@ export default function ProfilePage() {
                 />
               </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700">Phone</label>
-              <div className="relative mt-1">
-                <Phone className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="tel"
-                  value={profile.phone}
-                  onChange={(e) => updateField("phone", e.target.value)}
-                  className="input-field pl-10"
-                />
-              </div>
+            <div className="sm:col-span-2">
+              <PhoneVerificationPanel />
             </div>
           </div>
         </div>

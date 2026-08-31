@@ -208,12 +208,12 @@ export default function AdminJobsPage() {
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-white/10 bg-white/[0.03]">
-                <th className="px-4 py-3 font-medium text-slate-400">Reference</th>
-                <th className="px-4 py-3 font-medium text-slate-400">Service</th>
-                <th className="hidden px-4 py-3 font-medium text-slate-400 md:table-cell">Customer</th>
-                <th className="hidden px-4 py-3 font-medium text-slate-400 lg:table-cell">Date</th>
-                <th className="px-4 py-3 font-medium text-slate-400">Status</th>
-                <th className="px-4 py-3 font-medium text-slate-400">Actions</th>
+                <th className="admin-table-head px-4 py-3 font-medium text-slate-400">Reference</th>
+                <th className="admin-table-head px-4 py-3 font-medium text-slate-400">Service</th>
+                <th className="admin-table-head hidden px-4 py-3 font-medium text-slate-400 md:table-cell">Customer</th>
+                <th className="admin-table-head hidden px-4 py-3 font-medium text-slate-400 lg:table-cell">Date</th>
+                <th className="admin-table-head px-4 py-3 font-medium text-slate-400">Status</th>
+                <th className="admin-table-head px-4 py-3 font-medium text-slate-400">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -233,24 +233,24 @@ export default function AdminJobsPage() {
                       onClick={() => router.push(`/jobs/${job.id}`)}
                       className="cursor-pointer border-b border-white/[0.06] transition-colors hover:bg-white/[0.06]"
                     >
-                      <td className="px-4 py-3 font-mono text-xs text-slate-300">
+                      <td className="admin-table-row px-4 py-3 font-mono text-xs text-slate-300">
                         {job.reference}
                       </td>
-                      <td className="px-4 py-3 font-medium">{job.service}</td>
-                      <td className="hidden px-4 py-3 md:table-cell">
+                      <td className="admin-table-row px-4 py-3 font-medium">{job.service}</td>
+                      <td className="admin-table-row hidden px-4 py-3 md:table-cell">
                         <div>
                           <p className="text-sm">{job.customer_name}</p>
                           <p className="text-xs text-slate-500">{job.customer_email}</p>
                         </div>
                       </td>
-                      <td className="hidden px-4 py-3 text-slate-400 lg:table-cell">
+                      <td className="admin-table-row hidden px-4 py-3 text-slate-400 lg:table-cell">
                         {new Date(job.date).toLocaleDateString("en-GB", {
                           day: "numeric",
                           month: "short",
                           year: "numeric",
                         })}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="admin-table-row px-4 py-3">
                         <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${badge.cls}`}>
                           {badge.label}
                         </span>

@@ -48,6 +48,13 @@ export async function updateSession(request: NextRequest) {
       await supabase.auth.signOut();
       return NextResponse.redirect(new URL("/login", request.url));
     }
+
+    const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    const { data: factors } = await supabase.auth.mfa.listFactors();
+    const hasVerifiedTotp = factors?.totp?.some((f) => f.status === "verified") ?? false;
+    if (hasVerifiedTotp && aal?.nextLevel === "aal2" && aal.currentLevel !== "aal2") {
+      return NextResponse.redirect(new URL("/login", request.url));
+    }
   }
 
   return response;

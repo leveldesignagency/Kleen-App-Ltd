@@ -16,23 +16,37 @@ import {
   ShieldCheck,
   Scale,
   ShieldAlert,
+  UserCog,
+  Settings,
 } from "lucide-react";
 import { useState } from "react";
+import { useAdminStaff } from "@/components/admin/AdminStaffProvider";
+import { NAV_PERMISSION_MAP } from "@/lib/admin-permissions";
+import type { AdminPermission } from "@/lib/admin-permissions";
 
-const NAV_ITEMS = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/jobs", label: "Jobs", icon: Briefcase },
-  { href: "/contractors", label: "Contractors", icon: Users },
-  { href: "/disputes", label: "Disputes", icon: MessageSquare },
-  { href: "/customers", label: "Customers", icon: UserSearch },
-  { href: "/legal-holds", label: "Legal holds", icon: Scale },
-  { href: "/enforcement", label: "Enforcement", icon: ShieldAlert },
+const NAV_ITEMS: {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  permission: AdminPermission;
+}[] = [
+  { href: "/", label: "Dashboard", icon: LayoutDashboard, permission: "nav.dashboard" },
+  { href: "/jobs", label: "Jobs", icon: Briefcase, permission: "nav.jobs" },
+  { href: "/contractors", label: "Contractors", icon: Users, permission: "nav.contractors" },
+  { href: "/disputes", label: "Disputes", icon: MessageSquare, permission: "nav.disputes" },
+  { href: "/customers", label: "Customers", icon: UserSearch, permission: "nav.customers" },
+  { href: "/legal-holds", label: "Legal holds", icon: Scale, permission: "nav.legal_holds" },
+  { href: "/enforcement", label: "Enforcement", icon: ShieldAlert, permission: "nav.enforcement" },
+  { href: "/team", label: "Team & HR", icon: UserCog, permission: "nav.team" },
 ];
 
 export default function AdminSidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { hasPermission, loading } = useAdminStaff();
+
+  const visibleNav = loading ? NAV_ITEMS.slice(0, 1) : NAV_ITEMS.filter((item) => hasPermission(item.permission));
 
   const isActive = (href: string) => {
     if (href === "/") return pathname === "/";
@@ -62,7 +76,7 @@ export default function AdminSidebar() {
       </div>
 
       <nav className="flex-1 space-y-1 px-3 py-2">
-        {NAV_ITEMS.map((item) => {
+        {visibleNav.map((item) => {
           const Icon = item.icon;
           const active = isActive(item.href);
           return (
@@ -70,7 +84,7 @@ export default function AdminSidebar() {
               key={item.href}
               href={item.href}
               onClick={() => setMobileOpen(false)}
-              className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
+              className={`admin-nav-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
                 active
                   ? "bg-white/10 text-white"
                   : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
@@ -81,6 +95,20 @@ export default function AdminSidebar() {
             </Link>
           );
         })}
+        {hasPermission("settings.profile") && (
+          <Link
+            href="/settings"
+            onClick={() => setMobileOpen(false)}
+            className={`admin-nav-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
+              pathname.startsWith("/settings")
+                ? "bg-white/10 text-white"
+                : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
+            }`}
+          >
+            <Settings className={`h-4.5 w-4.5 ${pathname.startsWith("/settings") ? "text-brand-400" : "text-slate-500"}`} />
+            Settings
+          </Link>
+        )}
       </nav>
 
       <div className="border-t border-white/10 px-3 py-3">
@@ -97,7 +125,6 @@ export default function AdminSidebar() {
 
   return (
     <>
-      {/* Mobile header */}
       <div className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-white/10 bg-slate-900 px-4 lg:hidden">
         <div className="flex items-center gap-2">
           <Image
@@ -107,9 +134,6 @@ export default function AdminSidebar() {
             height={42}
             className="h-7 w-auto brightness-0 invert opacity-80"
           />
-          <span className="rounded bg-brand-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-brand-400">
-            Admin
-          </span>
         </div>
         <button
           onClick={() => setMobileOpen(!mobileOpen)}
@@ -119,7 +143,6 @@ export default function AdminSidebar() {
         </button>
       </div>
 
-      {/* Mobile sidebar overlay */}
       {mobileOpen && (
         <div className="fixed inset-0 z-30 lg:hidden">
           <div className="absolute inset-0 bg-black/60" onClick={() => setMobileOpen(false)} />
@@ -129,10 +152,11 @@ export default function AdminSidebar() {
         </div>
       )}
 
-      {/* Desktop sidebar */}
       <aside className="hidden w-64 flex-shrink-0 flex-col bg-slate-900 lg:flex">
         {sidebarContent}
       </aside>
     </>
   );
 }
+
+export { NAV_PERMISSION_MAP };

@@ -19,6 +19,7 @@ export const BUCKET_CONFIG: Record<RateLimitBucket, BucketConfig> = {
 export function resolveApiBucket(pathname: string): RateLimitBucket {
   if (pathname.startsWith("/api/site-access/unlock")) return "auth";
   if (pathname.startsWith("/api/auth/welcome")) return "auth";
+  if (pathname.startsWith("/api/auth/phone")) return "auth";
   if (pathname.startsWith("/api/jobs/submit")) return "write";
   if (pathname.startsWith("/api/disputes/")) return "write";
   if (pathname.startsWith("/api/support/report")) return "write";
