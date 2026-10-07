@@ -6,14 +6,6 @@ import AdminToastContainer from "@/components/admin/AdminToastContainer";
 import AdminRealtimeAlerts from "@/components/admin/AdminRealtimeAlerts";
 import { AdminStaffProvider } from "@/components/admin/AdminStaffProvider";
 import AdminPreferencesSync from "@/components/admin/AdminPreferencesSync";
-import { useAdminStaffOptional } from "@/components/admin/AdminStaffProvider";
-
-function ToastGate() {
-  const staff = useAdminStaffOptional();
-  const show = staff?.preferences.showToastAlerts ?? true;
-  if (!show) return null;
-  return <AdminToastContainer />;
-}
 
 export default function PortalLayout({
   children,
@@ -32,7 +24,7 @@ export default function PortalLayout({
         </div>
         <AdminRealtimeAlerts />
         <AdminPreferencesSync />
-        <ToastGate />
+        <AdminToastContainer />
       </div>
     </AdminStaffProvider>
   );

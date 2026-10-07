@@ -371,6 +371,11 @@ export default function TeamPage() {
                 className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white"
               />
             </label>
+            <p className="rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-[11px] leading-relaxed text-slate-500">
+              This adds the address to Kleen&apos;s <strong className="text-slate-400">admin allowlist</strong> only.
+              It does <strong className="text-slate-400">not</strong> create a mailbox — create the inbox at your
+              domain host (e.g. 123-reg, Google Workspace) first, then invite the user in Supabase Auth.
+            </p>
             <div>
               <span className="text-xs text-slate-400">Role</span>
               <CustomDropdown
@@ -453,12 +458,13 @@ export default function TeamPage() {
               <li className="py-6 text-center text-sm text-slate-500">No pending invites.</li>
             ) : (
               pendingAllowlist.map((a) => (
-                <li key={a.email} className="flex items-center justify-between py-3">
-                  <div>
-                    <p className="text-white">{a.email}</p>
-                    <p className="text-xs text-slate-500">{roleLabel(a.admin_role)}</p>
-                  </div>
-                  {canManage && a.email.toLowerCase() !== "info@kleenapp.co.uk" && (
+                <li key={a.email} className="flex items-center justify-between gap-3 py-3">
+                  <p className="min-w-0 truncate text-white">{a.email}</p>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className="rounded-md bg-white/5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand-400">
+                      {roleLabel(a.admin_role)}
+                    </span>
+                    {canManage && a.email.toLowerCase() !== "info@kleenapp.co.uk" && (
                     <button
                       type="button"
                       onClick={() => void removeAllowlist(a.email)}
@@ -466,7 +472,8 @@ export default function TeamPage() {
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
-                  )}
+                    )}
+                  </div>
                 </li>
               ))
             )}
@@ -480,16 +487,18 @@ export default function TeamPage() {
                 key={s.id}
                 type="button"
                 onClick={() => setSelectedId(s.id)}
-                className={`w-full rounded-xl border px-4 py-3 text-left transition ${
+                className={`flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-2.5 text-left transition ${
                   selectedId === s.id
                     ? "border-brand-500/40 bg-brand-500/10"
                     : "border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"
                 }`}
               >
-                <p className="font-medium text-white">{s.full_name || s.email}</p>
-                <p className="text-xs text-slate-500">{s.email}</p>
-                <div className="mt-2 flex flex-wrap gap-1">
-                  <span className="rounded-md bg-white/5 px-2 py-0.5 text-[10px] font-bold uppercase text-brand-400">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium text-white">{s.full_name || s.email}</p>
+                  <p className="truncate text-xs text-slate-500">{s.email}</p>
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <span className="rounded-md bg-white/5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand-400">
                     {roleLabel(s.admin_role)}
                   </span>
                   {s.record?.department && (

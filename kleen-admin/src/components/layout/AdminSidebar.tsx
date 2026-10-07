@@ -18,6 +18,7 @@ import {
   ShieldAlert,
   UserCog,
   Settings,
+  Mail,
 } from "lucide-react";
 import { useState } from "react";
 import { useAdminStaff } from "@/components/admin/AdminStaffProvider";
@@ -35,6 +36,7 @@ const NAV_ITEMS: {
   { href: "/contractors", label: "Contractors", icon: Users, permission: "nav.contractors" },
   { href: "/disputes", label: "Disputes", icon: MessageSquare, permission: "nav.disputes" },
   { href: "/customers", label: "Customers", icon: UserSearch, permission: "nav.customers" },
+  { href: "/waitlist", label: "Area waitlist", icon: Mail, permission: "nav.customers" },
   { href: "/legal-holds", label: "Legal holds", icon: Scale, permission: "nav.legal_holds" },
   { href: "/enforcement", label: "Enforcement", icon: ShieldAlert, permission: "nav.enforcement" },
   { href: "/team", label: "Team & HR", icon: UserCog, permission: "nav.team" },

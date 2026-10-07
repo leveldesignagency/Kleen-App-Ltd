@@ -10,6 +10,7 @@ import { withSecureApiRoute } from "@/lib/security/with-secure-api-route";
 import { isUserRestricted } from "@/lib/account-restriction";
 import { checkIdentityBlocked } from "@/lib/identity-blocklist";
 import { userHasVerifiedPhone } from "@/lib/require-verified-phone";
+import { checkPostcodeIsKent } from "@/lib/service-area-kent";
 
 type SubmitBody = {
   serviceId?: string;
@@ -106,6 +107,21 @@ async function submitHandler(request: NextRequest) {
         {
           error: "Verify your mobile number before booking a clean.",
           code: "phone_not_verified",
+        },
+        { status: 403 },
+      );
+    }
+
+    const kent = await checkPostcodeIsKent(postcode!.trim());
+    if (!kent.ok) {
+      return NextResponse.json({ error: kent.error, code: "invalid_postcode" }, { status: 400 });
+    }
+    if (!kent.inKent) {
+      return NextResponse.json(
+        {
+          error: "Kleen currently only serves Kent, England.",
+          code: "outside_service_area",
+          areaLabel: kent.areaLabel,
         },
         { status: 403 },
       );

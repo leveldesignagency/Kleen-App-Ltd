@@ -215,8 +215,8 @@ function SettingsContent() {
             <AdminToggle
               checked={showToastAlerts}
               onChange={setShowToastAlerts}
-              label="Notifications"
-              description="Show alerts in the bell menu and corner toasts"
+              label="Job & dispute alerts"
+              description="Bell inbox, corner pop-ups, and sounds for new jobs, contractors, and disputes"
             />
             <button
               type="button"

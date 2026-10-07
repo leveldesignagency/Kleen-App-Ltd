@@ -40,7 +40,9 @@ export default function AdminTopHeader() {
   const router = useRouter();
   const { profile, preferences, hasPermission } = useAdminStaff();
   const { toasts, dismiss } = useAdminNotifications();
-  const alertCount = toasts.filter((t) => t.type === "alert" || t.persistent).length;
+  const showAlerts = preferences.showToastAlerts;
+  const alertToasts = showAlerts ? toasts : toasts.filter((t) => t.type !== "alert");
+  const alertCount = alertToasts.filter((t) => t.type === "alert" || t.persistent).length;
 
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -193,10 +195,10 @@ export default function AdminTopHeader() {
               <div className="absolute right-0 top-full z-50 mt-2 w-80 rounded-xl border border-white/10 bg-slate-900 shadow-2xl">
                 <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
                   <p className="text-sm font-semibold text-white">Notifications</p>
-                  {toasts.length > 0 && (
+                  {alertToasts.length > 0 && (
                     <button
                       type="button"
-                      onClick={() => toasts.forEach((t) => dismiss(t.id))}
+                      onClick={() => alertToasts.forEach((t) => dismiss(t.id))}
                       className="text-xs text-slate-500 hover:text-slate-300"
                     >
                       Clear all
@@ -204,10 +206,12 @@ export default function AdminTopHeader() {
                   )}
                 </div>
                 <ul className="max-h-72 overflow-y-auto py-1">
-                  {toasts.length === 0 ? (
-                    <li className="px-4 py-8 text-center text-sm text-slate-500">No notifications</li>
+                  {alertToasts.length === 0 ? (
+                    <li className="px-4 py-8 text-center text-sm text-slate-500">
+                      {showAlerts ? "No notifications" : "Job alerts are off — enable in Settings → Display"}
+                    </li>
                   ) : (
-                    toasts.map((t) => (
+                    alertToasts.map((t) => (
                       <li key={t.id} className="border-b border-white/5 last:border-0">
                         <div className="flex gap-2 px-4 py-3">
                           <div className="min-w-0 flex-1">

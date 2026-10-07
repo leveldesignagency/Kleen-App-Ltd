@@ -4,12 +4,13 @@ import { useState, useEffect } from "react";
 import { useJobFlowStore } from "@/lib/store";
 import { getService, getCategory } from "@/lib/services";
 import PriceEstimateCard from "@/components/ui/PriceEstimateCard";
-import { ArrowLeft, ArrowRight, Calendar, Clock, AlertCircle, Home, Building2, User } from "lucide-react";
+import { ArrowLeft, ArrowRight, Calendar, Clock, AlertCircle, Home, Building2, User, Loader2 } from "lucide-react";
 import { useAddressStore, type SavedAddress } from "@/lib/addresses";
 import { UK_POSTCODE_RE } from "@/lib/format-uk-address";
 import { createClient } from "@/lib/supabase/client";
 import CustomDropdown from "@/components/ui/CustomDropdown";
 import UkAddressAutocomplete from "@/components/ui/UkAddressAutocomplete";
+import OutOfAreaGate from "@/components/service-area/OutOfAreaGate";
 import Link from "next/link";
 
 interface FieldErrors {
@@ -78,6 +79,11 @@ export default function Step5Estimate() {
   const [selectedAddressId, setSelectedAddressId] = useState<string>("");
   const [bookingAs, setBookingAs] = useState<"personal" | "business">("personal");
   const [businessName, setBusinessName] = useState<string>("");
+  const [checkingArea, setCheckingArea] = useState(false);
+  const [outOfAreaOpen, setOutOfAreaOpen] = useState(false);
+  const [outOfAreaLabel, setOutOfAreaLabel] = useState<string | null>(null);
+  const [outOfAreaPostcode, setOutOfAreaPostcode] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string>("");
   const savedAddresses = useAddressStore((s) => s.addresses);
   const syncFromSupabase = useAddressStore((s) => s.syncFromSupabase);
 
@@ -91,6 +97,7 @@ export default function Step5Estimate() {
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+      setUserEmail(user.email || "");
       const { data: profile } = await supabase.from("profiles").select("account_type").eq("id", user.id).single();
       if (profile?.account_type === "business") setBookingAs("business");
       const { data: biz } = await supabase.from("business_profiles").select("company_name").eq("user_id", user.id).maybeSingle();
@@ -157,13 +164,38 @@ export default function Step5Estimate() {
     }
   };
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     const all = validate(address, postcode, preferredDate, preferredTime);
     setErrors(all);
     setTouched({ address: true, postcode: true, preferredDate: true, preferredTime: true });
 
-    if (Object.keys(all).length === 0) {
+    if (Object.keys(all).length > 0) return;
+
+    setCheckingArea(true);
+    try {
+      const res = await fetch(
+        `/api/service-area/check?postcode=${encodeURIComponent(postcode.trim())}`,
+        { credentials: "include" },
+      );
+      const json = (await res.json().catch(() => ({}))) as {
+        inKent?: boolean;
+        areaLabel?: string | null;
+        postcode?: string;
+        error?: string;
+      };
+      if (!res.ok) {
+        setErrors((prev) => ({ ...prev, postcode: json.error || "Could not verify your area." }));
+        return;
+      }
+      if (!json.inKent) {
+        setOutOfAreaPostcode(json.postcode || postcode.trim());
+        setOutOfAreaLabel(json.areaLabel || null);
+        setOutOfAreaOpen(true);
+        return;
+      }
       setStep(6);
+    } finally {
+      setCheckingArea(false);
     }
   };
 
@@ -368,12 +400,32 @@ export default function Step5Estimate() {
       </div>
 
       <button
-        onClick={handleContinue}
-        className="btn-primary mt-6 w-full gap-2 py-3.5 lg:w-auto lg:px-12"
+        onClick={() => void handleContinue()}
+        disabled={checkingArea}
+        className="btn-primary mt-6 w-full gap-2 py-3.5 disabled:opacity-50 lg:w-auto lg:px-12"
       >
-        Continue to Payment
-        <ArrowRight className="h-4 w-4" />
+        {checkingArea ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Checking area…
+          </>
+        ) : (
+          <>
+            Continue to Payment
+            <ArrowRight className="h-4 w-4" />
+          </>
+        )}
       </button>
+
+      <OutOfAreaGate
+        open={outOfAreaOpen}
+        audience="customer"
+        source="job_flow"
+        postcode={outOfAreaPostcode}
+        areaLabel={outOfAreaLabel}
+        defaultEmail={userEmail}
+        onDismiss={() => setOutOfAreaOpen(false)}
+      />
     </div>
   );
 }

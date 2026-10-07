@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { playAdminAlertSound } from "@/lib/admin-alert-sound";
-import { DEFAULT_ADMIN_PREFERENCES, type AdminDisplayPreferences } from "@/lib/admin-staff";
+import { DEFAULT_ADMIN_PREFERENCES } from "@/lib/admin-staff";
 
 export interface AdminToast {
   id: string;
@@ -16,6 +16,7 @@ export interface AdminToast {
 interface AdminNotificationStore {
   toasts: AdminToast[];
   soundEnabled: boolean;
+  /** Realtime/job alerts + bell inbox (not action success/error toasts). */
   alertsEnabled: boolean;
   setSoundEnabled: (v: boolean) => void;
   setAlertsEnabled: (v: boolean) => void;
@@ -34,10 +35,19 @@ export const useAdminNotifications = create<AdminNotificationStore>((set, get) =
     const persistent = toast.persistent ?? isAlert;
     const playSound = toast.playSound ?? isAlert;
 
+    const id = crypto.randomUUID();
+
+    // Action feedback (save, error) always lands in the store for corner toasts.
+    // Realtime/job alerts respect the notifications preference for sound + inbox.
     if (isAlert && !get().alertsEnabled) return;
 
-    const id = crypto.randomUUID();
-    set((s) => ({ toasts: [...s.toasts, { ...toast, id }] }));
+    set((s) => {
+      if (isAlert && toast.href) {
+        const dup = s.toasts.some((t) => t.type === "alert" && t.href === toast.href && t.title === toast.title);
+        if (dup) return s;
+      }
+      return { toasts: [...s.toasts, { ...toast, id }] };
+    });
 
     if (playSound && get().soundEnabled) playAdminAlertSound();
 
