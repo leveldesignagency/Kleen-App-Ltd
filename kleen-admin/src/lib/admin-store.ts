@@ -8,6 +8,7 @@ export interface AdminJob {
   cleaning_type: string;
   status: string;
   cancelled_reason?: string;
+  cancelled_at?: string | null;
   user_id?: string;
   customer_name: string;
   customer_email: string;

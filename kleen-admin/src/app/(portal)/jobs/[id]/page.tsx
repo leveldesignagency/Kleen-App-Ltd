@@ -31,8 +31,25 @@ import {
   RefreshCw,
   Undo2,
   MapPin,
+  Scale,
+  ShieldAlert,
 } from "lucide-react";
 import CustomDropdown from "@/components/ui/CustomDropdown";
+
+const CANCEL_REASON_LABELS: Record<string, string> = {
+  customer_request: "Customer request",
+  no_contractor_available: "No contractor available",
+  duplicate: "Duplicate job",
+  payment_issue: "Payment issue",
+  quotes_declined: "Customer declined all quotes",
+  other: "Other",
+};
+
+function formatCancelReason(raw?: string | null): string {
+  if (!raw) return "No reason recorded";
+  if (raw.startsWith("other:")) return raw.slice(6).trim() || "Other";
+  return CANCEL_REASON_LABELS[raw] || raw.replace(/_/g, " ");
+}
 
 const SERVICE_FEE_RATE = 0.175; // 17.5%
 
@@ -913,7 +930,7 @@ export default function AdminJobDetailPage() {
       setActionLoading(false);
       return;
     }
-    updateJob(job.id, { status: "cancelled", cancelled_reason: reasonText });
+    updateJob(job.id, { status: "cancelled", cancelled_reason: reasonText, cancelled_at: now });
     if (blockCustomer && job.user_id) {
       await supabase.from("profiles").update({ is_blocked: true }).eq("id", job.user_id);
       toast({ type: "info", title: "Job Cancelled", message: `${job.reference} has been cancelled. Customer has been blocked.` });
@@ -945,7 +962,7 @@ export default function AdminJobDetailPage() {
       setActionLoading(false);
       return;
     }
-    updateJob(job.id, { status: "pending", cancelled_reason: undefined });
+    updateJob(job.id, { status: "pending", cancelled_reason: undefined, cancelled_at: null });
     toast({ type: "success", title: "Job reinstated", message: `${job.reference} is active again. You can add quotes and send to customer.` });
     setActionLoading(false);
   };
@@ -1166,6 +1183,14 @@ export default function AdminJobDetailPage() {
             onReleaseFunds={handleReleaseFunds}
             onReinstateJob={handleReinstateJob}
           />
+
+          {!isTerminal && job.status !== "completed" && (
+            <CancelJobCard
+              actionLoading={actionLoading}
+              hasPaymentHold={Boolean(job.stripe_payment_intent_id && !job.funds_released_at)}
+              onCancel={() => setShowCancelModal(true)}
+            />
+          )}
 
           {job.stripe_payment_intent_id && !job.funds_released_at && (
             <div className="rounded-2xl border border-rose-500/20 bg-rose-500/5 p-5">
@@ -1554,62 +1579,88 @@ export default function AdminJobDetailPage() {
       {/* Cancel job modal — reason required, optional block customer */}
       {showCancelModal && job && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => !actionLoading && setShowCancelModal(false)}>
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-slate-900 p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-semibold text-white">Cancel job</h2>
-            <p className="mt-1 text-sm text-slate-400">
-              Choose a reason and optionally block this customer from booking again.
-            </p>
-            <div className="mt-4 space-y-3">
+          <div className="w-full max-w-lg rounded-2xl border border-red-500/20 bg-slate-900 p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-500/15">
+                <XCircle className="h-5 w-5 text-red-400" />
+              </div>
               <div>
-                <label className="block text-[11px] font-medium text-slate-400">Reason for cancellation *</label>
-                <CustomDropdown
-                  value={cancelReason}
-                  onChange={setCancelReason}
-                  options={CANCEL_REASONS.map((r) => ({ value: r.value, label: r.label }))}
-                  placeholder="Select reason"
-                  className="mt-1"
-                />
+                <h2 className="text-lg font-semibold text-white">Cancel job</h2>
+                <p className="mt-1 text-sm text-slate-400">
+                  <span className="font-mono text-slate-300">{job.reference}</span>
+                  {" · "}Marks the job cancelled. Does not automatically refund Stripe — use the refund card if needed.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Reason</p>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  {CANCEL_REASONS.map((r) => {
+                    const selected = cancelReason === r.value;
+                    return (
+                      <button
+                        key={r.value}
+                        type="button"
+                        onClick={() => setCancelReason(r.value)}
+                        className={`rounded-xl border px-3 py-2.5 text-left text-sm transition ${
+                          selected
+                            ? "border-red-500/50 bg-red-500/15 text-red-100"
+                            : "border-white/10 bg-white/[0.03] text-slate-300 hover:bg-white/[0.06]"
+                        }`}
+                      >
+                        {r.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
               {cancelReason === "other" && (
                 <div>
-                  <label className="block text-[11px] font-medium text-slate-400">Details (optional)</label>
+                  <label className="block text-[11px] font-medium text-slate-400">Details</label>
                   <textarea
                     value={cancelReasonOther}
                     onChange={(e) => setCancelReasonOther(e.target.value)}
                     rows={2}
-                    className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-sm text-white placeholder:text-slate-500 outline-none focus:border-red-500/50"
-                    placeholder="Brief explanation…"
+                    className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500 outline-none focus:border-red-500/50"
+                    placeholder="Brief explanation for the audit trail…"
                   />
                 </div>
               )}
-              <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 transition-colors hover:bg-white/[0.06]">
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 transition-colors hover:bg-white/[0.06]">
                 <input
                   type="checkbox"
                   checked={blockCustomer}
                   onChange={(e) => setBlockCustomer(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-500 text-red-500 focus:ring-red-500/30"
+                  className="mt-0.5 h-4 w-4 rounded border-slate-500 text-red-500 focus:ring-red-500/30"
                 />
-                <span className="text-sm text-slate-300">Block this customer from booking again</span>
+                <span>
+                  <span className="block text-sm text-slate-200">Block this customer</span>
+                  <span className="mt-0.5 block text-xs text-slate-500">
+                    Prevents new bookings. Existing jobs are unaffected.
+                  </span>
+                </span>
               </label>
               {job.is_blocked && (
                 <p className="text-xs text-amber-400">This customer is already blocked.</p>
               )}
             </div>
-            <div className="mt-5 flex gap-2">
+            <div className="mt-6 flex gap-2">
               <button
                 onClick={() => { setShowCancelModal(false); setCancelReason(""); setCancelReasonOther(""); setBlockCustomer(false); }}
                 disabled={actionLoading}
                 className="flex-1 rounded-xl border border-white/10 py-2.5 text-sm font-medium text-slate-300 hover:bg-white/10 disabled:opacity-50"
               >
-                Back
+                Keep job
               </button>
               <button
                 onClick={handleCancelJob}
                 disabled={actionLoading || !cancelReason.trim()}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-red-600 py-2.5 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50"
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-red-600 py-2.5 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-50"
               >
                 {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
-                Confirm cancellation
+                Confirm cancel
               </button>
             </div>
           </div>
@@ -1676,6 +1727,38 @@ function CompletionConfUndo({
   );
 }
 
+function CancelJobCard({
+  actionLoading,
+  hasPaymentHold,
+  onCancel,
+}: {
+  actionLoading: boolean;
+  hasPaymentHold: boolean;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-red-500/15 bg-gradient-to-b from-red-500/[0.07] to-transparent p-5">
+      <div className="flex items-center gap-2 text-red-300">
+        <ShieldAlert className="h-5 w-5" />
+        <h2 className="text-sm font-semibold">Cancel job</h2>
+      </div>
+      <p className="mt-2 text-sm leading-relaxed text-slate-400">
+        Ends the workflow for this booking. Choose a reason for the audit trail
+        {hasPaymentHold ? " — refund or cancel the Stripe hold separately if payment was taken" : ""}.
+      </p>
+      <button
+        type="button"
+        onClick={onCancel}
+        disabled={actionLoading}
+        className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-red-500/40 bg-red-500/10 py-2.5 text-sm font-semibold text-red-200 transition hover:bg-red-500/20 disabled:opacity-50"
+      >
+        <XCircle className="h-4 w-4" />
+        Cancel this job
+      </button>
+    </div>
+  );
+}
+
 function WorkflowActions({
   job,
   quotedResponses,
@@ -1694,12 +1777,14 @@ function WorkflowActions({
     status: string;
     reference: string;
     cancelled_reason?: string;
+    cancelled_at?: string | null;
     accepted_quote_request_id?: string | null;
     customer_accepted_at?: string | null;
     escrow_release_date?: string | null;
     funds_released_at?: string | null;
     contractor_confirmed_complete_at?: string | null;
     customer_confirmed_complete_at?: string | null;
+    stripe_payment_intent_id?: string | null;
   };
   quotedResponses: QuoteRequest[];
   actionLoading: boolean;
@@ -1726,23 +1811,80 @@ function WorkflowActions({
     );
   }
 
-  if (status === "cancelled") {
-    const quotesDeclined = (job as { cancelled_reason?: string }).cancelled_reason === "quotes_declined";
+  if (status === "disputed") {
     return (
-      <div className="rounded-2xl border border-slate-500/20 bg-white/[0.03] p-5">
-        <div className="flex items-center gap-2 text-slate-400">
-          <XCircle className="h-5 w-5" />
-          <h2 className="text-sm font-semibold">Job Cancelled</h2>
+      <div className="rounded-2xl border border-red-500/25 bg-gradient-to-b from-red-500/10 to-transparent p-5">
+        <div className="flex items-center gap-2 text-red-300">
+          <Scale className="h-5 w-5" />
+          <h2 className="text-sm font-semibold">Dispute open</h2>
         </div>
-        <p className="mt-2 text-sm text-slate-500">
-          {quotesDeclined ? "Customer declined all quotes." : "This job is no longer active."}
-          {onReinstateJob && " You can reinstate it to add quotes and send to customer again."}
+        <p className="mt-2 text-sm leading-relaxed text-slate-400">
+          Customer raised a dispute. Open the resolution terminal to rewrite &amp; forward to the contractor,
+          collect evidence, then settle (refund / uphold / goodwill).
         </p>
+        <div className="mt-3 space-y-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-xs text-slate-400">
+          <p>1. Acknowledge the customer</p>
+          <p>2. Forward a rewritten brief to the contractor</p>
+          <p>3. Collect their evidence in-app</p>
+          <p>4. Execute settlement</p>
+        </div>
+        {job.id && (
+          <Link
+            href={`/disputes?jobId=${encodeURIComponent(job.id)}`}
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-red-600 py-2.5 text-sm font-semibold text-white transition hover:bg-red-500"
+          >
+            <Scale className="h-4 w-4" />
+            Open dispute terminal
+          </Link>
+        )}
+      </div>
+    );
+  }
+
+  if (status === "cancelled") {
+    const reasonLabel = formatCancelReason(job.cancelled_reason);
+    const quotesDeclined = job.cancelled_reason === "quotes_declined";
+    return (
+      <div className="rounded-2xl border border-slate-500/25 bg-gradient-to-b from-slate-500/10 to-transparent p-5">
+        <div className="flex items-center gap-2 text-slate-300">
+          <XCircle className="h-5 w-5 text-slate-400" />
+          <h2 className="text-sm font-semibold">Job cancelled</h2>
+        </div>
+        <dl className="mt-4 space-y-3">
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5">
+            <dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Reason</dt>
+            <dd className="mt-1 text-sm font-medium text-slate-100">{reasonLabel}</dd>
+          </div>
+          {job.cancelled_at && (
+            <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5">
+              <dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Cancelled</dt>
+              <dd className="mt-1 text-sm text-slate-300">
+                {new Date(job.cancelled_at).toLocaleString("en-GB", {
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </dd>
+            </div>
+          )}
+        </dl>
+        <p className="mt-3 text-xs leading-relaxed text-slate-500">
+          {quotesDeclined
+            ? "Customer declined all quotes. Reinstate to send new quotes."
+            : "This job is inactive. Reinstate to reopen the workflow, or leave cancelled for the record."}
+        </p>
+        {job.stripe_payment_intent_id && !job.funds_released_at && (
+          <p className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-100/90">
+            Payment may still be held — check the refund card below if a customer refund is needed.
+          </p>
+        )}
         {onReinstateJob && (
           <button
             onClick={onReinstateJob}
             disabled={actionLoading}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-500 disabled:opacity-50"
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-500 disabled:opacity-50"
           >
             {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             Reinstate job

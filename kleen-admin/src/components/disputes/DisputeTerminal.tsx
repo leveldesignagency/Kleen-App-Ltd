@@ -2,13 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   Banknote,
   CheckCircle2,
   Clock,
+  Copy,
   ExternalLink,
   FileText,
+  ImageIcon,
   Loader2,
   MessageSquare,
   Scale,
@@ -103,9 +106,30 @@ type DisputeContext = {
     customer: Array<{ flag_type: string; severity: string; notes: string | null }>;
     contractor: Array<{ flag_type: string; severity: string; notes: string | null }>;
   };
+  evidence?: Array<{
+    source: "dispute" | "job_report";
+    label: string;
+    note: string | null;
+    paths: string[];
+    signedUrls: string[];
+    created_at: string | null;
+  }>;
+  jobReports?: Array<{
+    id: string;
+    stage: string;
+    job_outcome: string | null;
+    summary: string | null;
+    submitted_at: string;
+    itemCount: number;
+  }>;
+  mediation?: {
+    contractorNotified: boolean;
+    firstContractorMessageAt: string | null;
+    contractorReplyCount: number;
+  };
 };
 
-type Tab = "overview" | "thread" | "audit";
+type Tab = "overview" | "thread" | "evidence" | "audit";
 
 const FILTER_OPTIONS = [
   { value: "active", label: "Active" },
@@ -115,11 +139,50 @@ const FILTER_OPTIONS = [
 
 const RECIPIENT_OPTIONS = [
   { value: "customer", label: "Reply to customer" },
-  { value: "operative", label: "Reply to contractor" },
+  { value: "operative", label: "Forward to contractor" },
 ];
+
+function buildContractorBrief(customerReason: string) {
+  const trimmed = customerReason.trim().slice(0, 600);
+  return [
+    "We've received a customer concern about this job and need your response.",
+    "",
+    "Please reply in Disputes with:",
+    "1. Your account of what happened on site",
+    "2. Any photos / checklist evidence already on the job report (or note if none)",
+    "3. Whether you believe work was completed as quoted",
+    "",
+    "Kleen summary of the concern (do not contact the customer):",
+    trimmed || "(see full case with Kleen)",
+  ].join("\n");
+}
+
+function buildCustomerAck() {
+  return [
+    "Thanks for raising this — we've opened a review.",
+    "",
+    "We'll gather information from the contractor and come back to you with an update.",
+    "Please keep any photos of the issue ready in case we need them.",
+    "",
+    "You only message Kleen here — never the contractor directly.",
+  ].join("\n");
+}
+
+function buildEvidenceRequest() {
+  return [
+    "Please send your evidence for this dispute via the contractor app:",
+    "",
+    "• Reply here with your written response",
+    "• Ensure before/after photos and checklist notes are on the job report",
+    "• Flag anything the customer said that doesn't match what you saw on site",
+    "",
+    "Do not contact the customer. Reply only to Kleen.",
+  ].join("\n");
+}
 
 export default function DisputeTerminal() {
   const toast = useAdminNotifications((s) => s.push);
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<QueueRow[]>([]);
   const [filter, setFilter] = useState("active");
@@ -133,6 +196,7 @@ export default function DisputeTerminal() {
   const [recipientRole, setRecipientRole] = useState("customer");
   const [replyText, setReplyText] = useState("");
   const [sending, setSending] = useState(false);
+  const [deepLinkHandled, setDeepLinkHandled] = useState(false);
 
   const [resolutionType, setResolutionType] = useState<ResolutionType>("documented_only");
   const [statusDraft, setStatusDraft] = useState("resolved");
@@ -198,13 +262,44 @@ export default function DisputeTerminal() {
     });
   }, [rows, filter, search]);
 
-  const openCase = async (id: string) => {
-    setActiveId(id);
-    setTab("overview");
-    await Promise.all([loadContext(id), loadMessages(id)]);
-  };
+  const openCase = useCallback(
+    async (id: string) => {
+      setActiveId(id);
+      setTab("overview");
+      setReplyText("");
+      setRecipientRole("customer");
+      await Promise.all([loadContext(id), loadMessages(id)]);
+    },
+    [loadContext, loadMessages],
+  );
+
+  useEffect(() => {
+    if (deepLinkHandled || loading || rows.length === 0) return;
+    const disputeId = searchParams.get("disputeId")?.trim();
+    const jobId = searchParams.get("jobId")?.trim();
+    if (disputeId) {
+      setDeepLinkHandled(true);
+      void openCase(disputeId);
+      return;
+    }
+    if (jobId) {
+      const match =
+        rows.find((r) => r.job_id === jobId && !isDisputeResolved(r.status)) ||
+        rows.find((r) => r.job_id === jobId);
+      if (match) {
+        setDeepLinkHandled(true);
+        void openCase(match.id);
+      }
+    }
+  }, [deepLinkHandled, loading, rows, searchParams, openCase]);
 
   const activeRow = rows.find((r) => r.id === activeId) || null;
+
+  const applyDraft = (role: "customer" | "operative", text: string) => {
+    setRecipientRole(role);
+    setReplyText(text);
+    setTab("thread");
+  };
 
   const sendReply = async () => {
     if (!activeId || !replyText.trim()) return;
@@ -222,9 +317,16 @@ export default function DisputeTerminal() {
       return;
     }
     setReplyText("");
-    if (json.status === "under_review") void loadRows();
-    await loadMessages(activeId);
-    toast({ type: "success", title: "Message sent" });
+    void loadRows();
+    await Promise.all([loadMessages(activeId), loadContext(activeId)]);
+    toast({
+      type: "success",
+      title: recipientRole === "operative" ? "Sent to contractor" : "Sent to customer",
+      message:
+        recipientRole === "operative"
+          ? "Contractor can reply with evidence in their app."
+          : "Customer will see this in their disputes thread.",
+    });
   };
 
   const executeSettlement = async () => {
@@ -301,14 +403,17 @@ export default function DisputeTerminal() {
     await loadContext(activeId);
   };
 
-  const msgLabel = (m: Msg) => {
-    if (m.recipient_role === "customer") return "Kleen → Customer";
-    if (m.recipient_role === "operative") return "Kleen → Contractor";
-    if (m.recipient_role === "admin") {
-      if (activeRow?.user_id && m.sender_id === activeRow.user_id) return "Customer → Kleen";
-      return "Contractor → Kleen";
+  const msgMeta = (m: Msg) => {
+    if (m.recipient_role === "customer") {
+      return { label: "Kleen → Customer", lane: "customer" as const, fromCustomer: false };
     }
-    return "Message";
+    if (m.recipient_role === "operative") {
+      return { label: "Kleen → Contractor", lane: "contractor" as const, fromCustomer: false };
+    }
+    if (activeRow?.user_id && m.sender_id === activeRow.user_id) {
+      return { label: "Customer → Kleen", lane: "customer" as const, fromCustomer: true };
+    }
+    return { label: "Contractor → Kleen", lane: "contractor" as const, fromCustomer: false };
   };
 
   const selectedOutcome = RESOLUTION_TYPES.find((r) => r.value === resolutionType);
@@ -320,6 +425,8 @@ export default function DisputeTerminal() {
       : ctx?.job?.payment_authorized_at
         ? "authorized"
         : "none";
+  const mediation = ctx?.mediation;
+  const evidenceCount = (ctx?.evidence || []).reduce((n, e) => n + e.signedUrls.length, 0);
 
   return (
     <div className="flex min-h-[calc(100vh-5rem)] flex-col gap-4">
@@ -436,7 +543,8 @@ export default function DisputeTerminal() {
                   {(
                     [
                       ["overview", "Overview", FileText],
-                      ["thread", "Thread", MessageSquare],
+                      ["thread", "Mediate", MessageSquare],
+                      ["evidence", "Evidence", ImageIcon],
                       ["audit", "Audit log", Clock],
                     ] as const
                   ).map(([key, label, Icon]) => (
@@ -452,6 +560,9 @@ export default function DisputeTerminal() {
                     >
                       <Icon className="h-3.5 w-3.5" />
                       {label}
+                      {key === "evidence" && evidenceCount > 0 && (
+                        <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px]">{evidenceCount}</span>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -460,6 +571,77 @@ export default function DisputeTerminal() {
               <div className="flex-1 overflow-y-auto p-5">
                 {tab === "overview" && ctx && (
                   <div className="space-y-5">
+                    {!caseClosed && (
+                      <div className="rounded-xl border border-brand-500/25 bg-brand-500/5 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-brand-300">
+                          Mediation checklist
+                        </p>
+                        <ol className="mt-3 space-y-2.5 text-sm text-slate-300">
+                          <MediationStep
+                            done
+                            title="Customer opened dispute"
+                            detail="Only Kleen sees the raw reason until you rewrite & forward."
+                          />
+                          <MediationStep
+                            done={Boolean(mediation?.contractorNotified)}
+                            title="Forward rewritten brief to contractor"
+                            detail={
+                              mediation?.contractorNotified
+                                ? `Notified ${mediation.firstContractorMessageAt ? new Date(mediation.firstContractorMessageAt).toLocaleString("en-GB") : ""}`
+                                : "Rewrite the customer concern, then send via Mediate → Forward to contractor."
+                            }
+                            action={
+                              !mediation?.contractorNotified && !caseClosed
+                                ? {
+                                    label: "Draft contractor brief",
+                                    onClick: () =>
+                                      applyDraft("operative", buildContractorBrief(ctx.dispute.reason)),
+                                  }
+                                : undefined
+                            }
+                          />
+                          <MediationStep
+                            done={(mediation?.contractorReplyCount || 0) > 0}
+                            title="Collect contractor evidence"
+                            detail={
+                              (mediation?.contractorReplyCount || 0) > 0
+                                ? `${mediation?.contractorReplyCount} reply(ies) from contractor`
+                                : "Contractor replies in their app with notes + job-report photos."
+                            }
+                            action={
+                              mediation?.contractorNotified && (mediation?.contractorReplyCount || 0) === 0
+                                ? {
+                                    label: "Request evidence",
+                                    onClick: () => applyDraft("operative", buildEvidenceRequest()),
+                                  }
+                                : undefined
+                            }
+                          />
+                          <MediationStep
+                            done={caseClosed}
+                            title="Settle & document outcome"
+                            detail="Use the settlement panel — refund, uphold, promo, or document only."
+                          />
+                        </ol>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => applyDraft("customer", buildCustomerAck())}
+                            className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-white/10"
+                          >
+                            Draft customer acknowledgement
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => applyDraft("operative", buildContractorBrief(ctx.dispute.reason))}
+                            className="rounded-lg border border-brand-500/40 bg-brand-500/15 px-3 py-1.5 text-xs font-medium text-brand-200 hover:bg-brand-500/25"
+                          >
+                            Rewrite &amp; forward to contractor
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="grid gap-3 sm:grid-cols-2">
                       <PartyCard
                         icon={User}
@@ -478,7 +660,11 @@ export default function DisputeTerminal() {
                         title="Contractor"
                         name={ctx.contractor?.name || "Unassigned"}
                         email={ctx.contractor?.email || "—"}
-                        meta="Not notified until you message them"
+                        meta={
+                          mediation?.contractorNotified
+                            ? "Brought into the case via Kleen message"
+                            : "Not notified until you message them"
+                        }
                         flags={ctx.riskFlags?.contractor}
                       />
                     </div>
@@ -526,35 +712,96 @@ export default function DisputeTerminal() {
                       </div>
                     ) : (
                       <>
-                        <ul className="max-h-[45vh] space-y-2 overflow-y-auto">
-                          {messages.map((m) => (
-                            <li
-                              key={m.id}
-                              className="rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2.5 text-sm"
-                            >
-                              <p className="text-xs text-slate-500">
-                                {msgLabel(m)} · {new Date(m.created_at).toLocaleString("en-GB")}
-                              </p>
-                              <p className="mt-1 whitespace-pre-wrap text-slate-200">{m.message}</p>
-                            </li>
-                          ))}
+                        <p className="mb-3 text-xs text-slate-500">
+                          Two lanes — customer never sees contractor messages and vice versa. Rewrite before forwarding.
+                        </p>
+                        <ul className="max-h-[42vh] space-y-2 overflow-y-auto">
+                          {messages.map((m) => {
+                            const meta = msgMeta(m);
+                            return (
+                              <li
+                                key={m.id}
+                                className={`rounded-lg border px-3 py-2.5 text-sm ${
+                                  meta.lane === "customer"
+                                    ? "border-sky-500/20 bg-sky-500/5"
+                                    : "border-amber-500/20 bg-amber-500/5"
+                                }`}
+                              >
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <p className="text-xs text-slate-500">
+                                    {meta.label} · {new Date(m.created_at).toLocaleString("en-GB")}
+                                  </p>
+                                  {meta.fromCustomer && !caseClosed && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        applyDraft("operative", buildContractorBrief(m.message))
+                                      }
+                                      className="inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-200 hover:bg-amber-500/20"
+                                    >
+                                      <Copy className="h-3 w-3" />
+                                      Rewrite → contractor
+                                    </button>
+                                  )}
+                                </div>
+                                <p className="mt-1 whitespace-pre-wrap text-slate-200">{m.message}</p>
+                              </li>
+                            );
+                          })}
                           {messages.length === 0 && (
                             <li className="text-sm text-slate-500">No messages yet.</li>
                           )}
                         </ul>
                         {!caseClosed && (
                           <div className="mt-4 space-y-2 border-t border-white/10 pt-4">
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => applyDraft("customer", buildCustomerAck())}
+                                className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-slate-300 hover:bg-white/10"
+                              >
+                                Customer ack template
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  applyDraft(
+                                    "operative",
+                                    buildContractorBrief(activeRow?.reason || ctx?.dispute.reason || ""),
+                                  )
+                                }
+                                className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-slate-300 hover:bg-white/10"
+                              >
+                                Contractor brief template
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => applyDraft("operative", buildEvidenceRequest())}
+                                className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-slate-300 hover:bg-white/10"
+                              >
+                                Request evidence template
+                              </button>
+                            </div>
                             <CustomDropdown
                               value={recipientRole}
                               onChange={setRecipientRole}
                               options={RECIPIENT_OPTIONS}
                             />
+                            {recipientRole === "operative" && (
+                              <p className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-100/90">
+                                Contractor will see this text only — not the customer&apos;s raw reason. Edit before sending.
+                              </p>
+                            )}
                             <div className="flex gap-2">
                               <textarea
                                 value={replyText}
                                 onChange={(e) => setReplyText(e.target.value)}
-                                rows={3}
-                                placeholder="Reply as Kleen — redact direct contact details…"
+                                rows={5}
+                                placeholder={
+                                  recipientRole === "operative"
+                                    ? "Rewrite the concern for the contractor — no customer PII…"
+                                    : "Reply as Kleen — redact direct contact details…"
+                                }
                                 className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-slate-500 outline-none focus:border-brand-500"
                               />
                               <button
@@ -564,12 +811,86 @@ export default function DisputeTerminal() {
                                 className="inline-flex h-fit items-center gap-2 self-end rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
                               >
                                 {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                                Send
+                                {recipientRole === "operative" ? "Forward" : "Send"}
                               </button>
                             </div>
                           </div>
                         )}
                       </>
+                    )}
+                  </div>
+                )}
+
+                {tab === "evidence" && ctx && (
+                  <div className="space-y-4">
+                    <p className="text-xs text-slate-500">
+                      Job-report photos and any dispute uploads. Ask the contractor to add missing evidence via Mediate.
+                    </p>
+                    {(ctx.jobReports || []).length > 0 && (
+                      <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
+                        <p className="text-xs font-semibold uppercase text-slate-400">Job reports</p>
+                        <ul className="mt-2 space-y-1.5">
+                          {ctx.jobReports!.map((r) => (
+                            <li key={r.id} className="text-sm text-slate-300">
+                              <span className="font-medium capitalize">{r.stage.replace(/_/g, " ")}</span>
+                              {r.job_outcome ? ` · ${r.job_outcome.replace(/_/g, " ")}` : ""}
+                              <span className="text-slate-500">
+                                {" "}
+                                · {r.itemCount} item(s) · {new Date(r.submitted_at).toLocaleString("en-GB")}
+                              </span>
+                              {r.summary && (
+                                <p className="mt-0.5 text-xs text-slate-400">{r.summary}</p>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {(ctx.evidence || []).length === 0 ? (
+                      <p className="rounded-xl border border-dashed border-white/10 px-4 py-8 text-center text-sm text-slate-500">
+                        No evidence files yet. Forward to the contractor and request photos from the job report.
+                      </p>
+                    ) : (
+                      <ul className="space-y-4">
+                        {ctx.evidence!.map((group, idx) => (
+                          <li key={idx} className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+                            <p className="text-xs font-semibold uppercase text-slate-400">{group.label}</p>
+                            {group.note && (
+                              <p className="mt-1 text-sm text-slate-300">{group.note}</p>
+                            )}
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {group.signedUrls.map((url, i) => {
+                                const isVideo = /\.(mp4|webm|mov)/i.test(group.paths[i] || url);
+                                return isVideo ? (
+                                  <video
+                                    key={url}
+                                    src={url}
+                                    controls
+                                    className="max-h-40 max-w-[200px] rounded-lg border border-white/10"
+                                  />
+                                ) : (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <a key={url} href={url} target="_blank" rel="noreferrer">
+                                    <img
+                                      src={url}
+                                      alt=""
+                                      className="h-28 w-28 rounded-lg border border-white/10 object-cover hover:opacity-90"
+                                    />
+                                  </a>
+                                );
+                              })}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {ctx.job?.id && (
+                      <Link
+                        href={`/jobs/${ctx.job.id}`}
+                        className="inline-flex items-center gap-1 text-xs font-medium text-brand-300 hover:underline"
+                      >
+                        Open full job record <ExternalLink className="h-3 w-3" />
+                      </Link>
                     )}
                   </div>
                 )}
@@ -761,6 +1082,43 @@ export default function DisputeTerminal() {
         />
       )}
     </div>
+  );
+}
+
+function MediationStep({
+  done,
+  title,
+  detail,
+  action,
+}: {
+  done: boolean;
+  title: string;
+  detail: string;
+  action?: { label: string; onClick: () => void };
+}) {
+  return (
+    <li className="flex gap-3">
+      <span
+        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
+          done ? "bg-emerald-500/20 text-emerald-300" : "bg-white/10 text-slate-500"
+        }`}
+      >
+        {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : <span className="h-1.5 w-1.5 rounded-full bg-current" />}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className={`font-medium ${done ? "text-slate-400" : "text-slate-100"}`}>{title}</p>
+        <p className="mt-0.5 text-xs text-slate-500">{detail}</p>
+        {action && (
+          <button
+            type="button"
+            onClick={action.onClick}
+            className="mt-1.5 text-xs font-semibold text-brand-300 hover:underline"
+          >
+            {action.label}
+          </button>
+        )}
+      </div>
+    </li>
   );
 }
 

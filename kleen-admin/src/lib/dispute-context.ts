@@ -25,7 +25,7 @@ export async function loadDisputeContext(disputeId: string) {
   const { data: dispute, error: dErr } = await admin
     .from("disputes")
     .select(
-      "id, job_id, user_id, status, reason, resolution, resolution_type, refund_amount_pence, promo_code_id, internal_notes, created_at, resolved_at, resolved_by",
+      "id, job_id, user_id, status, reason, resolution, resolution_type, refund_amount_pence, promo_code_id, internal_notes, evidence_urls, created_at, resolved_at, resolved_by",
     )
     .eq("id", disputeId)
     .maybeSingle();
@@ -149,6 +149,101 @@ export async function loadDisputeContext(disputeId: string) {
     contractorFlags = flags || [];
   }
 
+  const { data: reports } = await admin
+    .from("job_reports")
+    .select(
+      "id, stage, job_outcome, summary, checklist, submitted_at, operative_id, job_report_items(id, item_type, note, photo_urls, created_at)",
+    )
+    .eq("job_id", dispute.job_id)
+    .order("submitted_at", { ascending: false });
+
+  type EvidenceItem = {
+    source: "dispute" | "job_report";
+    label: string;
+    note: string | null;
+    paths: string[];
+    signedUrls: string[];
+    created_at: string | null;
+  };
+
+  const rawPaths: Array<{ source: EvidenceItem["source"]; label: string; note: string | null; path: string; created_at: string | null }> = [];
+
+  for (const url of (dispute.evidence_urls as string[] | null) || []) {
+    if (!url) continue;
+    rawPaths.push({
+      source: "dispute",
+      label: "Customer evidence",
+      note: null,
+      path: url,
+      created_at: dispute.created_at,
+    });
+  }
+
+  for (const report of reports || []) {
+    const items = Array.isArray(report.job_report_items) ? report.job_report_items : [];
+    for (const item of items) {
+      for (const path of (item.photo_urls as string[] | null) || []) {
+        if (!path) continue;
+        rawPaths.push({
+          source: "job_report",
+          label: `${String(report.stage).replace(/_/g, " ")} · ${String(item.item_type).replace(/_/g, " ")}`,
+          note: item.note || report.summary || null,
+          path,
+          created_at: item.created_at || report.submitted_at,
+        });
+      }
+    }
+  }
+
+  const uniquePaths = Array.from(new Set(rawPaths.map((p) => p.path)));
+  const signedByPath = new Map<string, string>();
+  await Promise.all(
+    uniquePaths.map(async (path) => {
+      if (path.startsWith("http")) {
+        signedByPath.set(path, path);
+        return;
+      }
+      const { data } = await admin.storage.from("job-evidence").createSignedUrl(path, 3600);
+      if (data?.signedUrl) signedByPath.set(path, data.signedUrl);
+    }),
+  );
+
+  const evidenceGrouped = new Map<string, EvidenceItem>();
+  for (const row of rawPaths) {
+    const key = `${row.source}|${row.label}|${row.note || ""}|${row.created_at || ""}`;
+    const existing = evidenceGrouped.get(key);
+    const signed = signedByPath.get(row.path);
+    if (existing) {
+      existing.paths.push(row.path);
+      if (signed) existing.signedUrls.push(signed);
+    } else {
+      evidenceGrouped.set(key, {
+        source: row.source,
+        label: row.label,
+        note: row.note,
+        paths: [row.path],
+        signedUrls: signed ? [signed] : [],
+        created_at: row.created_at,
+      });
+    }
+  }
+
+  const { data: firstContractorMsg } = await admin
+    .from("dispute_messages")
+    .select("id, message, created_at")
+    .eq("dispute_id", disputeId)
+    .eq("recipient_role", "operative")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  const { count: contractorReplyCount } = await admin
+    .from("dispute_messages")
+    .select("id", { count: "exact", head: true })
+    .eq("dispute_id", disputeId)
+    .eq("recipient_role", "admin")
+    .neq("sender_id", dispute.user_id);
+
   return {
     dispute,
     job,
@@ -171,6 +266,20 @@ export async function loadDisputeContext(disputeId: string) {
     riskFlags: {
       customer: customerFlags || [],
       contractor: contractorFlags || [],
+    },
+    evidence: Array.from(evidenceGrouped.values()),
+    jobReports: (reports || []).map((r) => ({
+      id: r.id,
+      stage: r.stage,
+      job_outcome: r.job_outcome,
+      summary: r.summary,
+      submitted_at: r.submitted_at,
+      itemCount: Array.isArray(r.job_report_items) ? r.job_report_items.length : 0,
+    })),
+    mediation: {
+      contractorNotified: Boolean(firstContractorMsg),
+      firstContractorMessageAt: firstContractorMsg?.created_at ?? null,
+      contractorReplyCount: contractorReplyCount ?? 0,
     },
   };
 }

@@ -43,6 +43,7 @@ function mapToAdminJob(
     escrow_release_date: (j.escrow_release_date as string | null) ?? null,
     accepted_quote_request_id: (j.accepted_quote_request_id as string | null) ?? null,
     cancelled_reason: j.cancelled_reason as string | undefined,
+    cancelled_at: (j.cancelled_at as string | null) ?? null,
     contractor_confirmed_complete_at: (j.contractor_confirmed_complete_at as string | null) ?? null,
     customer_confirmed_complete_at: (j.customer_confirmed_complete_at as string | null) ?? null,
     actual_start: (j.actual_start as string | null) ?? null,

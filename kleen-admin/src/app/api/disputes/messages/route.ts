@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/require-admin-api";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { sendContractorDisputeOpenedEmail } from "@/lib/resend-customer-job-updates";
+import { logDisputeAction } from "@/lib/dispute-context";
 
 /**
  * Admin mediated messaging:
@@ -77,6 +78,17 @@ export async function POST(request: NextRequest) {
   if (wasOpen) {
     await admin.from("disputes").update({ status: "under_review" }).eq("id", disputeId);
   }
+
+  await logDisputeAction({
+    disputeId,
+    actorId: auth.userId,
+    actionType: recipientRole === "operative" ? "message_contractor" : "message_customer",
+    summary:
+      recipientRole === "operative"
+        ? `Forwarded / messaged contractor: ${message.slice(0, 120)}`
+        : `Messaged customer: ${message.slice(0, 120)}`,
+    metadata: { recipientRole, messageLength: message.length },
+  });
 
   // Bring contractor into the loop when Kleen first messages them, or when
   // the case leaves "open" (first admin touch) and we message the operative.
