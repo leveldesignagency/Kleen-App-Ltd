@@ -1193,67 +1193,74 @@ export default function AdminJobDetailPage() {
           )}
 
           {job.stripe_payment_intent_id && !job.funds_released_at && (
-            <div className="rounded-2xl border border-rose-500/20 bg-rose-500/5 p-5">
+            <div className="rounded-2xl border border-rose-500/20 bg-gradient-to-b from-rose-500/10 to-transparent p-5">
               <div className="flex items-center gap-2 text-rose-300">
                 <Banknote className="h-5 w-5" />
                 <h2 className="text-sm font-semibold">Refund customer (Stripe)</h2>
               </div>
-              <p className="mt-2 text-xs text-slate-400">
-                Use this before you release funds to the contractor. Cancel an uncaptured card hold, or refund money already
-                captured (full or partial).
+              <p className="mt-2 text-sm leading-relaxed text-slate-400">
+                Use before releasing funds. Cancel an uncaptured hold, or refund a captured charge in full or part.
               </p>
-              <p className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-100/90">
-                <strong>Not reversible in-app.</strong> Refunds and authorisation cancels are final in Stripe. If you
-                make a mistake, you may need to take a new payment or fix it in the Stripe dashboard — there is no undo
-                here.
+              <p className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-100/90">
+                <strong>Not reversible in-app.</strong> Refunds and authorisation cancels are final in Stripe. Mistakes
+                need a new payment or a fix in the Stripe dashboard.
               </p>
-              <label className="mt-3 block text-xs text-slate-500">
-                Note (optional, stored on payment record)
-                <input
-                  value={refundReason}
-                  onChange={(e) => setRefundReason(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200"
-                  placeholder="e.g. Goodwill discount agreed with customer"
-                />
-              </label>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  disabled={actionLoading}
-                  onClick={() => handleRefund("cancel")}
-                  className="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-white/10 disabled:opacity-50"
-                >
-                  Cancel card authorisation
-                </button>
-                <button
-                  type="button"
-                  disabled={actionLoading}
-                  onClick={() => handleRefund("full")}
-                  className="rounded-lg bg-rose-600 px-3 py-2 text-xs font-medium text-white hover:bg-rose-500 disabled:opacity-50"
-                >
-                  Full refund (captured charge)
-                </button>
-              </div>
-              <div className="mt-3 flex flex-wrap items-end gap-2">
-                <label className="text-xs text-slate-500">
-                  Partial (£)
+
+              <div className="mt-4 space-y-4">
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Note <span className="font-normal normal-case text-slate-600">(optional)</span>
+                  </label>
+                  <input
+                    value={refundReason}
+                    onChange={(e) => setRefundReason(e.target.value)}
+                    className="mt-1.5 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-slate-200 outline-none focus:border-rose-500/40"
+                    placeholder="e.g. Goodwill discount agreed with customer"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Actions</p>
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={() => handleRefund("cancel")}
+                    className="flex w-full items-center justify-center rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm font-medium text-slate-200 transition hover:bg-white/10 disabled:opacity-50"
+                  >
+                    Cancel card authorisation
+                  </button>
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={() => handleRefund("full")}
+                    className="flex w-full items-center justify-center rounded-xl bg-rose-600 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-500 disabled:opacity-50"
+                  >
+                    Full refund (captured charge)
+                  </button>
+                </div>
+
+                <div className="space-y-2 border-t border-white/10 pt-4">
+                  <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Partial refund amount (£)
+                  </label>
                   <input
                     type="number"
                     min={0}
                     step="0.01"
                     value={refundPounds}
                     onChange={(e) => setRefundPounds(e.target.value)}
-                    className="ml-2 w-28 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-slate-200"
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-slate-200 outline-none focus:border-rose-500/40"
+                    placeholder="0.00"
                   />
-                </label>
-                <button
-                  type="button"
-                  disabled={actionLoading}
-                  onClick={() => handleRefund("partial")}
-                  className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs font-medium text-rose-200 hover:bg-rose-500/20 disabled:opacity-50"
-                >
-                  Refund partial amount
-                </button>
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={() => handleRefund("partial")}
+                    className="flex w-full items-center justify-center rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2.5 text-sm font-medium text-rose-200 transition hover:bg-rose-500/20 disabled:opacity-50"
+                  >
+                    Refund partial amount
+                  </button>
+                </div>
               </div>
             </div>
           )}

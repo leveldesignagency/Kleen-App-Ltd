@@ -129,17 +129,13 @@ type DisputeContext = {
   };
 };
 
-type Tab = "overview" | "thread" | "evidence" | "audit";
+type Tab = "overview" | "customer" | "contractor" | "audit";
+type PartySub = "mediate" | "evidence";
 
 const FILTER_OPTIONS = [
   { value: "active", label: "Active" },
   { value: "all", label: "All" },
   { value: "resolved", label: "Resolved" },
-];
-
-const RECIPIENT_OPTIONS = [
-  { value: "customer", label: "Reply to customer" },
-  { value: "operative", label: "Forward to contractor" },
 ];
 
 function buildContractorBrief(customerReason: string) {
@@ -191,10 +187,11 @@ export default function DisputeTerminal() {
   const [ctx, setCtx] = useState<DisputeContext | null>(null);
   const [ctxLoading, setCtxLoading] = useState(false);
   const [tab, setTab] = useState<Tab>("overview");
+  const [partySub, setPartySub] = useState<PartySub>("mediate");
   const [messages, setMessages] = useState<Msg[]>([]);
   const [msgLoading, setMsgLoading] = useState(false);
-  const [recipientRole, setRecipientRole] = useState("customer");
-  const [replyText, setReplyText] = useState("");
+  const [customerReply, setCustomerReply] = useState("");
+  const [contractorReply, setContractorReply] = useState("");
   const [sending, setSending] = useState(false);
   const [deepLinkHandled, setDeepLinkHandled] = useState(false);
 
@@ -266,8 +263,9 @@ export default function DisputeTerminal() {
     async (id: string) => {
       setActiveId(id);
       setTab("overview");
-      setReplyText("");
-      setRecipientRole("customer");
+      setPartySub("mediate");
+      setCustomerReply("");
+      setContractorReply("");
       await Promise.all([loadContext(id), loadMessages(id)]);
     },
     [loadContext, loadMessages],
@@ -295,20 +293,24 @@ export default function DisputeTerminal() {
 
   const activeRow = rows.find((r) => r.id === activeId) || null;
 
-  const applyDraft = (role: "customer" | "operative", text: string) => {
-    setRecipientRole(role);
-    setReplyText(text);
-    setTab("thread");
+  const applyDraft = (party: "customer" | "contractor", text: string) => {
+    setTab(party);
+    setPartySub("mediate");
+    if (party === "customer") setCustomerReply(text);
+    else setContractorReply(text);
   };
 
-  const sendReply = async () => {
-    if (!activeId || !replyText.trim()) return;
+  const sendReply = async (party: "customer" | "contractor") => {
+    if (!activeId) return;
+    const text = (party === "customer" ? customerReply : contractorReply).trim();
+    if (!text) return;
+    const recipientRole = party === "customer" ? "customer" : "operative";
     setSending(true);
     const res = await fetch("/api/disputes/messages", {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ disputeId: activeId, message: replyText.trim(), recipientRole }),
+      body: JSON.stringify({ disputeId: activeId, message: text, recipientRole }),
     });
     const json = (await res.json().catch(() => ({}))) as { error?: string; status?: string };
     setSending(false);
@@ -316,14 +318,15 @@ export default function DisputeTerminal() {
       toast({ type: "error", title: "Send failed", message: json.error || "Could not send" });
       return;
     }
-    setReplyText("");
+    if (party === "customer") setCustomerReply("");
+    else setContractorReply("");
     void loadRows();
     await Promise.all([loadMessages(activeId), loadContext(activeId)]);
     toast({
       type: "success",
-      title: recipientRole === "operative" ? "Sent to contractor" : "Sent to customer",
+      title: party === "contractor" ? "Sent to contractor" : "Sent to customer",
       message:
-        recipientRole === "operative"
+        party === "contractor"
           ? "Contractor can reply with evidence in their app."
           : "Customer will see this in their disputes thread.",
     });
@@ -426,7 +429,27 @@ export default function DisputeTerminal() {
         ? "authorized"
         : "none";
   const mediation = ctx?.mediation;
-  const evidenceCount = (ctx?.evidence || []).reduce((n, e) => n + e.signedUrls.length, 0);
+  const customerMessages = useMemo(
+    () => messages.filter((m) => msgMeta(m).lane === "customer"),
+    // msgMeta depends on activeRow.user_id
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [messages, activeRow?.user_id],
+  );
+  const contractorMessages = useMemo(
+    () => messages.filter((m) => msgMeta(m).lane === "contractor"),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [messages, activeRow?.user_id],
+  );
+  const customerEvidence = useMemo(
+    () => (ctx?.evidence || []).filter((e) => e.source === "dispute"),
+    [ctx?.evidence],
+  );
+  const contractorEvidence = useMemo(
+    () => (ctx?.evidence || []).filter((e) => e.source === "job_report"),
+    [ctx?.evidence],
+  );
+  const customerEvidenceCount = customerEvidence.reduce((n, e) => n + e.signedUrls.length, 0);
+  const contractorEvidenceCount = contractorEvidence.reduce((n, e) => n + e.signedUrls.length, 0);
 
   return (
     <div className="flex min-h-[calc(100vh-5rem)] flex-col gap-4">
@@ -543,15 +566,18 @@ export default function DisputeTerminal() {
                   {(
                     [
                       ["overview", "Overview", FileText],
-                      ["thread", "Mediate", MessageSquare],
-                      ["evidence", "Evidence", ImageIcon],
+                      ["customer", "Customer", User],
+                      ["contractor", "Contractor", Wrench],
                       ["audit", "Audit log", Clock],
                     ] as const
                   ).map(([key, label, Icon]) => (
                     <button
                       key={key}
                       type="button"
-                      onClick={() => setTab(key)}
+                      onClick={() => {
+                        setTab(key);
+                        if (key === "customer" || key === "contractor") setPartySub("mediate");
+                      }}
                       className={`flex items-center gap-1.5 border-b-2 px-3 py-2 text-xs font-semibold transition ${
                         tab === key
                           ? "border-brand-400 text-brand-300"
@@ -560,8 +586,15 @@ export default function DisputeTerminal() {
                     >
                       <Icon className="h-3.5 w-3.5" />
                       {label}
-                      {key === "evidence" && evidenceCount > 0 && (
-                        <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px]">{evidenceCount}</span>
+                      {key === "customer" && customerEvidenceCount > 0 && (
+                        <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px]">
+                          {customerEvidenceCount}
+                        </span>
+                      )}
+                      {key === "contractor" && contractorEvidenceCount > 0 && (
+                        <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px]">
+                          {contractorEvidenceCount}
+                        </span>
                       )}
                     </button>
                   ))}
@@ -588,14 +621,14 @@ export default function DisputeTerminal() {
                             detail={
                               mediation?.contractorNotified
                                 ? `Notified ${mediation.firstContractorMessageAt ? new Date(mediation.firstContractorMessageAt).toLocaleString("en-GB") : ""}`
-                                : "Rewrite the customer concern, then send via Mediate → Forward to contractor."
+                                : "Open the Contractor tab, rewrite the concern, then forward."
                             }
                             action={
                               !mediation?.contractorNotified && !caseClosed
                                 ? {
-                                    label: "Draft contractor brief",
+                                    label: "Open contractor tab",
                                     onClick: () =>
-                                      applyDraft("operative", buildContractorBrief(ctx.dispute.reason)),
+                                      applyDraft("contractor", buildContractorBrief(ctx.dispute.reason)),
                                   }
                                 : undefined
                             }
@@ -612,7 +645,7 @@ export default function DisputeTerminal() {
                               mediation?.contractorNotified && (mediation?.contractorReplyCount || 0) === 0
                                 ? {
                                     label: "Request evidence",
-                                    onClick: () => applyDraft("operative", buildEvidenceRequest()),
+                                    onClick: () => applyDraft("contractor", buildEvidenceRequest()),
                                   }
                                 : undefined
                             }
@@ -623,20 +656,20 @@ export default function DisputeTerminal() {
                             detail="Use the settlement panel — refund, uphold, promo, or document only."
                           />
                         </ol>
-                        <div className="mt-4 flex flex-wrap gap-2">
+                        <div className="mt-4 grid gap-2 sm:grid-cols-2">
                           <button
                             type="button"
                             onClick={() => applyDraft("customer", buildCustomerAck())}
-                            className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-white/10"
+                            className="w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-white/10"
                           >
-                            Draft customer acknowledgement
+                            Open customer mediation
                           </button>
                           <button
                             type="button"
-                            onClick={() => applyDraft("operative", buildContractorBrief(ctx.dispute.reason))}
-                            className="rounded-lg border border-brand-500/40 bg-brand-500/15 px-3 py-1.5 text-xs font-medium text-brand-200 hover:bg-brand-500/25"
+                            onClick={() => applyDraft("contractor", buildContractorBrief(ctx.dispute.reason))}
+                            className="w-full rounded-lg border border-brand-500/40 bg-brand-500/15 px-3 py-2 text-xs font-medium text-brand-200 hover:bg-brand-500/25"
                           >
-                            Rewrite &amp; forward to contractor
+                            Open contractor mediation
                           </button>
                         </div>
                       </div>
@@ -704,195 +737,38 @@ export default function DisputeTerminal() {
                   </div>
                 )}
 
-                {tab === "thread" && (
-                  <div>
-                    {msgLoading ? (
-                      <div className="flex justify-center py-12">
-                        <Loader2 className="h-6 w-6 animate-spin text-brand-400" />
-                      </div>
-                    ) : (
-                      <>
-                        <p className="mb-3 text-xs text-slate-500">
-                          Two lanes — customer never sees contractor messages and vice versa. Rewrite before forwarding.
-                        </p>
-                        <ul className="max-h-[42vh] space-y-2 overflow-y-auto">
-                          {messages.map((m) => {
-                            const meta = msgMeta(m);
-                            return (
-                              <li
-                                key={m.id}
-                                className={`rounded-lg border px-3 py-2.5 text-sm ${
-                                  meta.lane === "customer"
-                                    ? "border-sky-500/20 bg-sky-500/5"
-                                    : "border-amber-500/20 bg-amber-500/5"
-                                }`}
-                              >
-                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <p className="text-xs text-slate-500">
-                                    {meta.label} · {new Date(m.created_at).toLocaleString("en-GB")}
-                                  </p>
-                                  {meta.fromCustomer && !caseClosed && (
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        applyDraft("operative", buildContractorBrief(m.message))
-                                      }
-                                      className="inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-200 hover:bg-amber-500/20"
-                                    >
-                                      <Copy className="h-3 w-3" />
-                                      Rewrite → contractor
-                                    </button>
-                                  )}
-                                </div>
-                                <p className="mt-1 whitespace-pre-wrap text-slate-200">{m.message}</p>
-                              </li>
-                            );
-                          })}
-                          {messages.length === 0 && (
-                            <li className="text-sm text-slate-500">No messages yet.</li>
-                          )}
-                        </ul>
-                        {!caseClosed && (
-                          <div className="mt-4 space-y-2 border-t border-white/10 pt-4">
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                onClick={() => applyDraft("customer", buildCustomerAck())}
-                                className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-slate-300 hover:bg-white/10"
-                              >
-                                Customer ack template
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  applyDraft(
-                                    "operative",
-                                    buildContractorBrief(activeRow?.reason || ctx?.dispute.reason || ""),
-                                  )
-                                }
-                                className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-slate-300 hover:bg-white/10"
-                              >
-                                Contractor brief template
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => applyDraft("operative", buildEvidenceRequest())}
-                                className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-slate-300 hover:bg-white/10"
-                              >
-                                Request evidence template
-                              </button>
-                            </div>
-                            <CustomDropdown
-                              value={recipientRole}
-                              onChange={setRecipientRole}
-                              options={RECIPIENT_OPTIONS}
-                            />
-                            {recipientRole === "operative" && (
-                              <p className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-100/90">
-                                Contractor will see this text only — not the customer&apos;s raw reason. Edit before sending.
-                              </p>
-                            )}
-                            <div className="flex gap-2">
-                              <textarea
-                                value={replyText}
-                                onChange={(e) => setReplyText(e.target.value)}
-                                rows={5}
-                                placeholder={
-                                  recipientRole === "operative"
-                                    ? "Rewrite the concern for the contractor — no customer PII…"
-                                    : "Reply as Kleen — redact direct contact details…"
-                                }
-                                className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-slate-500 outline-none focus:border-brand-500"
-                              />
-                              <button
-                                type="button"
-                                disabled={sending || !replyText.trim()}
-                                onClick={sendReply}
-                                className="inline-flex h-fit items-center gap-2 self-end rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
-                              >
-                                {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                                {recipientRole === "operative" ? "Forward" : "Send"}
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                )}
-
-                {tab === "evidence" && ctx && (
-                  <div className="space-y-4">
-                    <p className="text-xs text-slate-500">
-                      Job-report photos and any dispute uploads. Ask the contractor to add missing evidence via Mediate.
-                    </p>
-                    {(ctx.jobReports || []).length > 0 && (
-                      <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
-                        <p className="text-xs font-semibold uppercase text-slate-400">Job reports</p>
-                        <ul className="mt-2 space-y-1.5">
-                          {ctx.jobReports!.map((r) => (
-                            <li key={r.id} className="text-sm text-slate-300">
-                              <span className="font-medium capitalize">{r.stage.replace(/_/g, " ")}</span>
-                              {r.job_outcome ? ` · ${r.job_outcome.replace(/_/g, " ")}` : ""}
-                              <span className="text-slate-500">
-                                {" "}
-                                · {r.itemCount} item(s) · {new Date(r.submitted_at).toLocaleString("en-GB")}
-                              </span>
-                              {r.summary && (
-                                <p className="mt-0.5 text-xs text-slate-400">{r.summary}</p>
-                              )}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    {(ctx.evidence || []).length === 0 ? (
-                      <p className="rounded-xl border border-dashed border-white/10 px-4 py-8 text-center text-sm text-slate-500">
-                        No evidence files yet. Forward to the contractor and request photos from the job report.
-                      </p>
-                    ) : (
-                      <ul className="space-y-4">
-                        {ctx.evidence!.map((group, idx) => (
-                          <li key={idx} className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
-                            <p className="text-xs font-semibold uppercase text-slate-400">{group.label}</p>
-                            {group.note && (
-                              <p className="mt-1 text-sm text-slate-300">{group.note}</p>
-                            )}
-                            <div className="mt-3 flex flex-wrap gap-2">
-                              {group.signedUrls.map((url, i) => {
-                                const isVideo = /\.(mp4|webm|mov)/i.test(group.paths[i] || url);
-                                return isVideo ? (
-                                  <video
-                                    key={url}
-                                    src={url}
-                                    controls
-                                    className="max-h-40 max-w-[200px] rounded-lg border border-white/10"
-                                  />
-                                ) : (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <a key={url} href={url} target="_blank" rel="noreferrer">
-                                    <img
-                                      src={url}
-                                      alt=""
-                                      className="h-28 w-28 rounded-lg border border-white/10 object-cover hover:opacity-90"
-                                    />
-                                  </a>
-                                );
-                              })}
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    {ctx.job?.id && (
-                      <Link
-                        href={`/jobs/${ctx.job.id}`}
-                        className="inline-flex items-center gap-1 text-xs font-medium text-brand-300 hover:underline"
-                      >
-                        Open full job record <ExternalLink className="h-3 w-3" />
-                      </Link>
-                    )}
-                  </div>
+                {(tab === "customer" || tab === "contractor") && (
+                  <PartyWorkspace
+                    party={tab}
+                    partySub={partySub}
+                    onPartySubChange={setPartySub}
+                    caseClosed={caseClosed}
+                    msgLoading={msgLoading}
+                    messages={tab === "customer" ? customerMessages : contractorMessages}
+                    msgMeta={msgMeta}
+                    replyText={tab === "customer" ? customerReply : contractorReply}
+                    onReplyChange={tab === "customer" ? setCustomerReply : setContractorReply}
+                    sending={sending}
+                    onSend={() => sendReply(tab)}
+                    onUseAckTemplate={() => setCustomerReply(buildCustomerAck())}
+                    onUseBriefTemplate={() =>
+                      setContractorReply(
+                        buildContractorBrief(activeRow?.reason || ctx?.dispute.reason || ""),
+                      )
+                    }
+                    onUseEvidenceTemplate={() => setContractorReply(buildEvidenceRequest())}
+                    onRewriteToContractor={(message) =>
+                      applyDraft("contractor", buildContractorBrief(message))
+                    }
+                    evidence={tab === "customer" ? customerEvidence : contractorEvidence}
+                    jobReports={tab === "contractor" ? ctx?.jobReports || [] : []}
+                    jobId={ctx?.job?.id}
+                    partyName={
+                      tab === "customer"
+                        ? ctx?.customer?.name || "Customer"
+                        : ctx?.contractor?.name || "Contractor"
+                    }
+                  />
                 )}
 
                 {tab === "audit" && ctx && (
@@ -961,7 +837,7 @@ export default function DisputeTerminal() {
               )}
 
               {resolutionType === "goodwill_promo" && (
-                <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-3">
                   <div>
                     <label className="text-xs font-medium text-slate-400">Type</label>
                     <CustomDropdown
@@ -1033,11 +909,14 @@ export default function DisputeTerminal() {
                   </button>
 
                   <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
-                    <p className="text-xs font-semibold text-slate-400">Quick actions (without closing)</p>
-                    <div className="mt-2 flex flex-wrap gap-2">
+                    <p className="text-xs font-semibold text-slate-400">Stripe quick actions</p>
+                    <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                      Run without closing the case. Each action is its own step — not reversible in-app.
+                    </p>
+                    <div className="mt-3 space-y-2">
                       {ctx.pricing.remainingRefundablePence > 0 && piState === "captured" && (
                         <QuickBtn
-                          label="Partial refund"
+                          label="Partial refund (use amount above)"
                           onClick={() => {
                             const p = poundsToPence(partialPounds);
                             if (!p) {
@@ -1049,10 +928,17 @@ export default function DisputeTerminal() {
                         />
                       )}
                       {piState === "authorized" && (
-                        <QuickBtn label="Cancel hold" onClick={() => quickAction("cancel_auth")} />
+                        <QuickBtn label="Cancel card authorisation" onClick={() => quickAction("cancel_auth")} />
                       )}
                       {piState === "captured" && !ctx.job?.funds_released_at && (
-                        <QuickBtn label="Release contractor" onClick={() => quickAction("release_funds")} />
+                        <QuickBtn label="Release funds to contractor" onClick={() => quickAction("release_funds")} />
+                      )}
+                      {!(
+                        (ctx.pricing.remainingRefundablePence > 0 && piState === "captured") ||
+                        piState === "authorized" ||
+                        (piState === "captured" && !ctx.job?.funds_released_at)
+                      ) && (
+                        <p className="text-[11px] text-slate-500">No Stripe actions available for this payment state.</p>
                       )}
                     </div>
                   </div>
@@ -1080,6 +966,268 @@ export default function DisputeTerminal() {
           onCancel={() => setShowConfirm(false)}
           onConfirm={() => executeSettlement()}
         />
+      )}
+    </div>
+  );
+}
+
+function PartyWorkspace({
+  party,
+  partySub,
+  onPartySubChange,
+  caseClosed,
+  msgLoading,
+  messages,
+  msgMeta,
+  replyText,
+  onReplyChange,
+  sending,
+  onSend,
+  onUseAckTemplate,
+  onUseBriefTemplate,
+  onUseEvidenceTemplate,
+  onRewriteToContractor,
+  evidence,
+  jobReports,
+  jobId,
+  partyName,
+}: {
+  party: "customer" | "contractor";
+  partySub: PartySub;
+  onPartySubChange: (s: PartySub) => void;
+  caseClosed: boolean;
+  msgLoading: boolean;
+  messages: Msg[];
+  msgMeta: (m: Msg) => { label: string; lane: "customer" | "contractor"; fromCustomer: boolean };
+  replyText: string;
+  onReplyChange: (v: string) => void;
+  sending: boolean;
+  onSend: () => void;
+  onUseAckTemplate: () => void;
+  onUseBriefTemplate: () => void;
+  onUseEvidenceTemplate: () => void;
+  onRewriteToContractor: (message: string) => void;
+  evidence: NonNullable<DisputeContext["evidence"]>;
+  jobReports: NonNullable<DisputeContext["jobReports"]>;
+  jobId?: string;
+  partyName: string;
+}) {
+  const isCustomer = party === "customer";
+  const accent = isCustomer
+    ? "border-sky-500/20 bg-sky-500/5"
+    : "border-amber-500/20 bg-amber-500/5";
+  const evidenceCount = evidence.reduce((n, e) => n + e.signedUrls.length, 0);
+
+  return (
+    <div>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-slate-100">
+            {isCustomer ? "Customer channel" : "Contractor channel"}
+          </p>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Messaging {partyName} only — the other party never sees this thread.
+          </p>
+        </div>
+      </div>
+
+      <div className="mb-4 flex gap-1 rounded-xl border border-white/10 bg-white/[0.02] p-1">
+        {(
+          [
+            ["mediate", "Mediate", MessageSquare],
+            ["evidence", "Evidence", ImageIcon],
+          ] as const
+        ).map(([key, label, Icon]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => onPartySubChange(key)}
+            className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition ${
+              partySub === key
+                ? isCustomer
+                  ? "bg-sky-500/20 text-sky-200"
+                  : "bg-amber-500/20 text-amber-200"
+                : "text-slate-500 hover:text-slate-300"
+            }`}
+          >
+            <Icon className="h-3.5 w-3.5" />
+            {label}
+            {key === "evidence" && evidenceCount > 0 && (
+              <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px]">{evidenceCount}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {partySub === "mediate" && (
+        <div>
+          {msgLoading ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-brand-400" />
+            </div>
+          ) : (
+            <>
+              <ul className="max-h-[38vh] space-y-2 overflow-y-auto">
+                {messages.map((m) => {
+                  const meta = msgMeta(m);
+                  return (
+                    <li key={m.id} className={`rounded-lg border px-3 py-2.5 text-sm ${accent}`}>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-xs text-slate-500">
+                          {meta.label} · {new Date(m.created_at).toLocaleString("en-GB")}
+                        </p>
+                        {meta.fromCustomer && !caseClosed && (
+                          <button
+                            type="button"
+                            onClick={() => onRewriteToContractor(m.message)}
+                            className="inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-200 hover:bg-amber-500/20"
+                          >
+                            <Copy className="h-3 w-3" />
+                            Rewrite → contractor tab
+                          </button>
+                        )}
+                      </div>
+                      <p className="mt-1 whitespace-pre-wrap text-slate-200">{m.message}</p>
+                    </li>
+                  );
+                })}
+                {messages.length === 0 && (
+                  <li className="rounded-xl border border-dashed border-white/10 px-4 py-8 text-center text-sm text-slate-500">
+                    No messages with the {isCustomer ? "customer" : "contractor"} yet.
+                  </li>
+                )}
+              </ul>
+
+              {!caseClosed && (
+                <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
+                  {isCustomer ? (
+                    <button
+                      type="button"
+                      onClick={onUseAckTemplate}
+                      className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-left text-[11px] text-slate-300 hover:bg-white/10"
+                    >
+                      Use customer acknowledgement template
+                    </button>
+                  ) : (
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        onClick={onUseBriefTemplate}
+                        className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-left text-[11px] text-slate-300 hover:bg-white/10"
+                      >
+                        Use contractor brief template
+                      </button>
+                      <button
+                        type="button"
+                        onClick={onUseEvidenceTemplate}
+                        className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-left text-[11px] text-slate-300 hover:bg-white/10"
+                      >
+                        Use request-evidence template
+                      </button>
+                      <p className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-100/90">
+                        Contractor sees this text only — not the customer&apos;s raw reason. Edit before sending.
+                      </p>
+                    </div>
+                  )}
+                  <textarea
+                    value={replyText}
+                    onChange={(e) => onReplyChange(e.target.value)}
+                    rows={5}
+                    placeholder={
+                      isCustomer
+                        ? "Reply as Kleen to the customer…"
+                        : "Rewrite the concern for the contractor — no customer PII…"
+                    }
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-slate-500 outline-none focus:border-brand-500"
+                  />
+                  <button
+                    type="button"
+                    disabled={sending || !replyText.trim()}
+                    onClick={onSend}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
+                  >
+                    {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    {isCustomer ? "Send to customer" : "Forward to contractor"}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {partySub === "evidence" && (
+        <div className="space-y-4">
+          <p className="text-xs text-slate-500">
+            {isCustomer
+              ? "Evidence uploaded with the dispute by the customer."
+              : "Job-report photos and notes from the contractor."}
+          </p>
+          {!isCustomer && jobReports.length > 0 && (
+            <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
+              <p className="text-xs font-semibold uppercase text-slate-400">Job reports</p>
+              <ul className="mt-2 space-y-1.5">
+                {jobReports.map((r) => (
+                  <li key={r.id} className="text-sm text-slate-300">
+                    <span className="font-medium capitalize">{r.stage.replace(/_/g, " ")}</span>
+                    {r.job_outcome ? ` · ${r.job_outcome.replace(/_/g, " ")}` : ""}
+                    <span className="text-slate-500">
+                      {" "}
+                      · {r.itemCount} item(s) · {new Date(r.submitted_at).toLocaleString("en-GB")}
+                    </span>
+                    {r.summary && <p className="mt-0.5 text-xs text-slate-400">{r.summary}</p>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {evidence.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-white/10 px-4 py-8 text-center text-sm text-slate-500">
+              {isCustomer
+                ? "No customer evidence files on this dispute yet."
+                : "No contractor evidence yet. Forward a brief and ask them to reply with photos from the job report."}
+            </p>
+          ) : (
+            <ul className="space-y-4">
+              {evidence.map((group, idx) => (
+                <li key={idx} className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+                  <p className="text-xs font-semibold uppercase text-slate-400">{group.label}</p>
+                  {group.note && <p className="mt-1 text-sm text-slate-300">{group.note}</p>}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {group.signedUrls.map((url, i) => {
+                      const isVideo = /\.(mp4|webm|mov)/i.test(group.paths[i] || url);
+                      return isVideo ? (
+                        <video
+                          key={url}
+                          src={url}
+                          controls
+                          className="max-h-40 max-w-[200px] rounded-lg border border-white/10"
+                        />
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <a key={url} href={url} target="_blank" rel="noreferrer">
+                          <img
+                            src={url}
+                            alt=""
+                            className="h-28 w-28 rounded-lg border border-white/10 object-cover hover:opacity-90"
+                          />
+                        </a>
+                      );
+                    })}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          {jobId && (
+            <Link
+              href={`/jobs/${jobId}`}
+              className="inline-flex items-center gap-1 text-xs font-medium text-brand-300 hover:underline"
+            >
+              Open full job record <ExternalLink className="h-3 w-3" />
+            </Link>
+          )}
+        </div>
       )}
     </div>
   );
@@ -1214,7 +1362,7 @@ function QuickBtn({ label, onClick }: { label: string; onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-medium text-slate-300 hover:bg-white/10"
+      className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-left text-xs font-medium text-slate-200 hover:bg-white/10"
     >
       {label}
     </button>
