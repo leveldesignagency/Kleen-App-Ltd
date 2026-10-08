@@ -1,8 +1,16 @@
 import { normalizeUkPostcode, UK_POSTCODE_RE } from "@/lib/format-uk-address";
 
+export type PostcodeAreaMeta = {
+  postcode: string;
+  areaLabel: string | null;
+  adminCounty: string | null;
+  adminDistrict: string | null;
+  region: string | null;
+  postcodeArea: string | null;
+};
+
 export type KentCheckResult =
-  | { ok: true; inKent: true; postcode: string; areaLabel: string | null }
-  | { ok: true; inKent: false; postcode: string; areaLabel: string | null }
+  | ({ ok: true; inKent: boolean } & PostcodeAreaMeta)
   | { ok: false; error: string; postcode?: string };
 
 type PostcodesIoResult = {
@@ -22,6 +30,13 @@ export function extractUkPostcode(text: string): string | null {
   return UK_POSTCODE_RE.test(normalized) ? normalized : null;
 }
 
+export function postcodeAreaFromPostcode(postcode: string | null | undefined): string | null {
+  if (!postcode) return null;
+  const normalized = normalizeUkPostcode(postcode);
+  const outward = normalized.split(/\s+/)[0];
+  return outward || null;
+}
+
 function isKentFromMeta(r: PostcodesIoResult): boolean {
   const county = (r.admin_county || "").trim().toLowerCase();
   const district = (r.admin_district || "").trim().toLowerCase();
@@ -38,6 +53,18 @@ function areaLabelFromMeta(r: PostcodesIoResult): string | null {
     (p): p is string => Boolean(p && String(p).trim()),
   );
   return parts.length ? parts.join(", ") : null;
+}
+
+function metaFromResult(r: PostcodesIoResult, fallbackPostcode: string): PostcodeAreaMeta {
+  const postcode = r.postcode || fallbackPostcode;
+  return {
+    postcode,
+    areaLabel: areaLabelFromMeta(r),
+    adminCounty: r.admin_county?.trim() || null,
+    adminDistrict: r.admin_district?.trim() || null,
+    region: r.region?.trim() || null,
+    postcodeArea: postcodeAreaFromPostcode(postcode),
+  };
 }
 
 /**
@@ -65,12 +92,10 @@ export async function checkPostcodeIsKent(rawPostcode: string): Promise<KentChec
     if (!r) {
       return { ok: false, error: "We could not find that postcode.", postcode };
     }
-    const inKent = isKentFromMeta(r);
     return {
       ok: true,
-      inKent,
-      postcode: r.postcode || postcode,
-      areaLabel: areaLabelFromMeta(r),
+      inKent: isKentFromMeta(r),
+      ...metaFromResult(r, postcode),
     };
   } catch {
     return { ok: false, error: "Could not verify your area right now. Please try again.", postcode };

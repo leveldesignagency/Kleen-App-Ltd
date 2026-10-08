@@ -16,9 +16,11 @@ export async function GET() {
 
   const { data, error } = await admin
     .from("service_area_waitlist")
-    .select("id, email, postcode, audience, source, created_at")
+    .select(
+      "id, email, postcode, audience, source, created_at, area_label, admin_county, admin_district, region, postcode_area",
+    )
     .order("created_at", { ascending: false })
-    .limit(500);
+    .limit(1000);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
