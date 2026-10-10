@@ -169,11 +169,10 @@ const emptyContractor: Omit<Contractor, "id" | "created_at"> & { operative_servi
 
 export default function AdminContractorsPage() {
   const router = useRouter();
-  const { contractors, setContractors, addContractor, updateContractor, removeContractor } =
-    useAdminStore();
+  const { contractors, setContractors, addContractor, updateContractor } = useAdminStore();
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("active");
   const [modal, setModal] = useState<{
   mode: "add" | "edit";
   data: typeof emptyContractor & {
@@ -182,6 +181,7 @@ export default function AdminContractorsPage() {
   };
 } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Contractor | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const [reviewTarget, setReviewTarget] = useState<Contractor | null>(null);
   const [availableServices, setAvailableServices] = useState<string[]>([]);
   const [servicesCatalog, setServicesCatalog] = useState<{ id: string; name: string }[]>([]);
@@ -316,28 +316,37 @@ export default function AdminContractorsPage() {
   };
 
   const handleDelete = async () => {
-    if (!deleteTarget) return;
-    const supabase = createClient();
+    if (!deleteTarget || deleteLoading) return;
     const name = deleteTarget.full_name;
-    const retain = new Date();
-    retain.setMonth(retain.getMonth() + 24);
-    await supabase
-      .from("operatives")
-      .update({
-        is_active: false,
-        user_id: null,
-        documents_retain_until: retain.toISOString().slice(0, 10),
-      })
-      .eq("id", deleteTarget.id);
-    // Soft-deactivate + retain docs for 24 months (cron purges files). Hard delete only if no ledger needed:
-    // await supabase.from("operatives").delete().eq("id", deleteTarget.id);
-    removeContractor(deleteTarget.id);
-    setDeleteTarget(null);
-    toast({
-      type: "info",
-      title: "Contractor deactivated",
-      message: `${name} deactivated. ID docs retained up to 24 months unless a legal hold applies.`,
-    });
+    const id = deleteTarget.id;
+    setDeleteLoading(true);
+    try {
+      const res = await fetch("/api/contractors/deactivate", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contractorId: id }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        toast({
+          type: "error",
+          title: "Could not delete contractor",
+          message: json.error || "Deactivate failed — contractor was not removed.",
+        });
+        return;
+      }
+      // Soft-deactivate in DB + store. Default "Active" filter hides them; they remain under Inactive.
+      updateContractor(id, { is_active: false, user_id: undefined });
+      setDeleteTarget(null);
+      toast({
+        type: "info",
+        title: "Contractor deactivated",
+        message: `${name} deactivated. ID docs retained up to 24 months unless a legal hold applies.`,
+      });
+    } finally {
+      setDeleteLoading(false);
+    }
   };
 
   const toggleActive = async (c: Contractor) => {
@@ -662,22 +671,26 @@ export default function AdminContractorsPage() {
           >
             <h2 className="text-lg font-bold">Delete Contractor</h2>
             <p className="mt-2 text-sm text-slate-400">
-              Deactivate {deleteTarget.full_name}? They lose portal access. Vetting ID documents are
-              kept for up to 24 months (then purged), unless a legal hold is active. Job/payment
-              history is retained in anonymised/ledger form as needed.
+              Deactivate {deleteTarget.full_name}? They lose portal access and disappear from the
+              Active list. Vetting ID documents are kept for up to 24 months (then purged), unless a
+              legal hold is active. Job/payment history is retained as needed — find them later under
+              Inactive.
             </p>
             <div className="mt-6 flex justify-end gap-2">
               <button
                 onClick={() => setDeleteTarget(null)}
-                className="rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-white/10"
+                disabled={deleteLoading}
+                className="rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-white/10 disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
-                onClick={handleDelete}
-                className="rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500"
+                onClick={() => void handleDelete()}
+                disabled={deleteLoading}
+                className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50"
               >
-                Delete
+                {deleteLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {deleteLoading ? "Deleting…" : "Delete"}
               </button>
             </div>
           </div>

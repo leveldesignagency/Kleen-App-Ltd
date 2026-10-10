@@ -29,7 +29,8 @@ export async function GET(request: NextRequest) {
       .is("resolved_at", null)
       .order("created_at", { ascending: false })
       .limit(200);
-    return NextResponse.json({ flags: data || [] });
+    const flags = await enrichSubjects(admin, data || []);
+    return NextResponse.json({ flags });
   }
 
   if (tab === "blocklist") {
@@ -50,7 +51,63 @@ export async function GET(request: NextRequest) {
   if (!includeLifted) q = q.is("lifted_at", null);
 
   const { data: bans } = await q;
-  return NextResponse.json({ bans: bans || [], reasonCodes: BAN_REASON_CODES });
+  const enriched = await enrichSubjects(admin, bans || []);
+  return NextResponse.json({ bans: enriched, reasonCodes: BAN_REASON_CODES });
+}
+
+async function enrichSubjects(
+  admin: ReturnType<typeof createServiceRoleClient>,
+  rows: Array<Record<string, unknown>>,
+) {
+  const customerIds = rows
+    .filter((r) => r.subject_type === "customer" || r.subject_type === "user")
+    .map((r) => String(r.subject_id));
+  const contractorIds = rows
+    .filter((r) => r.subject_type === "contractor" || r.subject_type === "operative")
+    .map((r) => String(r.subject_id));
+
+  const [customers, contractors] = await Promise.all([
+    customerIds.length
+      ? admin.from("profiles").select("id, full_name, email").in("id", customerIds)
+      : Promise.resolve({ data: [] as Array<{ id: string; full_name: string | null; email: string | null }> }),
+    contractorIds.length
+      ? admin
+          .from("operatives")
+          .select("id, full_name, email, company_name")
+          .in("id", contractorIds)
+      : Promise.resolve({
+          data: [] as Array<{
+            id: string;
+            full_name: string | null;
+            email: string | null;
+            company_name: string | null;
+          }>,
+        }),
+  ]);
+
+  const custMap = new Map((customers.data || []).map((c) => [c.id, c]));
+  const opMap = new Map((contractors.data || []).map((o) => [o.id, o]));
+
+  return rows.map((r) => {
+    const id = String(r.subject_id);
+    if (r.subject_type === "customer" || r.subject_type === "user") {
+      const c = custMap.get(id);
+      return {
+        ...r,
+        subject_label: c?.full_name?.trim() || c?.email || null,
+        subject_detail: c?.email || null,
+      };
+    }
+    if (r.subject_type === "contractor" || r.subject_type === "operative") {
+      const o = opMap.get(id);
+      return {
+        ...r,
+        subject_label: o?.company_name?.trim() || o?.full_name?.trim() || o?.email || null,
+        subject_detail: [o?.full_name, o?.email].filter(Boolean).join(" · ") || null,
+      };
+    }
+    return { ...r, subject_label: null, subject_detail: null };
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -88,7 +145,10 @@ export async function POST(request: NextRequest) {
     const subjectType = body.subjectType === "contractor" ? "contractor" : "customer";
     const banType = body.banType === "temporary" ? "temporary" : "permanent";
     if (!body.subjectId?.trim() || !body.reason?.trim()) {
-      return NextResponse.json({ error: "subjectId and reason required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Select an account and enter a reason shown to the user." },
+        { status: 400 },
+      );
     }
     const result = await placeAccountBan({
       subjectType,

@@ -106,7 +106,10 @@ export default function Navbar({ user, framed = false }: NavbarProps) {
             />
 
             {user ? (
-              <SparkleButton href={dashboardHref} className="!rounded-full !py-2 !text-sm">
+              <SparkleButton
+                href={dashboardHref}
+                className="sparkle-btn-outline !rounded-full !py-2 !text-sm"
+              >
                 Dashboard
               </SparkleButton>
             ) : (
@@ -176,7 +179,11 @@ export default function Navbar({ user, framed = false }: NavbarProps) {
               className={`mt-4 space-y-2 border-t pt-4 ${shellActive ? "border-white/20" : "border-slate-100"}`}
             >
               {user ? (
-                <SparkleButton href={dashboardHref} onClick={() => setMobileOpen(false)}>
+                <SparkleButton
+                  href={dashboardHref}
+                  onClick={() => setMobileOpen(false)}
+                  className="sparkle-btn-outline !rounded-full w-full justify-center"
+                >
                   Dashboard
                 </SparkleButton>
               ) : (
