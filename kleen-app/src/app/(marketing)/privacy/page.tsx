@@ -148,8 +148,8 @@ export default function PrivacyPage() {
 
               <h2>7. Account deletion and anonymisation</h2>
               <p>
-                You can schedule account deletion from your dashboard (Account settings). After the 30-day
-                grace period we:
+                You can schedule account deletion in-app from the customer dashboard (Account settings) or
+                the contractor portal (Company &amp; profile). After the 30-day grace period we:
               </p>
               <ul>
                 <li>Remove your login and scrub profile identifiers</li>

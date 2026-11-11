@@ -19,31 +19,26 @@ export type AnonymiseResult = {
 };
 
 /**
- * Scrub customer PII while retaining job/payment ledgers for tax, disputes, fraud.
- * Call BEFORE auth.admin.deleteUser. Respects active legal holds.
+ * True if erase/purge must pause for this auth user:
+ * - direct user hold
+ * - hold on any job they own
+ * - hold on a linked contractor (operative) record
  */
-export async function anonymiseCustomerAccountForDeletion(
+export async function userHasActiveLegalHold(
   supabase: SupabaseClient,
   userId: string,
-): Promise<AnonymiseResult> {
-  const { data: holds } = await supabase
+): Promise<boolean> {
+  const { data: userHolds } = await supabase
     .from("legal_holds")
     .select("id")
     .eq("subject_type", "user")
     .eq("subject_id", userId)
     .is("released_at", null)
     .limit(1);
+  if (userHolds?.length) return true;
 
-  if (holds && holds.length > 0) {
-    return { ok: false, skipped: true, reason: "active_legal_hold" };
-  }
-
-  const { data: heldJobs } = await supabase
-    .from("jobs")
-    .select("id")
-    .eq("user_id", userId);
-
-  const jobIds = (heldJobs || []).map((j) => j.id as string);
+  const { data: jobs } = await supabase.from("jobs").select("id").eq("user_id", userId);
+  const jobIds = (jobs || []).map((j) => j.id as string);
   if (jobIds.length > 0) {
     const { data: jobHolds } = await supabase
       .from("legal_holds")
@@ -52,9 +47,39 @@ export async function anonymiseCustomerAccountForDeletion(
       .in("subject_id", jobIds)
       .is("released_at", null)
       .limit(1);
-    if (jobHolds && jobHolds.length > 0) {
-      return { ok: false, skipped: true, reason: "active_job_legal_hold" };
-    }
+    if (jobHolds?.length) return true;
+  }
+
+  const { data: operatives } = await supabase
+    .from("operatives")
+    .select("id")
+    .eq("user_id", userId);
+  const opIds = (operatives || []).map((o) => o.id as string);
+  if (opIds.length > 0) {
+    const { data: opHolds } = await supabase
+      .from("legal_holds")
+      .select("id")
+      .eq("subject_type", "operative")
+      .in("subject_id", opIds)
+      .is("released_at", null)
+      .limit(1);
+    if (opHolds?.length) return true;
+  }
+
+  return false;
+}
+
+/**
+ * Scrub customer (+ linked contractor) PII while retaining job/payment ledgers
+ * for tax, disputes, and fraud. Call BEFORE auth.admin.deleteUser.
+ * Respects active legal holds on user, jobs, or linked operatives.
+ */
+export async function anonymiseCustomerAccountForDeletion(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<AnonymiseResult> {
+  if (await userHasActiveLegalHold(supabase, userId)) {
+    return { ok: false, skipped: true, reason: "active_legal_hold" };
   }
 
   const now = new Date().toISOString();
@@ -83,7 +108,6 @@ export async function anonymiseCustomerAccountForDeletion(
         notes: null,
         customer_anonymised_at: now,
         customer_display_label: "Deleted customer",
-        // keep reference, amounts (via payments), stripe ids, status history
       })
       .eq("id", job.id);
     if (!error) jobsAnonymised += 1;
@@ -109,28 +133,45 @@ export async function anonymiseCustomerAccountForDeletion(
     .update({ customer_user_id: null })
     .eq("customer_user_id", userId);
 
-  // If this user is also a contractor, set doc retention clock (do not wipe docs yet)
-  const { data: operative } = await supabase
+  // Linked contractor: scrub contact PII, start 24-month ID doc clock (do not wipe docs yet)
+  const { data: operatives } = await supabase
     .from("operatives")
-    .select("id, documents_retain_until, documents_purged_at")
-    .eq("user_id", userId)
-    .maybeSingle();
+    .select("id, documents_retain_until, documents_purged_at, anonymised_at")
+    .eq("user_id", userId);
 
-  if (operative?.id && !operative.documents_purged_at) {
+  for (const operative of operatives || []) {
+    if (operative.anonymised_at) continue;
     const retain = new Date();
     retain.setMonth(retain.getMonth() + 24);
     const retainUntil = retain.toISOString().slice(0, 10);
-    await supabase
-      .from("operatives")
-      .update({
-        user_id: null,
-        email: `deleted-op+${String(operative.id).replace(/-/g, "").slice(0, 12)}@anon.kleenapp.invalid`,
-        phone: null,
-        documents_retain_until: operative.documents_retain_until || retainUntil,
-        anonymised_at: now,
-        is_active: false,
-      })
-      .eq("id", operative.id);
+    const opUpdate: Record<string, unknown> = {
+      // user_id cleared; left_at + anonymised_at block resurrection on next login
+      user_id: null,
+      email: `deleted-op+${String(operative.id).replace(/-/g, "").slice(0, 12)}@anon.kleenapp.invalid`,
+      full_name: "Deleted contractor",
+      phone: null,
+      company_name: null,
+      company_number: null,
+      vat_number: null,
+      notes: null,
+      trading_name: null,
+      registered_address: null,
+      documents_retain_until: operative.documents_retain_until || retainUntil,
+      anonymised_at: now,
+      is_active: false,
+      left_at: now,
+    };
+    let { error: opErr } = await supabase.from("operatives").update(opUpdate).eq("id", operative.id);
+    // Older DBs may lack UK onboarding columns — retry without them.
+    if (opErr && /trading_name|registered_address|left_at|does not exist|schema cache/i.test(opErr.message)) {
+      delete opUpdate.trading_name;
+      delete opUpdate.registered_address;
+      if (/left_at/i.test(opErr.message)) delete opUpdate.left_at;
+      ({ error: opErr } = await supabase.from("operatives").update(opUpdate).eq("id", operative.id));
+    }
+    if (opErr) {
+      console.error(`anonymise operative ${operative.id}:`, opErr.message);
+    }
   }
 
   await supabase
@@ -152,18 +193,4 @@ export async function anonymiseCustomerAccountForDeletion(
     .eq("id", userId);
 
   return { ok: true, jobsAnonymised, paymentsUnlinked };
-}
-
-export async function userHasActiveLegalHold(
-  supabase: SupabaseClient,
-  userId: string,
-): Promise<boolean> {
-  const { data } = await supabase
-    .from("legal_holds")
-    .select("id")
-    .eq("subject_type", "user")
-    .eq("subject_id", userId)
-    .is("released_at", null)
-    .limit(1);
-  return Boolean(data?.length);
 }

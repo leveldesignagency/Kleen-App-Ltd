@@ -19,7 +19,7 @@ Have a solicitor review before relying on it for production customers.
 | Data category | Examples | Retention | After period |
 |---------------|----------|-----------|--------------|
 | Active account profile | Name, email, phone, prefs | While account open | Soft-delete → 30-day grace → anonymise + erase login |
-| Account deletion grace | Scheduled erase | **30 days** from request (cancelable) | Anonymise ledgers, delete auth user |
+| Account deletion grace | Scheduled erase (customer **Account** + contractor **Profile**) | **30 days** from request (cancelable) | Anonymise ledgers, delete auth user; contractor ID docs start 24-month clock |
 | Job location PII | Full address, notes | While needed for delivery + short aftercare | On erase: redact address; keep **outward postcode** + job reference |
 | Job / payment ledger | Reference, status, amounts, Stripe IDs, timestamps | **6 years** from payment / tax year end (UK accounting) | Review archive; keep anonymised or delete if no hold |
 | Disputes / chargebacks | Dispute reason, messages | **6 years** from closure / last relevant event | Anonymise parties; keep ledger if needed |
@@ -42,17 +42,18 @@ Have a solicitor review before relying on it for production customers.
 | `dispute` | Escalated platform dispute needing records | Admin |
 | `other` | Documented exception (notes required) | Superadmin preferred |
 
-Holds block: account deletion RPC, purge cron, contractor document purge for that subject.
+Holds block: account deletion RPC (user **or** linked job **or** linked operative), purge cron, contractor document purge for that subject. Admin soft-deactivate revokes portal access but does **not** erase PII while a hold may be needed.
 
 ## Product steps (ops)
 
 1. ~~Run migration `051_gdpr_retention_legal_holds.sql` on Supabase.~~ **Done** (confirm columns `legal_holds`, `jobs.customer_anonymised_at`, `operatives.documents_retain_until` exist if unsure).
 2. Confirm crons: `purge-deleted-accounts` (05:00), `purge-contractor-documents` (06:00) — requires kleen-app redeploy with updated `vercel.json`.
 3. Place/release holds in Admin → **Legal holds** — requires kleen-admin redeploy.
-4. On contractor leave/erase, ensure `documents_retain_until` is set (purge cron sets on customer erase path; set automatically when deactivating contractors in admin).
-5. Do **not** email full customer CSVs weekly; use admin tools or encrypted exports.
-6. Redeploy **kleen-app** + **kleen-admin** so Privacy/Terms/Cookies, purge anonymisation, and Legal holds UI are live.
-7. Solicitor review of Privacy/Terms before public launch (optional for closed beta, recommended).
+4. On contractor leave/erase, ensure `documents_retain_until` is set (set on self-erase anonymise + admin deactivate).
+5. Apply migration `068_harden_account_deletion_holds.sql` so deletion RPC also checks job/operative holds and `operatives.left_at` exists.
+6. Do **not** email full customer CSVs weekly; use admin tools or encrypted exports.
+7. Redeploy **kleen-app**, **kleen-contractor**, and **kleen-admin** so erase UI, hold checks, and Legal holds UI are live.
+8. Solicitor review of Privacy/Terms before public launch (optional for closed beta, recommended).
 
 ## Related code
 

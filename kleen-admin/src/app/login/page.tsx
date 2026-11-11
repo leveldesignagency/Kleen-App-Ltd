@@ -38,14 +38,25 @@ export default function AdminLoginPage() {
 
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     setError("");
     setLoading(true);
 
     const supabase = createClient();
-    const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+    const { error: authError } = await supabase.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password,
+    });
 
     if (authError) {
-      setError(authError.message);
+      // Supabase returns the same message for wrong password / unknown user.
+      // Avoid double-submit noise; surface a clear staff-facing hint.
+      const msg = authError.message || "Invalid login credentials";
+      setError(
+        /invalid login credentials/i.test(msg)
+          ? "Invalid email or password. If you recently changed it, use the password in Supabase Auth (or reset it there)."
+          : msg,
+      );
       setLoading(false);
       return;
     }
@@ -152,11 +163,16 @@ export default function AdminLoginPage() {
           </p>
 
           {step === "password" ? (
-            <form onSubmit={handlePasswordSubmit} className="mt-6 space-y-4">
+            <form onSubmit={handlePasswordSubmit} className="mt-6 space-y-4" autoComplete="on">
               <div>
-                <label className="block text-xs font-medium text-slate-400">Email</label>
+                <label className="block text-xs font-medium text-slate-400" htmlFor="admin-email">
+                  Email
+                </label>
                 <input
+                  id="admin-email"
+                  name="email"
                   type="email"
+                  autoComplete="username"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 py-3 px-4 text-sm text-white outline-none focus:border-brand-500"
@@ -164,9 +180,14 @@ export default function AdminLoginPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-400">Password</label>
+                <label className="block text-xs font-medium text-slate-400" htmlFor="admin-password">
+                  Password
+                </label>
                 <input
+                  id="admin-password"
+                  name="password"
                   type="password"
+                  autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 py-3 px-4 text-sm text-white outline-none focus:border-brand-500"
@@ -177,7 +198,8 @@ export default function AdminLoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 py-3 text-sm font-semibold text-white hover:bg-brand-500 disabled:opacity-50"
+                aria-busy={loading}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 py-3 text-sm font-semibold text-white hover:bg-brand-500 disabled:opacity-50 disabled:pointer-events-none"
               >
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Sign In"}
               </button>
