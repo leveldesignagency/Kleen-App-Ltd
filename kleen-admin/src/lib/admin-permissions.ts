@@ -365,6 +365,7 @@ export const NAV_PERMISSION_MAP: Record<string, AdminPermission> = {
   "/customers": "nav.customers",
   "/legal-holds": "nav.legal_holds",
   "/enforcement": "nav.enforcement",
+  "/security": "security.view",
   "/team": "nav.team",
   "/settings": "settings.profile",
 };

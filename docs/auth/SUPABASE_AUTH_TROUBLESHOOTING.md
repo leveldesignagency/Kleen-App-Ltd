@@ -47,7 +47,7 @@ Users **added via Supabase Dashboard** (Authentication → Add user) should get 
   If recover is still broken and you only need **info@kleenapp.co.uk** as admin:
   1. In **Authentication → Users**, delete **info@kleenapp.co.uk** if it exists (removes any bad row from earlier migrations).
   2. Click **Add user** → **Create new user**.
-  3. Email: `info@kleenapp.co.uk`, Password: your chosen password (e.g. `#Robo123`). Create.
+  3. Email: `info@kleenapp.co.uk`, Password: a strong unique password (store in your password manager). Create.
   4. Run migration **022** (or the SQL from it) so that user’s profile gets `role = 'admin'`.
   5. Log in to the admin app with that email and password (no recovery email needed).
 

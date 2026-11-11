@@ -39,6 +39,7 @@ const NAV_ITEMS: {
   { href: "/waitlist", label: "Area waitlist", icon: Mail, permission: "nav.customers" },
   { href: "/legal-holds", label: "Legal holds", icon: Scale, permission: "nav.legal_holds" },
   { href: "/enforcement", label: "Enforcement", icon: ShieldAlert, permission: "nav.enforcement" },
+  { href: "/security", label: "Security", icon: ShieldCheck, permission: "security.view" },
   { href: "/team", label: "Team & HR", icon: UserCog, permission: "nav.team" },
 ];
 

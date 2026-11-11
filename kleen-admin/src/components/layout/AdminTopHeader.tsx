@@ -340,12 +340,12 @@ export default function AdminTopHeader() {
                   )}
                   {hasPermission("security.view") && (
                     <Link
-                      href="/settings?tab=security"
+                      href="/security"
                       onClick={() => setProfileOpen(false)}
                       className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-300 hover:bg-white/5"
                     >
                       <Shield className="h-4 w-4" />
-                      Security
+                      Security Watchdog
                     </Link>
                   )}
                 </div>

@@ -2,10 +2,9 @@
 -- Reset / create admin: info@kleenapp.co.uk
 -- Run in Supabase Dashboard → SQL Editor → Run
 --
--- Login after this script:
---   Email:    info@kleenapp.co.uk
---   Password: KleenAdmin1!
--- Change the password after first sign-in.
+-- SECURITY: Do NOT commit real passwords. Set admin_password below only in the
+-- SQL Editor session, then change it again in Authentication → Users after login.
+-- Prefer: Auth → Users → Add user / Reset password (no SQL password at all).
 -- =============================================================================
 
 -- Fix NULL tokens (prevents "Database error querying schema" on sign-in)
@@ -18,9 +17,15 @@ WHERE confirmation_token IS NULL OR recovery_token IS NULL;
 DO $$
 DECLARE
   admin_email text := 'info@kleenapp.co.uk';
-  admin_password text := 'KleenAdmin1!';
+  -- Paste a strong one-time password here in the SQL Editor only (never commit it):
+  admin_password text := NULL; -- e.g. 'replace-me-then-rotate'
   uid uuid;
 BEGIN
+  IF admin_password IS NULL OR length(trim(admin_password)) < 12 THEN
+    RAISE EXCEPTION
+      'Set admin_password in this script (12+ chars) before running, or create/reset the user in Auth → Users instead.';
+  END IF;
+
   SELECT id INTO uid FROM auth.users WHERE email = admin_email LIMIT 1;
 
   IF uid IS NULL THEN
@@ -78,7 +83,7 @@ BEGIN
       now()
     );
 
-    RAISE NOTICE 'Created admin user % with password %', admin_email, admin_password;
+    RAISE NOTICE 'Created admin user %. Change password immediately after first login.', admin_email;
   ELSE
     UPDATE auth.users
     SET
@@ -89,7 +94,6 @@ BEGIN
       updated_at = now()
     WHERE id = uid;
 
-    -- Ensure email identity exists (required for signInWithPassword)
     IF NOT EXISTS (
       SELECT 1 FROM auth.identities
       WHERE user_id = uid AND provider = 'email'
@@ -104,7 +108,7 @@ BEGIN
       );
     END IF;
 
-    RAISE NOTICE 'Reset password for % to %', admin_email, admin_password;
+    RAISE NOTICE 'Reset password for %. Change it again after login.', admin_email;
   END IF;
 
   INSERT INTO public.profiles (id, email, full_name, role)
